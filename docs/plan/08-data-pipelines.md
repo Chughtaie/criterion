@@ -171,7 +171,7 @@ out/                                  # git-ignored build outputs and reports
 
 **Generated assets in git (lead ruling).**
 - **Only public-eligible generated assets are committed**, through **Git LFS** (`*.db`, `*.ttf` under `core/content/src/main/assets/`, `app/src/main/assets/` and `app/src/public/assets/`). Build outputs first land in the gitignored `out/`. This covers the Tanzil/DK-based content DB, the font, a G1-cleared or clean-room layout pack, the bundled QuranEnc translations, the PUBLIC timing packs, the cities pack, and the BETA/PUBLIC catalogue. Android Studio builds of the public flavour therefore need no Python. CI rebuilds these files and checks reproducibility (§12).
-- **QUL-derived (G1-pending) packs and any personal-only content are never committed to git or LFS.** `crit` writes them to the gitignored `data/private/out/`, a symlink into `~/criterion-data`. At build time, the Gradle task `syncPersonalAssets` (in the `criterion.content.eligibility` plugin, doc 04 §11.3) copies them into the **gitignored** `app/src/personal/assets/packs/` and `…/audio/`. A personal build on a machine without `~/criterion-data` fails with a clear message instead of shipping without a layout.
+- **QUL-derived (G1-pending) packs and any personal-only content are never committed to git or LFS.** `crit` writes them to the gitignored `data/private/out/`, a symlink into `~/criterion-data`. At build time, the Gradle task `copyPersonalAssets` (in the `criterion.android.application.flavors` convention plugin, doc 04 §16.2) copies them into the **gitignored** `app/src/personal/assets/packs/` and `…/audio/`. A personal build on a machine without `~/criterion-data` fails with a clear message instead of shipping without a layout.
 - `crit install-assets --tier <T>` writes both locations, and a pre-commit hook rejects any staged file under `app/src/personal/assets/` or any LFS object whose `bundled.json` entry is not PUBLIC- or BETA-eligible.
 
 Destinations follow doc 04 §7.7/§11.2 and doc 06 §5.1, and are configured in `pipeline.toml`:
@@ -183,7 +183,7 @@ Destinations follow doc 04 §7.7/§11.2 and doc 06 §5.1, and are configured in 
 | `normalization_vectors.json` | `core/model/src/test/resources/` (test only, never shipped) | yes |
 | Mushaf layout pack `mushaf.indopak16_taj.dk@<ver>.db` | PERSONAL: `app/src/personal/assets/packs/mushaf_layout/` (QUL-derived allowed). BETA/PUBLIC: `app/src/public/assets/packs/mushaf_layout/` **only** if G1-cleared or clean-room; otherwise the directory is empty and the public build fails (doc 04 §11.3). Never `src/main` | personal copy: **no** (build-time copy). Public copy: LFS |
 | Bundled translations `ur.junagarhi.qe`, `en.saheeh.qe` | `app/src/{personal,public}/assets/packs/translation/<id>@<ver>.db` | public copy LFS; the personal copy is the same file, copied at build time |
-| Timing packs (12 PUBLIC gapless recitations, doc 06 §4.1–4.2) | `app/src/{personal,public}/assets/packs/timing/<packId>@<ver>.db`, listed in `bundled.json` (doc 06 §5.1 "Bundling") | public copy LFS |
+| Timing packs (12 PUBLIC gapless recitations, doc 06 §4.1–4.2) | `src/main/assets/audio/timing/<packId>@<ver>.db.gz` in `:core:audio` (eligible in every tier; doc 04 §7.7, doc 06 §5.1 "Bundling"), listed in `bundled.json` | LFS |
 | Cities pack | `app/src/{personal,public}/assets/packs/cities/cities@<ver>.db` | public copy LFS |
 | `catalogue.json` + `.sig` | `app/src/{personal,public}/assets/audio/catalogue.json` (doc 04 §7.7). The public-source-set copy is generated for BETA, and regenerated for PUBLIC at release | public copy: yes. Personal copy: **no** |
 | `personal-overlay.json` | `app/src/personal/assets/audio/` only. Original-host URLs for personal-only items; never uploaded (doc 04 §11.2) | **no** |
@@ -271,6 +271,7 @@ downloader = "auto"; storage = "cache"; used_by = ["content"]
 | `everyayah.md5.<folder>` | `https://everyayah.com/data/{folder}/000_checksum.md5` | sha256 | No site licence; personal/PENDING (D-12) | auto → cache | timing (gapped manifest) |
 | `kfc.zips.<reciter>` | King Fahd Complex per-ayah/per-surah ZIPs (geo-blocked; owner fetches from PK) | sha256 per ZIP | "free general use" (search-verified); permission email | owner-manual → private | publish (self-host after permission) |
 | `geonames.cities15000` | `https://download.geonames.org/export/dump/cities15000.zip` (+ `readme.txt`) | dump date, sha256; 3.36 MB, 34,173 rows on 2026-10-19 | CC BY 4.0 | auto → cache | geo |
+| `geonames.admin1CodesASCII` | `https://download.geonames.org/export/dump/admin1CodesASCII.txt` | dump date, sha256 | CC BY 4.0 | auto → cache | geo (`admin1` table, doc 07 §3) |
 | `oracle.qul_previews` | 548 scraped `/mushaf_layouts/7?page_number=N` HTML (already fetched in research) | sha256 of tarball | Tarteel ToS: no copying → **oracle only; delete once `qul.res11` arrives** | private → oracle | oracle.py |
 | `oracle.waqar144` | `Waqar144/quran_memorization_helper` @ `b6470fb` | commit | MIT label, QUL-derived → oracle only | auto → oracle | oracle.py |
 | `owner.checkpoints` | Owner's photos of printed pp. 2, 39, 70, 115, 483 of his own copy (g02 §4) | sha256 | private | owner-manual → private | manual check only |
@@ -284,7 +285,7 @@ All CSVs are UTF-8 with a header row, LF line endings, and are sorted. Each has 
 | `paras.csv` | `para, arabic_name, printed_header_form, roman_name, english_name, start_verse` (Indo-Pak, `s:a`), `madani_start_verse, start_page_index, start_page_label, ayah_count, ruku_count_by_end, margin_label, name_ur, verified_source` (field set per doc 03's Para table) | 30 | Loaded into `para` (doc 04 §7.2: `name_ar` ← `arabic_name`, `name_ur`, `name_roman` ← `roman_name`, `start_ayah_id`, `end_ayah_id`, `madani_start_ayah_id`). The other fields are cross-checks: `start_page_index`/`start_page_label` against V-M05, `ayah_count`, `ruku_count_by_end` against V-C12, and `printed_header_form`/`margin_label` against the furniture strings (§5.5). r05 §2.3.2 table. Names are hand-typed with Indo-Pak diacritics. Starts follow D-07: 7 differ from Madani (3:92, 5:83, 9:94, 15:2, 27:60, 29:45, 36:22). Page indices: **Para 1 = index 1** (label 2); Para *n* = 18n−16 **for n = 2..28 only** (20, 38, 56, …, 488); P29 = 508; P30 = 528 |
 | `manzils.csv` | `manzil, start_surah, start_ayah, taj16_page_index, taj16_qul_line` | 7 | 1:1, 5:1, 10:1, 17:1, 26:1, 37:1, 50:1. Pages/lines (1,2), (96,3), (187,4), (254,2), (330,5), (401,14), (466,7) (g01 §2.4) |
 | `sajdas.csv` | `surah, ayah, number, kind, label_ar` | 15 | 7:206, 13:15, 16:50, 17:109, 19:58, 22:18, 25:60, 27:26, 32:15, 38:24, 41:38, 53:62, 84:21, 96:19 numbered 1–14 in mushaf order (`kind=hanafi`, doc 04 §7.2). **22:77** `number` NULL, `kind=shafii_only`, label «السجدة عند الامام الشافعی رح» (g02 §2.6) |
-| `para_quarters.csv` | `para, quarter(1..3), surah, ayah, after_word_pos, verified_source` | 90 | g02 Appendix A, with the 3 print corrections: P4 ¾ = 3:198; P7 ¼ = 5:113; P7 ¾ = 6:73 `word_pos=10` (the «۵» after فَيَكُوْنُ). 37 print-verified so far; the remaining 53 are hand-checked before public release. **Never derived from Madani rub** |
+| `para_quarters.csv` | `para, quarter(1..3), surah, ayah, after_word_pos, verified_source` | 90 | g02 Appendix A, with the 3 print corrections: P4 ¾ = 3:198; P7 ¼ = 5:113; P7 ¾ = 6:73 `after_word_pos=10` (the «۵» after فَيَكُوْنُ). 37 are print-verified so far; the remaining 53 are hand-checked before the closed test (BETA). **Never derived from Madani rub** |
 | `ruku_print_checks.csv` | `surah, first_ayah, last_ayah, n1, n2, n3, scan_ref` | 29 | g02 §2.3 decoded triples (top/in-ع/bottom) |
 | `surahs.csv` | `surah, name_ar, name_ur, name_roman, name_en, meaning_ur, meaning_en, revelation, revelation_order, roman_aliases` | 114 | Hand-curated; revelation/order cross-checked with Tanzil metadata. No QF payloads copied (r05 §2.8) |
 | `surah_headers.csv` | `layout, surah, variant, title_text, right_text, left_text, verified_source` | 114 (`layout=indopak16_taj`) | Goes into the mushaf pack's `surah_header` table (doc 05 §3.3), not the content DB. Generated draft «سورة {name} {مكية/مدنية} وهي {N} آية و{M} ركوعات» (single-ruku surahs omit M; Fatiha «وهي سبع آيات»), then hand-proofed against the print (≈75 verified in g02). `THREE_PART` split proofed per doc 05 §5.3 |
@@ -553,7 +554,7 @@ page_models = justify.solve(pages, A, INK, consts)  # doc 05 §4.3 pseudocode, l
 for w in words:                                     # integerise once, at the end
     w.x0, w.x1 = round(w.x0_tw * 100_000), round(w.x1_tw * 100_000)               # kashida variant
     w.x0_plain, w.x1_plain = round(w.x0p_tw * 100_000), round(w.x1p_tw * 100_000)
-# rounding is "round half to even" on exact decimals (Python round on Fraction) → byte-identical across machines
+# x values are computed in fractions.Fraction and rounded with round() (half-to-even), so outputs are byte-identical across machines
 ```
 
 Pipeline report (CI artifact, doc 05 §4.3): the `gap_em` distribution per variant, the count of `scale < 1` lines (target ≤ 1 %), stretched words per line, the em spread, and any FAIL rows.
@@ -643,7 +644,7 @@ This is built **only if G1 fails by 2026-11-19** (D-06). `rebreak.py` implements
 
 ---
 
-## 6. Stage 3: translation and tafsir packs (`tools/packs`)
+## 6. Stage 3: translation and tafsir packs (`tools/packs`; azkar §9.3, cities §9.1)
 
 ### 6.1 Output: `<id>@<ver>.db` (Room `TranslationPackDb` / `TafsirPackDb`; shape owned by doc 04 §7.3)
 
@@ -721,7 +722,7 @@ Pack ids follow doc 04 (`<lang>.<name>.<source>`, with `source` ∈ `qe` (QuranE
 
 **Naming.**
 - The pack id is whatever doc 06 assigns as the catalogue's `timing.packId`, e.g. `timing.alafasy.mp3q123` for recitation `alafasy.murattal.mp3q123`. `reciters.yaml` carries it, and the pipeline never derives it.
-- The bundled file is `app/src/{personal,public}/assets/packs/timing/<packId>@<ver>.db`, listed in `bundled.json` (doc 06 §5.1 "Bundling").
+- The bundled file is `src/main/assets/audio/timing/<packId>@<ver>.db.gz` (gzip; eligible in every tier), listed in `bundled.json` (doc 04 §7.7, doc 06 §5.1 "Bundling"). Downloadable timing packs (v1.1) use the pack index with `compression: gzip`.
 - On the CDN (v1.1 updates) the pack is listed in the index with `compression: "zip"`, the only compressed value doc 04 §7.6's enum allows. Doc 04 §7.3 and doc 06 §5.1 mention `.db.gz`; that is a residual for docs 04/06 to settle, and the pipeline can emit either.
 
 **Gapless only.** Only `GAPLESS_SURAH` recitations with mp3quran timings get a timing pack. Gapped recitations (everyayah, islamic.network, King Fahd Complex) have **no** timing pack. Their integrity data lives in the catalogue `qualities[].checksums`:
@@ -799,11 +800,14 @@ If a rebuild changes this list, CI fails until `reciters.yaml` is updated with a
 
 ## 8. Stage 5: catalogue, pack index, notices, eligibility manifest and signing (`tools/catalogue`)
 
-Every signed JSON shares a **header** (writer ruling). The header has these fields:
+Every signed JSON shares a **header** (doc 04 §7.6). The header has these fields:
 - `schema`;
 - `kid`: the signing key id, used as a hint. The app still tries both pinned keys;
 - `sequence`: monotonic per file and channel, for anti-rollback;
-- `generatedAt` and `expiresAt`: ISO-8601 UTC. `generatedAt` is the commit time of the pipeline sha, not the wall clock.
+- `generatedAt` and `expiresAt`: ISO-8601 UTC. `generatedAt` is the commit time of the pipeline sha, not the wall clock;
+- `channel` (`beta` | `public`): it must equal the publish path. The Hijri feed is channel-free.
+
+There is **no monetized channel**. Monetized builds (v1.5+) read the `public` channel and filter on `commercialOk` on the device (doc 04).
 
 Field names are the owner doc's camelCase. `crit validate` checks every file against the JSON Schemas copied into `tools/catalogue/schemas/` (V-X01), so kotlinx.serialization on the device never silently drops a field.
 
@@ -846,7 +850,7 @@ The pipeline emits exactly doc 06 §3.2's shape (`AudioCatalogue`), plus the hea
   - `v1/public/catalogue.json` lists only PUBLIC-eligible recitations;
   - `v1/beta/catalogue.json` adds the BETA ones, i.e. the PENDING gapped sets;
   - the PERSONAL catalogue is **bundled only**, together with `personal-overlay.json`, and is never uploaded (doc 04 §11.2).
-- **MONETIZED.** A monetized catalogue (v1.5+) contains only `commercialOk = true` entries (doc 06 §16.2).
+- **MONETIZED.** There is no separate monetized file. The bundled catalogue of a monetized build (v1.5+, `--monetized`) contains only `commercialOk = true` entries (doc 06 §16.2). Remotely, monetized builds read `v1/public/` and filter on `commercialOk`.
 
 ### 8.2 `index.json` (packs; schema owned by doc 04 §7.6) — remote copy v1.1
 
@@ -887,8 +891,9 @@ The fix itself always ships as an app update: the content DB and the layout pack
 
 ```yaml
 id: n-2027-02-10-01
-target: {type: page, mushaf: indopak16_taj, page: 412}     # page | surahHighlight | pack | recitation | feature | minVersion
-action: warn                                                # warn | disable
+target: {type: page, mushaf: indopak16_taj, pages: [412]}  # page | surahHighlight | pack | recitation | feature
+                                                            #   optional device: {model, manufacturer, sdk: [min, max]}
+action: warn                                                # warn | disable | enable (device workarounds, with level L1/L2)
 message: {en: "A possible text issue on this page is under review.", ur: "…"}
 until: 2027-03-31T00:00:00Z
 evidence: errata/indopak16_taj.csv#R-0007                           # internal; stripped from the output
@@ -896,11 +901,11 @@ evidence: errata/indopak16_taj.csv#R-0007                           # internal; 
 
 **Build (`build_notices.py`, `--channel beta|public`).**
 1. Drop notices whose `until` has passed, and those whose optional `channels:` list excludes this channel.
-2. Emit doc 04 §14.3's `{schema, kid, sequence, generatedAt, expiresAt, notices[]}`.
+2. Emit doc 04 §14.3's `{schema, kid, sequence, generatedAt, expiresAt, channel, minVersion?, notices[]}`. `minVersion` comes from `data/notices/_min_version.yml` and drives the "Update available" card. After a text fix, it points at the corrected build.
 3. Set `expiresAt` = min(now + 30 days, the latest `until`), so a stale file stops being trusted.
 
 **Validation (V-X09).** The build is checked before signing:
-- every `target` resolves: page 1..548 for the named mushaf code; a known recitation id, plus surah 1..114 for `surahHighlight`; a known pack id; a feature id from doc 04's flag list;
+- every `target` resolves: `pages` ⊆ 1..548 for the named mushaf code; a known recitation id plus surah 1..114 for `surahHighlight`; a known pack id; a feature id from doc 04's flag list; any `device` filter well-formed;
 - `message.en` and `message.ur` are both present for `warn`;
 - `sequence` is greater than the live value;
 - no notice tries to carry text or layout data, i.e. no unknown keys.
@@ -1209,7 +1214,7 @@ Failing any **hard** check fails the build. **Warn** checks are posted in the CI
 | V-X06 | No `PERSONAL_ONLY` item in any BETA/PUBLIC file; no `PENDING` item in PUBLIC; nothing under a `personal` prefix in R2; BETA/PUBLIC mirror hosts on the allowlist (never quranicaudio, QF/QDC, Tarteel audio hosts, archive.org; D-28) | hard |
 | V-X07 | Geo: pinned row count, PK = 372, PK tz = Asia/Karachi, Urdu lookups resolve | hard |
 | V-X08 | Hijri feed contiguity and ±2-day sanity | hard |
-| V-X09 | `notices.json`: every target resolves (page 1..548 for the mushaf code, known recitation + surah, known pack, known feature id); en+ur message for `warn`; expired notices dropped; no unknown keys | hard |
+| V-X09 | `notices.json`: every target resolves (`pages` ⊆ 1..548 for the mushaf code, known recitation + surah, known pack, known feature id, well-formed `device`); en+ur message for `warn` and page `disable`; expired notices dropped; `minVersion.versionCode` ≤ the latest released code; no unknown keys | hard |
 | V-X10 | `bundled.json` lists every file under the source set's `assets/packs/` and `assets/audio/`; sha256s match; every item is eligible for the tier it was generated for | hard |
 | V-X11 | `certified_pages.json` covers all 548 `page_hash`es of the bundled public layout pack, matches the sign-off sheet's `OK` rows, and names a certificate whose hash is in `data/legal/evidence/` | hard for PUBLIC |
 | V-X12 | `channel` field equals the publish path; the public catalogue/index ⊆ the beta one | hard |
@@ -1307,34 +1312,53 @@ sequenceDiagram
 
 ## 15. Build order and estimates (solo dev + AI agents; feeds doc 09)
 
-| Step | Phase / target date | Effort |
+The schedule column uses doc 09's sprints and story IDs, and doc 09 governs dates. Hours are this doc's **engineering estimate before AI leverage**. Doc 09 §4.3 reconciles them with its plan-of-record ideal days.
+
+| Step | Doc 09 story · sprint | Effort |
 |---|---|---|
-| `tools/` skeleton, uv workspace, pins, fetch, `roomdb.py` (from spike), CI `tools.yml` | P0 · by 2026-10-25 | 8 h |
-| Normalisers + vectors; Tanzil parse; DK token stream + Kufan keys + `ayah_marker`; curated CSVs (paras, manzils, sajdas, quarters seed, surahs, aliases); ruku derivation; content DB v0 + V-C checks | P0 · by 2026-11-02 | 16 h (+ 4 h owner curation of Urdu names) |
-| Font conversion + `fontcheck` + vectors for the device smoke test | P0 · by 2026-10-28 | 3 h |
-| QUL res 11/565 ingestion (after owner export), grid restore, quirks, map | P1 · week 1 (by 2026-11-09) | 8 h |
-| Shaping cache + justification solver + markers + furniture + pack writer + V-M checks | P1 · by 2026-11-23 | 16 h |
-| Proof renders (SVG/PDF/PNG), manifest, sign-off templates, delta mode | P1 · by 2026-11-30 | 8 h |
-| Translation packs (2 bundled) + V-P | P1 · by 2026-11-16 | 5 h |
-| Timing pipeline + 12 reads + gapped manifests + V-T + decode checks | P1 · by 2026-12-07 | 14 h (+ owner listening passes) |
-| Catalogue/index builders, envelopes, keys, profiles gate, publish + verify-live, R2 setup | P1 · by 2026-12-14 | 10 h |
-| `upstream-drift.yml`, `verify-live.yml` | P1 · by 2026-12-21 | 4 h |
-| Geo pack, Hijri feed tooling, P2 translation packs | P2 · by 2027-01-04 | 8 h |
-| Hafiz review loop (tooling support) | P2 · 2026-12 → 2027-01-11 | 4 h engineering (review time per doc 11) |
-| Fallback E tooling (only if G1 fails on 2026-11-19) | P1 | 1 week tooling + 40–60 h correction + 15–20 h hafiz |
-| **Total (primary path)** | | **≈ 104 h engineering** |
+| `tools/` skeleton, uv workspace, pins, fetch, `roomdb.py` (from spike), CI `tools.yml` | E-03-S01 · S0 (by 11-02) | 8 h |
+| DK token stream, Kufan keys, `ayah_marker`, curated CSVs (paras, manzils, sajdas, quarters seed, surahs, aliases, passages), ruku derivation, content DB v0 + V-C checks. v0 uses a provisional normaliser | E-03-S02, E-03-S05 · S0–S1 | 16 h (+ 4 h owner curation of Urdu names) |
+| Font conversion, `fontcheck`, vectors for the device smoke test | E-03-S03 · S0 | 3 h |
+| QUL res 11/565 ingestion (after the owner's export), grid restore, quirks, map | E-03-S04 · S1 | 8 h |
+| Shaping cache, doc 05 §4.3 solver, markers, furniture (doc 05 §4.4), pack writer to the doc 05 schema, `page_hash`, V-M checks | E-03-S06, E-03-S12 · S1–S2 | 20 h |
+| Proof renders (SVG/PDF/PNG), manifest, sign-off templates, delta mode, page-diff report | E-03-S07 · S2 (proof PDF 11-30; hafiz round 1 from 12-01) | 8 h |
+| Bundled translation packs (2) + V-P | E-03-S09 · S2 | 5 h |
+| Timing pipeline (12 reads, doc 06 §5.1 DDL, plain SQLite) + V-T | E-09-S02 · S1 | 12 h |
+| Decoded-audio checks for reads 54, 4, 89, 109, 159 | E-09-S04 · S5 | 2 h (+ owner listening passes) |
+| Final normalisers + `normalization_vectors.json` + FTS re-baseline (V-C18/19) | E-03-S08 · S5 | 4 h |
+| `install-assets --tier`, `bundled.json`, `copyPersonalAssets` hand-off, pre-commit guard | E-10-S07 · S3–S4 | 4 h |
+| Catalogue builder (per channel), detached `.sig` signing, keys, tier gate, publish + `verify-live`, R2 bucket (domain bought on Day 3, E-23-S03) | E-23-S01 · S5 (12-22 → 01-04) | 8 h |
+| `notices.json` builder, validation, runbook (F-PL-11) | E-19-S05 · S5–S6 | 3 h |
+| `certified_pages.json` (`crit mushaf certify`) + device-capture bundling for round 2 | G5 path · S5–S6 (round 2 01-05 → 01-15; G5 01-18) | 4 h |
+| Cities pack, Hijri feed tooling (`crit hijri`) | Tier A (F-CP-01, F-CP-04) · S5–S6 | 6 h |
+| `upstream-drift.yml`, weekly timing re-validation | E-09-S05 · S7 | 3 h |
+| Hafiz review loop (tooling support, errata turnaround) | 2026-12-01 → 2027-01-15 | 4 h engineering (review time per doc 11) |
+| **v1.0 total (primary path)** | | **≈ 118 h engineering** |
+| v1.1: index publishing + downloadable packs (E-03-S10), azkar pack + `daily_ayah` rows (§9.3), onset snapping (E-09-S06), extra translation packs | v1.1 | ≈ 16 h |
+| Fallback E tooling (only if G1 fails on 2026-11-19) | E-03-S11 · S3 (a contractor operator, ≈ 7 weeks elapsed) | ≈ 1 week tooling + 40–60 h correction + 15–20 h hafiz |
 
 ---
 
 ## 16. Acceptance criteria
 
-1. On a clean machine, `uv sync --frozen && just fetch && just ci` reproduces every committed asset: identical logical dumps and identical sha256 with the pinned Python.
-2. All V-C, V-M, V-P, V-T and V-X hard checks pass. The CI report lists every warn item with a reviewer note.
-3. `quran_content.db` and every pack open in Robolectric through Room with and without `room_master_table` (doc 10). The FTS vectors return the counts in V-C18.
-4. Proof PDFs of all 548 pages exist for the current `build_id`. 30 random pages compared against device screenshots on API 24/26/36 differ by ≤ 1 px in word box positions at 1080 px width (doc 10 harness).
-5. A tampered envelope (1 byte changed) and a replayed older `sequence` are both rejected by `crit verify` and by the app test vectors exported from `tools/catalogue/test_vectors/`.
+1. On a clean machine, `uv sync --frozen && just fetch && just ci` reproduces every committed (public-eligible) asset: identical logical dumps, and identical sha256 with the pinned Python. Personal/QUL-derived outputs match `data/private/manifest.json`.
+2. All V-C, V-M, V-P, V-T and V-X hard checks pass for `--tier PERSONAL`, `--tier BETA` and (at release) `--tier PUBLIC`. The CI report lists every warn item with a reviewer note.
+3. `quran_content.db` and every Room pack open in Robolectric through Room, with and without `room_master_table` (doc 10). Timing packs open through `androidx.sqlite`. The FTS vectors return the counts in V-C18.
+4. Proof PDFs of all 548 pages exist for the current `build_id`. 30 random pages compared against device captures on API 24/26/36 differ by ≤ 1 px in word-box positions at 1080 px width (doc 10 harness; doc 05 `FullBookCaptureTest`).
+5. For each of `index.json`, `catalogue.json`, `notices.json` and `hijri-pk.json`, the following are rejected by `crit verify` and by the app test vectors in `tools/catalogue/test_vectors/`:
+   - a 1-byte-tampered body;
+   - a `.sig` from an unknown key;
+   - a replayed older `sequence`;
+   - an expired `expiresAt`.
 6. The weekly drift job detects a simulated mp3quran ETag change and a QuranEnc version bump, and opens issues.
-7. A `public_monetized` profile build fails when `tr.ur.jalandhari.tz` is listed; a `public` build fails while `qul_res_11` is `pending`.
+7. The tier gate rejects each of these:
+   - `--tier PUBLIC --monetized` with `ur.jalandhari.tanzil` listed;
+   - `--tier BETA` or `--tier PUBLIC` while `qul_res_11` is `pending` and the layout pack's `basis` is not clean-room;
+   - `--tier PUBLIC` with any `PENDING` recitation, or with a layout page whose `page_hash` is missing from `certified_pages.json`;
+   - `--tier BETA` with a `PERSONAL_ONLY` recitation.
+
+   `--tier BETA` **accepts** PENDING gapped audio. `crit publish --channel personal` is refused.
+8. A text-error notice goes from YAML to verified live on both channels in ≤ 15 min, following the §8.3 runbook.
 
 ---
 
@@ -1342,10 +1366,11 @@ sequenceDiagram
 
 - **Ktor/Gradle-based pipeline in Kotlin.** Rejected: uharfbuzz/fontTools are the verified shaping and font tools, and the same Python shaped the research prototypes.
 - **Bundling translations into the content DB.** Rejected: packs keep licences isolated and survive destructive content upgrades (r05 §2.7.1).
-- **A detached `.sig` per JSON file.** Rejected: there is a race between two objects. The single envelope is atomic.
+- **A single-object signed envelope `{v, alg, kid, payload, sig}`** (this doc's v1 design). Withdrawn in favour of doc 04's detached `.sig` over the exact file bytes. The JSON stays human-readable and directly parseable, and the verifier stays one tiny function. The two-object race is harmless (§8.4).
+- **Tink for on-device verification.** Rejected by doc 04 (protobuf weight). We use the vendored TweetNaCl verify port.
 - **Signing in CI with a GitHub secret.** Rejected for v1: the key's blast radius would be too large for a solo project, and the publishing cadence is low.
-- **Integer fixed-point `word_pos`.** Rejected in favour of r04's REAL fractions: it saves ~1 MB raw, but would diverge from the renderer spec.
-- **A per-page font size without clamp** (r04 prototype). Replaced by a clamped page scale plus per-line shrink, for consistent glyph size across pages.
+- **REAL `word_pos` fractions with feature strings, and this doc's own solver** (v1 design). Withdrawn: doc 05 owns the pack schema and the solver. Integer x-fractions with kashida + plain variants are the contract.
+- **Committing QUL-derived packs via LFS.** Rejected by lead ruling: G1-pending data never enters git history.
 
 ---
 
@@ -1353,16 +1378,18 @@ sequenceDiagram
 
 | Contract | Owner doc |
 |---|---|
-| The content DB tables/columns in §4.1 (incl. `word`, `ayah_marker` with Kufan `display_number`, FTS5 `ayah_fts` on 3 cols + `ayah_fts_tri` on `norm_imlaei`) are what `QuranContentDb` entities export | 04, 05 |
-| Mushaf layouts are **packs** (`MushafPackDb`, §5.1); taj16 is pre-installed in assets; word text is read from the content DB by `script_id`; `features` TEXT is passed verbatim to `setFontFeatureSettings`; `left_frac` is measured from the left edge | 04, 05 |
-| Translation packs are also used for the 2 bundled translations; per-pack FTS5; cross-pack search fans out | 04 |
-| Timing pack schema (§7.1) incl. `ayah 0` intro and the `surah_status` + catalogue `highlight_disabled_surahs` override | 06 |
-| Catalogue/index payloads (§8.1–8.2) inside the §8.3 envelope; anti-rollback `sequence`; per-profile remote paths | 04, 06, 11 |
-| Ed25519 public keys compiled into the app; verifier library choice | 04 |
-| Normaliser spec §4.4 and the vectors file consumed by Kotlin tests | 04, 10 |
-| Hijri feed body (r08) wrapped in the envelope | 07 |
-| Build profiles `personal` / `public` / `public_monetized` drive the eligibility gate | 10, 11 |
-| `data/legal/permissions.yml` and `content_registry.yaml` are maintained per doc 03; G5 sign-off files per §14 | 03, 11 |
+| Content DB DDL = doc 04 §7.2; the pipeline inserts by exported column names (§4.1) and owns no DDL | 04 |
+| Mushaf pack DDL = doc 05 §3.3; solver = doc 05 §4.3; furniture = doc 05 §4.4; `page_hash` = doc 05 §3.5; `ayah_marker` only in the content DB; errata are build-time (`word_override`) | 05, 04 |
+| Translation/tafsir/azkar/cities pack shapes = doc 04 §7.3 (one translation schema for every language; azkar tables per doc 04/07) | 04, 07 |
+| Timing pack DDL = doc 06 §5.1, plain SQLite, gapless only; `packId` assigned by doc 06; `highlightDisabledSurahs` generated from `highlight_ok = 0` | 06 |
+| `catalogue.json` = doc 06 §3.2; `index.json` = doc 04 §7.6; `notices.json` = doc 04 §14.3; `bundled.json` = doc 04 §11.2. All carry `kid`, `sequence`, `generatedAt`, `expiresAt`, plus a detached `.sig` | 04, 06 |
+| Per-item eligibility: `licenceStatus` (5 values), `basis`, `eligibleTiers`, `commercialOk`, `fossOk`; tiers PERSONAL / BETA / PUBLIC + MONETIZED; PENDING allowed in BETA, never PUBLIC; BETA layouts only G1-cleared or clean-room | 12 (D-29), 03, 04 |
+| Remote channels `v1/beta/…`, `v1/public/…`, `v1/feeds/…`; **no personal channel on R2** | 04 |
+| Asset paths: content DB in `:core:content` `src/main`; per-tier packs in `app/src/{personal,public}/assets/`; personal/QUL-derived files never in git | 04, lead ruling |
+| `certified_pages.json` (§14) is the G5 input to `verifyContentEligibility` for PUBLIC | 11, 04, 05 |
+| Normaliser spec §4.4 and `normalization_vectors.json` consumed by Kotlin tests | 04, 10 |
+| CLI flag `--tier PERSONAL`, `BETA` or `PUBLIC` (+ `--monetized`); workflows `tools.yml`, `upstream-drift.yml`, `verify-live.yml` owned here | 10 |
+| `data/legal/permissions.yml` and `content_registry.yaml` maintained per doc 03; G5 sign-off files per §14 | 03, 11 |
 
 ---
 
@@ -1370,13 +1397,12 @@ sequenceDiagram
 
 1. **Which word-index family does the QUL res 11 export use?** Is resource 565 the right script join (83,668 positions)? This is answered only after the owner's login download, in P0 [owner → this doc].
 2. **The 1:7:4 «۵» + «لا» rendering** with the DK font (U+08E2 ± U+06D9) and Minikin's handling of the stripped RLO are settled in the P0 device smoke test [doc 05/10].
-3. **The 53 unverified Para quarters** must be hand-checked against the print before public release (V-C15). About 45 min with the scan crop method (g02) [owner].
-4. **The Manzil dua ayah list** for `quick_access.csv` needs a cited printed source [doc 03/07].
-5. **QuranEnc `english_saheeh` embeds "(n)" number prefixes.** Do we keep them verbatim or ask QuranEnc whether stripping them for display is allowed? [doc 03]
+3. **The 53 unverified Para quarters** must be hand-checked against the print before the closed test (V-C15 is hard for BETA). About 45 min with the scan crop method (g02) [owner].
+4. **The Manzil dua ayah list** in `passage_ranges.csv` (18 ranges / 79 ayahs) needs a cited printed source before BETA [doc 03/07].
+5. **QuranEnc `english_saheeh` embeds "(n)" number prefixes.** Do we keep them verbatim, or ask QuranEnc whether stripping them for display is allowed? [doc 03]
 6. **Bangla.** D-09 lists Bangla among the QuranEnc packs, but r05 found no Bangla in the QuranEnc API. Planned source: Tanzil `bn.bengali` (non-commercial) until QuranEnc adds one [doc 03/12].
-7. **Trigram scope** (1 column vs 3) and the APK size budget, after real search UX testing (g04 open question 1) [doc 04].
-8. **App-side Ed25519 verifier on API 24–32** (Tink vs vendored code). To be verified in P0 [doc 04].
-9. **`<CDN_HOST>` custom domain** depends on G3 (brand). Until then the R2 bucket is set up but publishing is personal-profile only [owner/doc 11].
-10. **The tunables in §5.4** (page-scale clamp, kashida word fraction, line shrink) are design defaults that need calibration on 30 sample pages with the owner and hafiz in P1 [owner].
-11. **Header Para on pp.508/528 and Taj print page-label offsets for the 15- and 13-line layouts** are unverified [doc 05; P3].
-12. **King Fahd Complex self-hosting criterion:** is the "free general use" statement enough (archived), or is the e-mail reply required? [doc 03]
+7. **Trigram scope** (3 columns per doc 04 vs 1) and the APK size budget. Decided by doc 04 spike S-4; the pipeline follows the exported schema [doc 04].
+8. **Timing-pack compression on the CDN** (`.db.gz` per docs 04 §7.3 / 06 §5.1 vs the index `compression` enum `zip|none`). Matters only from v1.1, when packs are downloadable [docs 04/06].
+9. **The tunables in §5.4** (`G_MAX`, `KMAX_WORDS`, `PAGE_EM_BAND`) may be retuned once in P1, after the hafiz's visual review of 30 sample pages; doc 05 §4.3 owns the defaults [owner/doc 05].
+10. **Header Para on pp.508/528 and Taj print page-label offsets for the 15- and 13-line layouts** are unverified [doc 05; P3].
+11. **King Fahd Complex self-hosting criterion:** is the "free general use" statement enough (archived), or is the e-mail reply required? [doc 03]

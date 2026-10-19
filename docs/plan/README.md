@@ -2,9 +2,9 @@
 
 **An ad-free, tracking-free Quran app for Android. It shows the printed 16-line Indo-Pak (Taj) page, typeset and ayah-aware, and plays your favourite Qari for any Surah, Para, Manzil or verse range, highlighting each ayah on the page as it is recited.**
 
-**Status: Draft v1 — 2026-10-19** · Codename *Criterion* (package `com.chughtai.criterion`). The public brand is picked at gate G3; "Hamdam" (ہمدم) is the working candidate. · Owner: hafizchughtai09@gmail.com
+**Status: Draft v2 — 2026-10-19** (all 13 docs written in parallel, then reviewed through 5 lenses — consistency, accuracy, feasibility, coverage, engineering depth — and revised) · Codename *Criterion* (package `com.chughtai.criterion`). The public brand is picked at gate G3; "Hamdam" (ہمدم) is the working candidate.
 
-This README is the executive end-to-end plan and the index to the 13 plan docs, the 13 research reports and the toolchain spike. If a detail here differs from a doc, the **cross-doc rulings in §13** take precedence. Doc 09 owns dates and scope. Doc 12 owns decisions (D-xx), gates (G1–G6) and risks (R-xx). Doc 01 owns feature IDs (F-xx-nn).
+This README is the executive end-to-end plan and the index to the 13 plan docs, the 13 research reports and the toolchain spike. The **cross-doc rulings in §13** are applied in every doc; if you ever spot a mismatch, §13 wins. Doc 09 owns dates and scope. Doc 12 owns decisions (D-xx), gates (G1–G6) and risks (R-xx). Doc 01 owns feature IDs (F-xx-nn).
 
 ---
 
@@ -27,10 +27,11 @@ This README is the executive end-to-end plan and the index to the 13 plan docs, 
 7. **Decision 5: business and trust** ([D-17, D-20, D-29](12-decisions-risks.md)). The app is **free forever, with no ads ever and no third-party SDKs**. Data safety says "No data collected". A **content-eligibility system** (PERSONAL / BETA / PUBLIC tiers) is enforced in CI, so personal-only content can never reach a public build. An optional "Support / Sadqa-e-Jaria" in-app purchase comes in v1.5.
 8. **Launch target.**
    - **Your daily-use build: 2026-12-21.**
-   - **v1.0 public: staged rollout from 2027-02-01, at 100% by about 02-05, before Ramadan 1448 (about 8–9 Feb).** This happens only if all six gates clear by Go/No-Go on 2027-01-25. If not, v1.0 runs as a closed test through Ramadan and goes public after Eid.
+   - **Closed test opens 2027-01-11** (or 2026-12-28 if G1 is granted early — on a personal Play account, only the 12-28 opening leaves room for a public launch before Ramadan).
+   - **v1.0 public: staged rollout from 2027-02-01, at 100% by about 02-05, before Ramadan 1448 (about 8–9 Feb).** This happens only if all six gates clear by Go/No-Go on 2027-01-25 **and** the 11-30 launch rule (item 9) says go. If not, v1.0 runs as a closed beta through Ramadan and goes public on 2027-03-22 together with v1.1.
    - **v1.0 contents:** the Quran core, plus prayer times with Sehri/Iftar, Hijri date, Ramadan core and the khatam planner.
    - **Moved to v1.1 (2027-03-22):** adhan alarms, Qibla, widgets, reminders, azkar, translation packs and share-image.
-9. **Capacity reality** ([09 §4](09-roadmap-backlog.md)). The full scope is about 100 ideal days; about 80 are available before Ramadan. The plan of record is **76.5 ideal days**, with a 9-rung scope-cut ladder. Velocity checkpoints fall on 11-16, 11-30 and 12-14. At the **11-30 checkpoint** we decide whether to hire a freelancer to bring adhan back into v1.0.
+9. **Capacity reality — read this** ([09 §4](09-roadmap-backlog.md), [D-34](12-decisions-risks.md)). The full scope is about 105 ideal days; about 80 are available before Ramadan. The plan of record is **79.75 ideal days** (L1–L4 and L9 pre-cut, L5–L8 cuttable). That only fits if AI-assisted development runs at roughly 0.5–0.6× the specialist docs' own estimates (they put the Quran core alone at ≈ 90–110 ideal days). So the plan carries a **pre-agreed launch rule**: at the **2026-11-30 checkpoint**, if actual ÷ planned for S0–S2 is **≥ 1.3** (or G1 is not granted and the clean-room layout is off track), Ramadan becomes a **closed beta** for you, family and testers, and the **public v1.0 moves to 2027-03-22**. The same day decides whether to hire a freelancer to bring adhan into v1.0.
 10. **What only you can do this week** (§8):
     - Create the **QUL account and export** resource 11, and send the **G1 emails**: Tue 10-20.
     - Send the **G2 audio emails** and **order 2 Taj 16-line prints**: Wed 10-21.
@@ -213,8 +214,8 @@ flowchart LR
 
 | Gate | Cleared when | Decision date | If not cleared |
 |---|---|---|---|
-| **G1** Mushaf data | Tarteel/QUL gives written permission for resource 11 (+ 565/59), and the DigitalKhatt author confirms the MIT scope. Emails go out 10-20 (deadline 10-23); follow-ups 11-02/03 and 11-12 | **2026-11-19** | A clean-room Taj-16 layout starts 11-20: 40–60 h plus 15–20 h of hafiz QA, done by a **second person** (you have seen the QUL data). No QUL-derived layout goes to *any* tester. **The public launch probably moves after Eid** |
-| **G2** Public audio catalogue | Every public entry is `PERMITTED` or `HOST_GRANT` with archived evidence, and no rights-holder has objected | **2027-01-04** (freeze) | Ship the mp3quran shortlist minus any reciter whose rights holder refuses. If Alafasy refuses, Ghamdi becomes the default. Gapped audio stays personal/beta |
+| **G1** Mushaf data | Tarteel/QUL gives written permission for resource 11 (+ 565/59), and the DigitalKhatt author confirms the MIT scope. Emails go out 10-20 (deadline 10-23); follow-ups 11-02 and 11-12 | **2026-11-19** | A clean-room Taj-16 layout starts 11-20: 40–60 h plus 15–20 h of hafiz QA, done by a **second person** (you have seen the QUL data). No QUL-derived layout goes to *any* tester. **The public launch probably moves after Eid** |
+| **G2** Public audio catalogue | Every public entry is `PERMITTED` or `HOST_GRANT` with archived evidence, and no rights-holder has objected | **2027-01-04** (freeze) | Ship the mp3quran shortlist minus any reciter whose rights holder refuses. If Alafasy refuses, Ghamdi becomes the default. Gapped (PENDING) audio stays in personal and closed-test (BETA) builds, never public |
 | **G3** Brand | Self-searches on IPO-Pakistan, WIPO and USPTO, plus a Play search, come back clean | **2026-12-14** | Next shortlisted name. Never the reference app's name or assets |
 | **G4** Code licence | Your decision memo | **2027-01-18** | Proprietary for v1.0 (our recommendation is GPL-3.0-or-later) |
 | **G5** Proofreading | A hafiz signs a certificate covering all 548 **device-rendered** pages, bound to the content hash | **2027-01-18** | No public release; the closed test continues |
@@ -239,7 +240,7 @@ flowchart LR
 - Ramadan core (F-CP-07);
 - khatam planner (F-BM-04).
 
-If we fall behind, these are cut in this order: L5 Ramadan → L6 Hijri → L7 prayer → L8 khatam → L9 P1 polish.
+If we fall behind, these are cut in this order: L5 Ramadan → L6 Hijri → L7 prayer → L8 khatam. (L9 — ruku/sajda *lists* and gapped mode — is already pre-cut to v1.1; the ruku and sajda *markers* on the page still ship, and no P1 Must is ever cut: pinch zoom and bookmarks with undo are in the floor.)
 
 **v1.0 stretch, pre-cut:** tafsir-summary sheet (F-RD-13), quarter navigation (F-IX-07), tasbeeh (F-CP-05) and the Manzil-dua playlist.
 
@@ -413,23 +414,28 @@ After that, take stories in doc 09 order (E-01…E-24), using prompts AP-04…AP
 
 ---
 
-## 13. Cross-doc rulings (precedence over individual docs)
+## 13. Cross-doc rulings (quick reference)
 
-The 13 docs were written in parallel. Where they disagree, these rulings apply. They will be folded back into each doc in its next revision.
+The 13 docs were written in parallel by specialist agents, then reviewed (5 lenses, ≈ 230 findings) and revised. These rulings settled every disagreement and are now applied in each doc; the table is kept as the one-page reference.
 
-| Topic | Ruling | Docs that still show the older value |
-|---|---|---|
-| Gate dates | G1 11-19 · G3 **12-14** · G2 01-04 · G6 **01-11** · G4 + G5 **01-18** · Go/No-Go 01-25 · closed test opens **01-11** (earlier only if G1 clears early) | 12 §4 (G3 12-15, G6 01-08, G4/G5 01-15); 11 §0 (closed test 12-28; G2/G6 01-18) |
-| v1.0 scope | Floor + Tier A = F-CP-01, F-CP-04, F-CP-07, F-BM-04. F-CP-02 adhan, F-CP-03, F-CP-06, F-CP-08…11, F-BM-03/05/06-JSON, F-TR-02/03, F-RD-09/12 and public F-AU-10 → **v1.1**. Stretch: F-RD-13, F-IX-07, F-CP-05, Manzil-dua playlist | 01 §5 ("never cut F-CP-02"); 07 §1.3 Tier A (adhan, tasbeeh); 12 R-37 (picker "in v1.0") |
-| New feature IDs | **F-PL-10** gentle rating prompt (play flavor, Could) · **F-PL-11** signed remote notices (`notices.json`; in the v1.0 floor) · **F-PL-12** launcher app shortcuts (Could, v1.1) | 02 (shortcuts as F-PL-10/11) |
-| Para formula (D-07) | Para 1 starts at index 1 (label 2). Para n = 2…28 starts at index 18n−16 (label 18n−15). P29 starts at index 508, P30 at 528 | D-07 text in the shared register |
-| Content tiers | `BuildConfig.CONTENT_TIER` {PERSONAL, BETA, PUBLIC} + `MONETIZED`. Gradle uses `-Pcriterion.release=production` / `-Pcriterion.monetized=true`. `licenceStatus` {PERMITTED, HOST_GRANT, PENDING, PERSONAL_ONLY, REVOKED} + a free-text `basis` | 03 (`buildClass`), 06 (`CONTENT_CHANNEL`), 08/10 (profiles) |
-| Closed-test content | BETA builds ship only G1-cleared or clean-room mushaf data, and only HOST_GRANT/PERMITTED audio. PENDING content is personal-only | 11 (looser reading) |
-| Remote JSON signing | Detached Ed25519 `.sig` over the exact file bytes; `kid`, `sequence` and `expires` inside the JSON; two pinned public keys | 08 (single-object envelope) |
-| Data placement | `word` and `ayah_marker` live in `quran_content.db`. Mushaf packs hold layout only (doc 05 schema names). Timing packs may be plain SQLite | 05 draft (`ayah_marker` in the pack), 08 (pack table names) |
-| `user.db` versions | v1 (frozen 12-21) includes the P1 + P2 tables; the P3 tables are the v2 migration | 07 (v2/v3) |
-| Text-error SLA | Triage ≤ 24 h · signed notice / kill-switch ≤ 48 h · corrected build submitted ≤ 72 h · reporter acknowledged ≤ 72 h | 01, 03 (other numbers) |
-| Cold start | ≤ 500 ms Pixel 6a class · ≤ 1.2 s mid-range · ≤ 1.5 s on a 3 GB API-24-class low-end phone | 01, 02 |
-| Defaults | Keep-screen-on while the reader is visible, off after 15 min idle · streaming on mobile data = "Ask once" · haptics off · app opens to Home | 01, 02 |
-| Module names | Doc 04's list rules (e.g. `:core:mushaf-render`, `:feature:prayer` hosts Qibla/Hijri, `:feature:companion` hosts tasbeeh/azkar/Ramadan) | 05, 06, 07 (module names they assumed) |
-| P1 downloads | WorkManager worker on all APIs in P1; the UIDT host (API 34+) lands in S5, before any public build | — |
+| Topic | Ruling |
+|---|---|
+| Gate dates | G1 11-19 · G3 12-14 · G2 01-04 · G6 01-11 · G4 + G5 01-18 · Go/No-Go 01-25 · closed test opens 01-11 (12-28 if G1 is granted early) · Play account type decided 11-23 |
+| Launch rule (D-34) | 2026-11-30: overrun ratio ≥ 1.3 (or G1 missing and clean-room off track) → Ramadan = closed beta; public v1.0 on 2027-03-22 |
+| v1.0 scope | Floor (all P1 Musts incl. pinch zoom and bookmark undo; F-PL-04/05/11) + Tier A = F-CP-01 (display-only prayer times + Sehri/Iftar), F-CP-04, F-CP-07 core, F-BM-04. Adhan, Qibla, azkar, widgets, reminders, share image, notes, streaks, JSON export, translation packs + translator choice, auto-scroll, page transitions, public Urdu interleave → **v1.1 (2027-03-22)**. Stretch: F-RD-13, F-IX-07, F-CP-05, Manzil-dua playlist; ruku/sajda lists and gapped mode pre-cut |
+| Alarm permissions | `SCHEDULE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED` and the adhan service are declared only from the first release with an alarm feature (v1.1 by default) |
+| Feature IDs | **F-PL-10** gentle rating prompt (play flavor) · **F-PL-11** signed remote notices (v1.0 floor; Home card + reader-chrome chip, never over Quran text) · **F-PL-12** launcher shortcuts (v1.1) |
+| Para formula (D-07) | Para 1 starts at index 1 (label 2). Para n = 2…28 starts at index 18n−16 (label 18n−15). P29 at index 508, P30 at 528 |
+| Build variants & tiers | Flavors `distribution` {play, foss} × `tier` {personal, public}; `playPersonal*` disabled. `BuildConfig.CONTENT_TIER` {PERSONAL, BETA, PUBLIC} (public tier = BETA unless `-Pcriterion.release=production`) + `MONETIZED` (`-Pcriterion.monetized=true`). Gradle check `verifyContentEligibility` |
+| Licence fields | Every item: `licenceStatus` {PERMITTED, HOST_GRANT, PENDING, PERSONAL_ONLY, REVOKED} + `basis` + `eligibleTiers` + `commercialOk` + `fossOk` + `enabled` |
+| What BETA may ship | Mushaf data only if G1-cleared or clean-room. PENDING audio is allowed in PERSONAL and BETA, never PUBLIC |
+| Git hygiene | QUL-derived and personal-only content is never committed (git or LFS); `copyPersonalAssets` fills the gitignored `app/src/personal/assets/packs/` from `~/criterion-data` on your machine; CI builds the public tier only |
+| Remote signing | Detached Ed25519 `.sig` over exact bytes; JSON carries `kid`, `sequence`, `generatedAt`, `expiresAt`, `channel`; two pinned public keys; channels `beta` and `public` only (monetized builds filter `public` on `commercialOk`) |
+| Quran-text fixes | Always an app update (D-30). `word_override` is build-time errata only; remote notices can warn or disable, never change text |
+| Text-error SLA | Triage ≤ 24 h · signed notice / kill-switch ≤ 48 h · corrected build submitted ≤ 72 h · reporter acknowledged ≤ 72 h |
+| Shared types (D-33) | Doc 04 §5: `VerseKey`, `MushafId` (code + id, e.g. `indopak16_taj`/1), `WordId`, `PlayScope` (incl. `Passage`, `Quran`, `Until.CONTINUOUS`), `PlayRequest`, one `PlaybackState` via `PlaybackStateHub.state`, `ReaderKey(mushaf, page, focus, mode, autoplay)`; `PlanExpander` in `:core:domain`; `HijriCalendarProvider` |
+| Data placement | `word` and `ayah_marker` in `quran_content.db`; mushaf packs hold layout only (doc 05 schema); timing packs are plain SQLite; azkar and cities are packs; `user.db` v1 (frozen 12-21) holds all P1 + P2 tables |
+| Cold start | ≤ 500 ms Pixel 6a class · ≤ 1.2 s mid-range · ≤ 1.5 s on a 3 GB low-end phone |
+| Reader defaults | Last-read after 4 s on a page · page-turn lock blocks swipes, not audio auto-turn · pinch zoom only (no double-tap) · keep-screen-on, off after 15 min idle · stream on mobile data = "Ask once" · haptics off · opens to Home |
+| Audio details | Abdul Basit Mujawwad ships with highlighting off unless onset snapping (B14) is pulled into v1.0; Minshawi highlight off in surahs 9, 52, 53 |
+| P1 downloads | WorkManager worker on all APIs in P1; UIDT (API 34+) lands in S5, before any public build |

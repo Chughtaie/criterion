@@ -234,7 +234,7 @@ you would need network data that is not pinned · you are about to delete or rew
 
 | Path | Content (short) |
 |---|---|
-| `tools/CLAUDE.md` | Python 3.12 via uv. Run everything as `uv run --frozen python -I -m crit <stage> <cmd>` or its `just` alias (doc 08 §3.1); no other entry points. Inputs come only from `data/pins.lock`; `crit fetch` checks sha256 before use. Outputs go to `out/` and reach module asset dirs only through `crit install-assets` (Git LFS-committed, doc 08 §2); they are never hand-edited. Every stage ends with its invariant checks (`crit validate all`, doc 08 V-* checks) and exits non-zero on failure. **Never print Quran text into logs or diffs.** Log keys and counts instead. Private inputs (QUL exports, KFC ZIPs, oracles) live in `~/criterion-data/`, outside the repo, and never go in git or CI artefacts. Taj scans never enter the repo. Proofs go to `out/proof/taj16/<build_id>/`. `crit sign` and `crit publish` are owner-only. |
+| `tools/CLAUDE.md` | Python 3.12 via uv. Run everything as `uv run --frozen python -I -m crit <stage> <cmd>` or its `just` alias (doc 08 §3.1); no other entry points. Inputs come only from `data/pins.lock`; `crit fetch` checks sha256 before use. Outputs go to `out/` and reach module asset dirs only through `crit install-assets` (Git LFS-committed, doc 08 §2); they are never hand-edited. Every stage ends with its invariant checks (`crit validate all`, doc 08 V-* checks) and exits non-zero on failure. **Never print Quran text into logs or diffs.** Log keys and counts instead. Private inputs (QUL exports, KFC ZIPs, oracles) live in `~/criterion-data/`, outside the repo, and never go in git or CI artefacts. Taj scans never enter the repo. Proofs go to `out/proof/indopak16_taj/<build_id>/`. `crit sign` and `crit publish` are owner-only. |
 | `core/mushaf-render/CLAUDE.md` | Draw only from precomputed `PageLayout`: no runtime justification except Fallback 1, and that only behind a flag. Keep three separate layers: furniture/ornaments, text, highlight/selection. Draw with `drawTextRun` per word, with `cv01` only on stretched words. Margin side = `page_label % 2 == 0 ? RIGHT : LEFT`. Every visual change ships with Roborazzi goldens for the page set in doc 10, and the agent opens and inspects the PNGs. Performance budgets are in doc 05. |
 | `core/audio/CLAUDE.md` | Media3 runs on the main looper. Player state goes out only through `PlaybackStateHub.state: StateFlow<PlaybackState>` (+ `events`); the interfaces and `PlaybackState` shape are doc 04's, in `:core:domain` (no `:core:audio-api` module), and `PlaybackController.state` = `hub.state`. Para scope uses the Indo-Pak table. Basmala strategy is per surah (none for surah 9; Fatiha 1:1 is the basmala). `AudioAttributes` are USAGE_MEDIA + CONTENT_TYPE_SPEECH (pause on focus loss, no ducking). Enable `FLAG_ENABLE_CONSTANT_BITRATE_SEEKING`. Never pair timing and audio from different hosts, and never use mp3quran reads 74 or 53 for timing. |
 | `data/curated/CLAUDE.md` | These CSVs are print-verified. Agents may add or modify rows **only by script, from a cited source, with a `verified_source` value**. Never retype Arabic names or labels. Any PR that changes these files gets the `content-review` label and is listed in the next hafiz packet. |
@@ -726,7 +726,7 @@ ACCEPTANCE:
    n = 2…28 only, Para 29 at 508, Para 30 at 528; Manzil start pages [1, 96, 187, 254, 330, 401, 466]
    (g01 §2.8; doc 08 V-M05).
 2. Every justified line's computed width equals the target line width within the doc 05 tolerance.
-3. Proof output per doc 08 §5.6 in out/proof/taj16/<build_id>/: para-NN.pdf ×30 + one 1260 px PNG per
+3. Proof output per doc 08 §5.6 in out/proof/indopak16_taj/<build_id>/: para-NN.pdf ×30 + one 1260 px PNG per
    page + proof-manifest.json (page_index, page_label, page_hash, pdf_sha256); page label, build_id and
    page_hash watermark in the proof margin only.
 4. Page diff vs the previous pack build: `--changed-since <build_id>` lists pages whose page_hash
@@ -776,7 +776,7 @@ CONSTRAINTS:
   must not be named fonts/.
 ACCEPTANCE:
 1. Golden for page_index 3 recorded; the agent opens it next to the pipeline's proof PNG for page_index 3
-   (out/proof/taj16/<build_id>/) and lists any visible differences (expected: none beyond anti-aliasing).
+   (out/proof/indopak16_taj/<build_id>/) and lists any visible differences (expected: none beyond anti-aliasing).
 2. HitTester tests: centre of each word box on the page returns that word's key; gaps return null/nearest
    per doc 05.
 3. Draw time for the page measured in a JVM micro-benchmark or debug overlay and reported vs doc 05 budget.
@@ -1185,7 +1185,7 @@ doc 10 (content QA). Schedule (doc 09): hafiz contracted by 2026-11-16; round 1 
 round 2 2027-01-05 → 01-15 on DEVICE-RENDERED captures of all 548 pages; G5 decision 2027-01-18.
 GOAL: Generate the proofreading packet for mushaf pack <taj16 build_id / sha256>.
 CONSTRAINTS: Build it by script from pipeline outputs and app captures only (no Quran text typed by the
-agent). Output to out/proof/taj16/<build_id>/packet/ (git-ignored; owner shares it).
+agent). Output to out/proof/indopak16_taj/<build_id>/packet/ (git-ignored; owner shares it).
 DELIVERABLES:
 1. Cover letter (EN + Urdu draft for the owner to edit): scope, timeline, honorarium placeholder,
    how to mark errors.
@@ -1482,4 +1482,4 @@ The **first ten working days** run as doc 09's day-by-day checklist (§7), with 
 4. **Committing the generated content DB.** Resolved by doc 08 §2: generated assets (`*.db`, `*.sqlite`, `*.ttf` under module asset dirs) are committed through Git LFS so Android Studio builds need no Python, and `tools.yml` rebuilds them and checks reproducibility. AP-03 checks out with `lfs: true`; AP-04 adds the `.gitattributes` rules.
 5. **The spike still contains Ktor** (spike TOML lines 30 and 79–82). AP-01 removes it per D-02/D-26. Doc 04's catalog must not reintroduce it.
 6. **Story-ID format.** Doc 09's story IDs are `E-xx-Syy`. Commits and prompts use them verbatim; branch names lower-case them and drop the first hyphen (`E-05-S03` → `e05-s03-<slug>`).
-7. **Private input store and proof paths.** This doc follows doc 08 §2 and docs 03/09: private inputs live in `~/criterion-data/` outside the repo (not a gitignored `data/private/`), and proofs go to `out/proof/taj16/<build_id>/`. Doc 08's asset-destination table still names `core/mushaf/…` and `src/main/assets` for the QUL-derived pack; the tier ruling (QUL-derived data only in `app/src/personal/assets/packs/` until G1) and doc 04's module names win.
+7. **Private input store and proof paths.** This doc follows doc 08 §2 and docs 03/09: private inputs live in `~/criterion-data/` outside the repo (not a gitignored `data/private/`), and proofs go to `out/proof/indopak16_taj/<build_id>/`. Doc 08's asset-destination table still names `core/mushaf/…` and `src/main/assets` for the QUL-derived pack; the tier ruling (QUL-derived data only in `app/src/personal/assets/packs/` until G1) and doc 04's module names win.

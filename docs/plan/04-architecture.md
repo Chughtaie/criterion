@@ -1326,7 +1326,7 @@ JSON Schema (2020-12, abridged to the normative fields):
         "translator":    { "type": "string" },
         "url":           { "type": "string", "format": "uri" },
         "mirrors":       { "type": "array", "items": { "type": "string", "format": "uri" } },
-        "compression":   { "enum": ["zip", "none"] },
+        "compression":   { "enum": ["zip", "gzip", "none"] },
         "bytes":         { "type": "integer" }, "unpackedBytes": { "type": "integer" },
         "sha256":        { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "of the downloaded (compressed) file" },
         "unpackedSha256":{ "type": "string", "pattern": "^[0-9a-f]{64}$" },

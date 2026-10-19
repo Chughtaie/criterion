@@ -852,7 +852,7 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-19-S01 | Sources & Credits — `content_meta.sources_json` + catalogue attribution + AboutLibraries + proofreading certificate block | F-PL-04 | 0.75 | E-03-S09, E-09-S01 | S6 | F |
+| E-19-S01 | Sources & Credits — the content DB `source` + `attribution` tables (doc 04 §7.2) + catalogue attribution + AboutLibraries + proofreading certificate block | F-PL-04 | 0.75 | E-03-S09, E-09-S01 | S6 | F |
 | E-19-S02 | Report text error — prefilled email intent (ayah key, page label, mushaf + content version); SLA: triage ≤ 24 h, signed notice ≤ 48 h, corrected build submitted ≤ 72 h (text fixes are app updates) | F-PL-05 | 0.75 | E-23-S02 | S6 | F |
 | E-19-S03 | Privacy policy page (neutral domain), in-app links, Data-safety answers, SDK inventory — before the first closed-test release | — | 0.25 | E-23-S03 | S5 | F |
 | E-19-S04 | Content-governance policy + provenance log (`docs/legal/`) | — | 0.25 | — | S5 | ADM |
@@ -908,12 +908,12 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 
 | Epic | Scope | Features | Est (id) | Release | Gate / dependency | Spec |
 |---|---|---|---|---|---|---|
-| E-25 Hifz mode | Sabaq/sabqi/manzil planner on the edition's page grid; hide/reveal with first-letter hints; range repeat; record-yourself (on-device); mistake marking + heatmap; FSRS-Kotlin (MIT port) manzil ordering; mutashabihat alerts (QUL data, permission); ustad report | F-CP-12 | 12–14 | v1.2 (core), v1.3 (FSRS, mutashabihat) | Ustad validation (2–3); word boxes (E-04); gapped audio (G2 for public) | 07 |
+| E-25 Hifz mode | Sabaq/sabqi/manzil planner on the edition's page grid; hide/reveal with first-letter hints; range repeat; record-yourself (on-device); mistake marking + heatmap; FSRS-Kotlin (MIT port) manzil ordering; mutashabihat alerts (QUL data, permission); ustad report (doc 07 ≈ 122 h) | F-CP-12 | 18–20 | v1.2 (core ≈ 12: hide/reveal, range repeat, mistakes heatmap), v1.3 (FSRS, mutashabihat, record-yourself) | Ustad validation (2–3); word boxes (E-04); gapped audio (G2 for public) | 07 |
 | E-26 Additional layouts | Pipeline + renderer support for **15-line Hafizi (610 pp)** and **13-line Taj (847 pp)**: per-layout `page_label_offset` check, furniture variants, per-layout proof PDF and certificate; Madani 15-line (604 pp) + QCF option in P4 | F-RD-11 | 4 + 3 (+5 Madani) | v1.2 (15-line), v1.3 (13-line), v2 (Madani) | Per-layout data permission (D-04) + G5 per layout | 05, 08 |
 | E-27 Android Auto & word highlight | Media3 library tree for Auto; word-level timing (QUL segments / forced alignment) mapped to Indo-Pak words | F-AU-11, F-AU-12 | 1.5 + 3 | v1.2 (Auto), v1.3 (word) | QUL segment permission or own alignment | 06 |
-| E-28 Large screens & reading modes | Two-page RTL spread on ≥ 600dp / book posture (window 1.5.1, adaptive); "large text" reflow mode | F-RD-10, F-RD-06 | 3 + 3 | v1.3 | — | 02, 05 |
+| E-28 Large screens, reading modes & Qibla extras | Two-page RTL spread on ≥ 600dp / book posture (window 1.5.1, adaptive); "large text" reflow mode; Qibla sun mode + Rasd al-Qibla dates (doc 07 §6, ≈ 1 id) | F-RD-10, F-RD-06, F-CP-03 (P3 part) | 3 + 3 + 1 | v1.3 | — | 02, 05, 07 |
 | E-29 Sync & social | "Sign in with Quran.com" (QF User APIs, PKCE public client); realtime group khatam (Firestore + FCM + App Links, `play` flavor only) | F-BM-07, F-CP-11 | 4 + 5 | v1.3 | QF client approval; Data safety update | 04, 07 |
-| E-30 Content expansion | Translation packs beyond v1.1 (Kanz-ul-Iman, Pickthall, Hilali-Khan, Jalandhari NC-flagged, QuranEnc languages); transliteration EN/Roman-Urdu; tafsir packs; topic search (QUL topics, permission); self-host permitted audio on R2 (Complex reciters) | F-TR-02..05, F-SR-04 | 8 | v1.1 → v1.3 | Per-pack licence flags; D-09 permissions | 03, 08 |
+| E-30 Content expansion | Translation packs beyond v1.1 (Kanz-ul-Iman, Pickthall, Hilali-Khan, Jalandhari NC-flagged, QuranEnc languages); transliteration EN/Roman-Urdu; tafsir packs; topic search (QUL topics, permission); self-host permitted audio on R2 (Complex reciters); Arabic + Urdu interleave in PUBLIC builds if the rights-holder (Hi-Tech Music) grants it | F-TR-02..05, F-SR-04, F-AU-10 (public) | 8 + 0.5 | v1.1 → v1.3 | Per-pack licence flags; D-09 permissions; F-AU-10 permission | 03, 06, 08 |
 | E-31 Sustainability & telemetry | Opt-in crash reports (ACRA, user-confirmed dialog) in v1.1; commercial-content audit → Play Billing "Support / Sadqa-e-Jaria" one-time IAP (play flavor only); CI blocks NC content in the monetized build | F-PL-09, F-PL-08 | 1 + 3 | v1.1, v1.5 | D-17 audit; Data safety update for ACRA | 11 |
 | E-32 AI recitation | P3: 2-week spike (sherpa-onnx; FastConformer CC-BY-4.0 / Tarteel Whisper Apache-2.0; 50–100 PK recordings with consent); P4: follow-along, recite-to-search | F-CP-14, F-SR-05 | 10 (spike) + 15–20 | Spike report v1.5; feature v2 | Pass ≤ 0.5 false alarms/min (r08) | 07 |
 | E-33 v2 content & platforms | Tajweed colours (Madani first), word-by-word (only if licensed), Noorani Qaida (own content + audio, age-neutral), Wear OS (prayer tile, tasbeeh; no catalogue ID yet), targetSdk 37 migration | F-RD-15, F-RD-14, F-CP-13 | 20+ | v2.0 / v2.1 | WBW licence; recording budget; Families-policy check | 05, 07 |
@@ -925,9 +925,9 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 | Release | Target | Contents | Est (id) | Capacity note |
 |---|---|---|---|---|
 | **Ramadan support** | 02-05 → ≈ 03-10 | Hotfixes only; monthly PK month-start feed (Ramadan + Shawwal); monitor vitals and the report-error inbox (D-22 fast-fix SLA) | — | Assume 60% capacity in Ramadan |
-| **v1.1** | 2027-03-22 | Tier B items not pulled into v1.0 (≤ 21.5), any ladder rungs cut, F-PL-09 opt-in ACRA, weekly timing re-validation fixes | ≤ 25 | ≈ 28 id available 02-02 → 03-19 at 60% during Ramadan |
-| **v1.2 "Hifz"** | 2027-05-03 | E-25 core (hide/reveal, range repeat, record-yourself, mistakes heatmap), 15-line layout (E-26, gated), Android Auto (E-27) | ≈ 19 | 6 weeks ≈ 32 id (leaves room for v1.1 fallout) |
-| **v1.3** | 2027-06-07 | 13-line layout, tablet spread + large-text reflow, word highlight, QF sync, realtime group khatam, transliteration, tafsir packs, topic search | ≈ 26–30 | 5 weeks ≈ 27 id: tight; realtime group khatam is the first to slip to v1.4 |
+| **v1.1** | 2027-03-22 | Tier B items not pulled into v1.0 (≤ 22.0, incl. F-PL-10 rating prompt and F-PL-12 launcher shortcuts), pre-cut rungs L1–L4 and L9 (3.5) and any rungs cut, F-PL-09 opt-in ACRA (Cloudflare Worker → R2, D-32), weekly timing re-validation fixes, v1.1 listing update (adhan/Qibla/azkar/widget claims). **If the 11-30 launch rule fired, this is also the public v1.0 launch** | ≤ 28 | ≈ 28 id available 02-02 → 03-19 at 60% during Ramadan: tight; Tier B order B1…B19 decides what slips to v1.2 |
+| **v1.2 "Hifz"** | 2027-05-03 | E-25 core (≈ 12: hide/reveal, range repeat, mistakes heatmap), 15-line layout (E-26, gated), Android Auto (E-27) | ≈ 17.5 | 6 weeks ≈ 32 id (leaves room for v1.1 fallout) |
+| **v1.3** | 2027-06-07 | 13-line layout, tablet spread + large-text reflow, word highlight, QF sync, realtime group khatam, transliteration, tafsir packs, topic search, hifz FSRS + mutashabihat + record-yourself (E-25 rest ≈ 7) | ≈ 33–37 | 5 weeks ≈ 27 id: over; realtime group khatam and transliteration slip to v1.4 first |
 | **v1.5 "Support"** | 2027-06-28 | Supporter IAP after the commercial-content audit; AI spike report (go/no-go) | ≈ 13 | Spike can run in parallel from May |
 | **v2.0** | ≈ 2027-10 | Per the AI spike: follow-along; tajweed colours; Madani mode (+ QCF); Noorani Qaida; WBW if licensed; voice search; Wear OS; targetSdk 37 | 40+ | Re-plan in July 2027 against actual velocity |
 
@@ -939,14 +939,15 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 1. It has an ID, linked F-IDs and a link to a spec section (doc 01–08/10/11) holding its schema/interface/algorithm.
 2. Acceptance criteria are written as Given/When/Then, including at least one negative case and an RTL/Urdu case for UI.
 3. The estimate is ≤ 2 id; anything larger is split.
-4. Dependencies are done, or stubbed behind an interface in `:core:*-api` / fakes in `:core:testing`.
+4. Dependencies are done, or stubbed behind an interface in `:core:domain` / fakes in `:core:testing`.
 5. **Content stories:** the source is pinned (URL + SHA-256), the licence and build-eligibility flags are known, and the attribution text is drafted.
 6. **UI stories:** the wireframe and states (loading/empty/error/offline) are in doc 02, and the strings exist in English and Urdu (or are queued).
 7. Test approach named: JVM / Robolectric / Roborazzi / instrumented / device-matrix.
 8. Agent-ready: the doc 13 prompt template is filled in (context files, constraints such as "no GPL copying", done criteria).
+9. **Any story with an unfunded or pre-cut tag** has the owner's explicit go at sprint planning (§4.1).
 
 **Definition of Done (every story):**
-1. Merged via PR. CI is green: build, unit tests, Lint, Spotless/ktlint + compose-rules, `assembleRelease` with R8, goldens unchanged or intentionally updated.
+1. Merged via PR. CI is green (`ci/check` = `./gradlew prCheck`): build, unit tests, Lint, Spotless/ktlint + compose-rules, both flavors assemble, `assembleRelease` with R8, goldens unchanged or intentionally updated, `verifyContentEligibility` passes for the variants built.
 2. Tests at the right level:
    - logic → JVM;
    - DB and ViewModels → Robolectric (`runTest` + `MainDispatcherRule`);
@@ -957,7 +958,7 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 4. Accessibility: content descriptions and semantics, touch targets ≥ 48 dp, font scale 200% on non-mushaf UI.
 5. **Privacy:** no new third-party SDK or permission without an updated SDK inventory and Data-safety note (D-20).
 6. **Licences:**
-   - new content → `content_meta.sources_json` / catalogue attribution updated and visible in Credits;
+   - new content → the content DB `source` + `attribution` tables (doc 04 §7.2) / catalogue attribution updated and visible in Credits;
    - new library → AboutLibraries entry;
    - no GPL code copied (D-18 checklist ticked in the PR template).
 7. Kill-switch or flag in place for any remote-content-dependent behaviour (packs, highlight, reciters).
@@ -980,7 +981,9 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
   - a velocity checkpoint rule fires (§4.2);
   - any gate decision;
   - the device smoke test fails;
-  - hafiz R1 returns more than ~50 issues (renderer- or font-level problem) → re-plan S5.
+  - hafiz R1 returns more than ~50 issues (renderer- or font-level problem) → re-plan S5;
+  - the estimate ratio r (actual ÷ planned id) is ≥ 1.1 at any checkpoint (launch rule at 1.3, §4.2).
+- **Actuals.** Every closed story logs actual hours, so r can be computed at 11-16 and 11-30.
 
 ---
 
@@ -989,24 +992,36 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 **Assumptions other docs must match:**
 1. **Sprint calendar.** S0 10-20→11-02, S1 11-03→11-16, S2 11-17→11-30, S3 12-01→12-14, S4 12-15→12-21, S5 12-22→01-04, S6 01-05→01-18, S7 01-19→02-01.
 2. **Key dates.**
-   - Closed test starts 2027-01-11.
-   - Code-complete 01-22; Go/No-Go 01-25; rollout 02-01 → 100% by 02-05.
-   - v1.1 on 2027-03-22; Ramadan freeze 02-05 → Eid.
+   - G1 emails out by 10-23 (sent 10-20), follow-ups 11-02 and 11-12, decision 11-19; Play account decision 11-23; **launch-rule checkpoint 11-30 (D-34)**; G3 12-14; user.db v1 frozen 12-21; G2 01-04; G6 01-11; G4 + G5 01-18; Go/No-Go 01-25.
+   - Closed test opens **2026-12-28 if G1 is granted and the build is ready**, otherwise ≤ **2027-01-11**. Store listing, content rating, Data safety and privacy URL are done before the first closed-test release (S5 days 1–3).
+   - Tier A and pull-in merge deadline 01-18; code-complete 01-22; Go/No-Go 01-25; rollout 02-01 → 100% by 02-05.
+   - v1.1 on 2027-03-22; Ramadan freeze 02-05 → Eid. If the launch rule fires, public v1.0 = 2027-03-22 (merged with v1.1) and Ramadan is a closed-test/beta release.
 3. **v1.0 scope = POR (Floor + C + Tier A).**
-   - The F-CP-02/03/06 (azkar)/08/09/10/11, F-BM-03/05, F-BM-06 (JSON), F-TR-02/03, F-RD-09/12 and F-AU-10 items remain "P2" in the catalogue but **default to v1.1**.
-   - F-RD-13, F-IX-07, F-CP-05 and the Manzil-dua part of F-CP-06 are v1.0 stretch.
-   - Docs 01, 02, 07 and 11 should label these "v1.0 stretch / v1.1" rather than "launch".
-4. **Downloads.** In P1 the WorkManager `dataSync` worker is used on all API levels (personal build); the UIDT path (API 34+) lands in S5 before any public build (D-14 is fully met at v1.0).
-5. **Timing data in v1.0.** Highlight timing for the 12 D-12 reads is **bundled** (pipeline-built tables) in v1.0. The pack system (signed `index.json`, pack installer) arrives with B8 / v1.1. The signed **catalogue override** and **PK month-start feed** (E-23) are in the v1.0 floor, so kill-switches work from day 1.
-6. **Proofreading.** Hafiz round 2 and the G5 certificate cover **device-rendered** page captures (not only the pipeline PDF), so the certificate certifies what users see.
-7. **Epic numbering.** E-01…E-33 as defined here; other docs may cite stories by `E-xx-Syy`.
+   - **Floor (never cut):** all P1 Musts (incl. F-RD-06 pinch zoom, F-BM-02 bookmarks with collections/colours and undo) + F-PL-04, F-PL-05, F-PL-11.
+   - **Tier A (committed, droppable only via L5–L8):** F-CP-01 (display-only prayer times with Sehri/Iftar), F-CP-04, F-CP-07 core, F-BM-04.
+   - **v1.0-stretch (pre-cut):** F-RD-13, F-IX-07 (list), F-CP-05, the Manzil-dua part of F-CP-06 (L1–L4); and the Should-polish rung L9: F-IX-04 list/Play ruku, F-IX-06 list, F-AU-04 gapped mode.
+   - **v1.1 by default:** F-CP-02 (adhan, Sehri alarm, notifications), F-CP-03, F-CP-06 (azkar), F-CP-08, F-CP-09, F-CP-10, F-CP-11 (sheet), F-BM-03, F-BM-05, F-BM-06 (JSON), F-TR-02/03, F-RD-09, F-RD-12, F-AU-10, F-PL-06 (pack half), F-PL-09, F-PL-10, F-PL-12. F-CP-02 adhan enters v1.0 only via lever 3 (11-30) and the 01-18 rule.
+4. **Downloads.** In P1 the WorkManager `dataSync` worker is used on all API levels. The UIDT path (API 34+) merges by 01-22, before any PUBLIC build. BETA builds before that use the worker on all APIs.
+5. **Packs and timing data in v1.0.**
+   - The mushaf layout and the two translations ship as **bundled packs per tier** (`src/personal|public/assets/packs/`), installed by `PackManager.ensureBundledInstalled()` with `bundled.json` (E-03-S12, E-10-S07; P1).
+   - Highlight timing for the 12 D-12 reads is bundled as timing packs: plain SQLite read via androidx.sqlite (doc 06 exception).
+   - **Downloadable** packs (signed `index.json`, installer) arrive with B8 / v1.1.
+   - The signed catalogue override, `notices.json` and the PK month-start feed (E-23, E-19-S05) are in the v1.0 floor, so kill-switches work from day 1.
+6. **Proofreading.** Hafiz round 2 and the G5 certificate cover **device-rendered** page captures, not only the pipeline PDF. The certificate binds to the **text layer** (`certified_pages.json` word-position + glyph-run hashes). Final ornaments land by 01-04, so R2 sees the shipping look.
+7. **Epic numbering.** E-01…E-33 as defined here; other docs cite stories by `E-xx-Syy` (branch slug `e05-s03`). Stories added in this revision: E-01-S07, E-02-S07, E-03-S12, E-10-S07, E-13-S06, E-13-S07, E-19-S05, E-22-S06, E-23-S03.
+8. **Names.** Modules, NavKeys, the content/user DB schema, variants and `CONTENT_TIER` follow doc 04. Mushaf-pack schema follows doc 05. Pipeline stages and commands follow doc 08 (`uv run --frozen python -I -m crit …`, `data/pins.lock`, `out/`). CI workflow and status (`android.yml`, `ci/check`) follow doc 10. Recitation IDs follow doc 06.
+9. **Estimates.** Docs 02/04/05/06/07/08/10 keep their own estimates as upper bounds. This doc governs the schedule, and §4.3 carries the gap and the assumed AI-assistance factor.
 
 **Open issues:**
-1. **Capacity.** The full D-25 P2 scope does not fit (≈ 100 id demand vs ≈ 80 id capacity to v1.0). The POR defers adhan alarms, Qibla, widgets, reminders, azkar and share-image to v1.1. If the owner considers adhan essential for a Ramadan launch, lever 3 (freelancer, decided at the S2 checkpoint) is the only way to add B1 + B5 without risking the floor.
-2. **Closed test vs G1.** A closed test distributes builds to non-owners. This plan treats it as distribution: no QUL-derived layout until G1 is granted. If G1 is silent on 11-19, the clean-room track becomes critical, and the closed test may start late (§5.3). Doc 12 should record this interpretation.
-3. **Hafiz effort.** The proofreading effort (30–40 h R1, 8–10 h R2) is our estimate, not a researched figure. Confirm it with the candidate before contracting on 11-16.
-4. **External lead times.** D-U-N-S / Organization-account and Play review times are unverified. The 12-14 decision rule protects the 01-11 closed-test start.
-5. **Velocity.** AI-assisted velocity (5.4 id/week) is unproven. The S1 checkpoint (11-16) is the first real measurement, and the ladder should be re-sized then.
-6. **Clean-room operator.** The operator must be someone who has never opened the QUL/Waqar/QuranApp 16-line data. The owner has (Day 1), so the owner cannot be the operator. Budget and recruitment are needed only if G1 fails.
-7. **Pack manager.** F-PL-06 (content-pack & storage manager) is tagged P1. This plan delivers the **storage-manager half** in v1.0 (E-10-S04). The **pack half** (signed `index.json`, installer) arrives with B8 / v1.1, because no downloadable pack exists in v1.0: translations are bundled (D-09) and timing tables are bundled (assumption 5). Docs 04, 06 and 08 should treat the pack format as v1.1, with the signed-file verifier (E-23-S02) shared from v1.0.
-8. **Urdu UI.** F-PL-03 / D-21 (Urdu UI from MVP) is met at P1 exit for infrastructure and the language switch. **String-complete Urdu lands in S5** (E-13-S02, carry-over), before the closed test.
+1. **Capacity (the main risk).** At plan estimates the POR is 79.75 id against 80.2 available, with a 3.5 id merge-deadline shortfall in P2 that is funded by lever 1 and then L5–L6. At specialist estimates the Quran core alone is ≈ 90–110 id. The **11-30 launch rule (D-34)** decides on measured data. Doc 12 should record D-34 and reference it from R-39/R-41.
+2. **Closed test vs G1.** A closed test distributes builds to non-owners. This plan treats it as distribution: no QUL-derived layout in any BETA build until G1 is granted. Audio with `licenceStatus=PENDING` **is** allowed in BETA (D-29), but never in PUBLIC. If G1 is silent on 11-19, the clean-room track becomes critical. The closed test then starts late, and the launch rule most likely fires (§5.3).
+3. **Hafiz effort.** The proofreading effort (R1 30–40 h; R2 12–16 h) is our estimate, not a researched figure. Confirm it with the candidate before contracting on 11-16. Doc 10 should use the same figures.
+4. **External lead times.** D-U-N-S / Organization-account, Play first-review and production-access review times are unverified. The **11-23** account decision and the 12-28 opening (if G1 is granted) protect a pre-Ramadan launch. It is also unverified whether the first production release can be staged (fallback: managed publishing at 100%).
+5. **Velocity.** AI-assisted velocity (5.4 id/week at this doc's estimates) is unproven. r is first measured at the S1 checkpoint (11-16) and decided on at S2 (11-30).
+6. **Clean-room operator.** The operator must be a second person who has never opened the QUL/Waqar/QuranApp 16-line data. The owner has (Day 1), so the owner cannot be the operator. Recruitment starts from 11-12; the track runs ≈ 7 weeks elapsed. Doc 12 should use the same duration.
+7. **Pack manager.** F-PL-06 (content-pack & storage manager) is tagged P1. Bundled packs and the registry are P1 (E-03-S12, E-10-S07). The storage manager is v1.0 (E-10-S04). Downloadable packs and the signed `index.json` installer are v1.1 (B8). Docs 04, 05, 06 and 08 should label the pack format P1 and the download path v1.1, with the signed-file verifier (E-23-S02) shared from v1.0.
+8. **Urdu UI.** F-PL-03 / D-21 (Urdu UI from MVP) is met at P1 exit for infrastructure and the language switch. **String-complete, reviewed Urdu lands in S5** (E-13-S02), with the reviewer's window 12-28 → 01-06. If the 12-28 closed test opens first, testers start on the EN UI.
+9. **D-25 refinement for doc 12.** The P1 daily-use build excludes F-SR-01..03, F-AU-05/06, the settings screen, the storage manager and full Urdu strings, which are delivered in S5–S7 (tier C).
+10. **L9 pre-cut vs doc 01's Release column.** L9 (F-IX-04 list + Play ruku, F-IX-06 list, F-AU-04 gapped mode) is now pre-cut. Doc 01 should label these "v1.0-stretch". Ruku next/prev and the on-page markers stay in v1.0.
+11. **Baseline profile timing.** E-02-S05 generates the profile on the RC (S7), not in the 12-21 build as doc 10 suggests. Startup budgets for the closed test are measured without it.
+12. **Holidays.** Iqbal Day (11-09, 2026 status unverified) is not deducted from S1, and Kashmir Day (02-05) coincides with the 100% rollout step (a Console action).

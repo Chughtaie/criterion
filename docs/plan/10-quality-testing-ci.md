@@ -305,7 +305,7 @@ Module names are doc 04 §3.2's list. Doc 04 merges some areas until they grow: 
 | V-M18, V-M19 | `PageHashTest` (doc 05 §3.5) + release gate (§12.6) | Every `page_hash` recomputed from the packaged pack equals the stored one; for PUBLIC every hash is in `certified_pages.json` |
 | V-P01–V-P05 | `PackInvariantsTest` | Bundled Junagarhi (+ Ahsan-ul-Bayan footnotes) and Saheeh open through Room. Every translation row has its Arabic ayah (D-22). Attribution strings exact (Saheeh → "Noor International Center") |
 | V-T01–V-T08, V-T10 | `TimingPackInvariantsTest` | `AyahTracker` over each bundled timing pack never yields an ayah outside the surah. The guard tuple is present. Disabled surahs surface as `highlight = DISABLED` |
-| V-X01–V-X03, V-X05, V-X06 | `SignedIndexVerifierTest`, `CatalogueEligibilityTest` (§3.5) | The bundled envelope snapshots verify with the committed public key (`data/keys/`) |
+| V-X01–V-X03, V-X05, V-X06 | `SignedIndexVerifierTest`, `CatalogueEligibilityTest` (§3.5) | The bundled signed-file snapshots (`.json` + detached `.sig`) verify with the committed public key (`data/keys/`) |
 | V-X07, V-X08 | `CityDbTest`, `MonthStartFeedTest` | — |
 
 **App-only content checks** (no doc 08 equivalent):
@@ -964,7 +964,7 @@ flowchart LR
 ```
 
 **Signing boundary** (doc 08 §12):
-- **No CI job ever holds the Ed25519 content-signing key or an R2 write token.** Packs, catalogue, index envelopes and the PK month-start feed are signed and published from the owner's machine (`just sign && just publish --go`) after `tools.yml` is green.
+- **No CI job ever holds the Ed25519 content-signing key or an R2 write token.** Packs, catalogue, index files and the PK month-start feed are signed and published from the owner's machine (`just sign && just publish --go`) after `tools.yml` is green.
 - CI does hold the **Play upload key**, but only inside the protected `release` environment (§12.6).
 
 ### 12.1 Shared CI conventions

@@ -201,9 +201,9 @@ Columns: **Phase** = where the feature was specified (D-25); **Release** = where
 | F-IX-01 | Surah index | 114 rows, Read + Play + download state, filter | P1 | v1.0 | Must | MH-3 | D-07 |
 | F-IX-02 | Para index | 30 rows, Indo-Pak names, start ayah & page, rukus, progress, Read + Play | P1 | v1.0 | Must | MH-3 | D-07 Para table |
 | F-IX-03 | Manzil index | 7 rows, ranges, Read + Play | P1 | v1.0 | Must | MH-3 | D-07 |
-| F-IX-04 | Ruku navigation | 558 rukus: per-surah list, margin-marker tap, next/prev, Play ruku | P1 | v1.0 | Should | MH-3 | D-07 ruku table |
+| F-IX-04 | Ruku navigation | 558 rukus: per-surah list, margin-marker tap, next/prev, Play ruku | P1 | v1.0-stretch (ruku list pre-cut by doc 09 rung L9; margin ruku markers ship in v1.0) | Should | MH-3 | D-07 ruku table |
 | F-IX-05 | Go to | Page label / surah:ayah / Para number | P1 | v1.0 | Must | MH-3 | — |
-| F-IX-06 | Sajda list | 14 Hanafi sajdas + 22:77 (Shafi'i) labelled | P1 | v1.0 | Should | MH-3 | D-07 |
+| F-IX-06 | Sajda list | 14 Hanafi sajdas + 22:77 (Shafi'i) labelled | P1 | v1.0-stretch (list pre-cut by doc 09 rung L9; sajda margin markers ship in v1.0) | Should | MH-3 | D-07 |
 | F-IX-07 | Para quarters | 90 ربع / نصف / ثلٰثة markers on page + navigation | P2 | v1.0-stretch (list; page markers ship in v1.0) | Should | MH-3 | D-07 quarter table |
 | F-IX-08 | Quick access | Yaseen, Rahman, Mulk, Waqiah, Kahf, Ayatul Kursi, Manzil dua, last two ayat of Baqarah | P1 | v1.0 | Should | MH-4 | F-AU-02 |
 | F-IX-09 | Home | Continue-reading card, resume-listening card, recents, quick access, index entry | P1 | v1.0 | Must | MH-1, MH-3 | F-BM-01 |
