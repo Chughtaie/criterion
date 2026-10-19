@@ -5,15 +5,19 @@ with code 2 (which blocks the edit and returns the reason to the agent) when the
 path is protected:
 
   spikes/**, docs/research/**, **/*.db, **/*.sqlite, **/*.ttf, **/*.otf,
-  **/schemas/**/*.json, data/pins.lock, data/keys/**, out/**, and anything that
-  resolves outside this repository (e.g. ~/criterion-data/**).
+  **/schemas/**/*.json, data/pins.lock, data/keys/**, out/**, anything inside a
+  .git directory, and anything that resolves outside this repository
+  (e.g. ~/criterion-data/**).
 
-Linked git worktrees of this repository count as the repository. The agent's own
-scratch and memory locations (~/.claude/**, the system temp dir) are not part of
-any project and stay writable. data/curated/** is allowed with a warning: the PR
-needs the content-review label (doc 13 §2.2).
+The repository is the project's registered work trees (`git worktree list`), so
+linked worktrees used for parallel stories get the same rules. Matching ignores
+case, because the default macOS and Windows file systems do. Two locations
+outside the repository stay writable for the agent itself: its memory
+(~/.claude/projects/*/memory/**) and its session scratchpad (<tmp>/claude-*/**).
+data/curated/** is allowed with a warning: the PR needs the content-review label
+(doc 13 §2.2).
 
-Stdlib only; runs as `python3 -I`.
+Stdlib only; runs as `python3 -I`. Any error blocks the edit.
 """
 
 import json
@@ -31,54 +35,50 @@ def block(reason):
     sys.exit(2)
 
 
-def git(args, cwd):
-    result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
-    return result.stdout.strip() if result.returncode == 0 else None
+def project_roots(project):
+    """Resolved roots of every work tree registered for the project's repository."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    result = subprocess.run(
+        ["git", "-C", str(project), "worktree", "list", "--porcelain"], capture_output=True, text=True, env=env
+    )
+    if result.returncode != 0:
+        return [project]
+    return [Path(line[len("worktree ") :]).resolve() for line in result.stdout.splitlines() if line.startswith("worktree ")]
 
 
-def nearest_existing_dir(path):
-    candidate = path if path.is_dir() else path.parent
-    while not candidate.exists():
-        candidate = candidate.parent
-    return candidate
-
-
-def worktree_of(path):
-    """(work-tree root, git common dir) of the git work tree containing path, or None."""
-    directory = nearest_existing_dir(path)
-    top = git(["rev-parse", "--show-toplevel"], directory)
-    common = git(["rev-parse", "--git-common-dir"], directory)
-    if top is None or common is None:
-        return None
-    return Path(top).resolve(), (directory / common).resolve()
-
-
-def is_within(path, root):
+def relative_to(path, root):
     try:
-        path.relative_to(root)
-        return True
+        return path.relative_to(root)
     except ValueError:
-        return False
+        return None
 
 
-def agent_scratch_roots():
-    roots = {Path.home() / ".claude", Path(tempfile.gettempdir()), Path("/tmp"), Path("/private/tmp")}
-    return [root.resolve() for root in roots]
+def is_agent_scratch(target):
+    claude = relative_to(target, (Path.home() / ".claude").resolve())
+    if claude is not None and len(claude.parts) > 3 and claude.parts[0] == "projects" and claude.parts[2] == "memory":
+        return True
+    for tmp in {Path("/tmp").resolve(), Path(tempfile.gettempdir()).resolve()}:
+        scratch = relative_to(target, tmp)
+        if scratch is not None and len(scratch.parts) > 1 and scratch.parts[0].startswith("claude-"):
+            return True
+    return False
 
 
 def protected_reason(rel):
-    parts = rel.parts
+    parts = tuple(part.casefold() for part in rel.parts)
+    if ".git" in parts:
+        return "git internals are never edited by hand"
     if parts[:1] == ("spikes",):
         return "spikes/ is the read-only reference build"
     if parts[:2] == ("docs", "research"):
         return "docs/research/ reports are immutable evidence (doc 13 §10.1)"
     if parts[:1] == ("out",):
         return "out/ holds generated pipeline outputs"
-    if rel.as_posix() == "data/pins.lock":
+    if parts == ("data", "pins.lock"):
         return "data/pins.lock is written by the pipeline's pinning step, never by hand"
     if parts[:2] == ("data", "keys"):
         return "data/keys/ is owner-only"
-    suffix = rel.suffix.lower()
+    suffix = PurePosixPath(parts[-1]).suffix
     if suffix in GENERATED_SUFFIXES:
         return "*.db, *.sqlite, *.ttf and *.otf are generated assets, never hand-edited (CLAUDE.md #6)"
     if suffix == ".json" and "schemas" in parts[:-1]:
@@ -102,20 +102,27 @@ def main():
         target = cwd / target
     target = target.resolve()
 
-    project_tree = worktree_of(project)
-    target_tree = worktree_of(target)
-    if project_tree is None or target_tree is None or target_tree[1] != project_tree[1]:
-        if any(is_within(target, root) for root in agent_scratch_roots()):
+    containing = [root for root in project_roots(project) if relative_to(target, root) is not None]
+    if not containing:
+        if is_agent_scratch(target):
             return 0
         block(f"{raw} resolves outside this repository")
 
-    rel = PurePosixPath(target.relative_to(target_tree[0]).as_posix())
+    root = max(containing, key=lambda candidate: len(candidate.parts))
+    rel = PurePosixPath(target.relative_to(root).as_posix())
     reason = protected_reason(rel)
     if reason:
         block(f"{rel}: {reason}")
-    if rel.parts[:2] == ("data", "curated"):
+    if tuple(part.casefold() for part in rel.parts[:2]) == ("data", "curated"):
         warning = f"guard_paths: {rel} is curated data; the PR needs the content-review label (doc 13 §2.2)."
-        print(json.dumps({"systemMessage": warning}))
+        print(
+            json.dumps(
+                {
+                    "systemMessage": warning,
+                    "hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": warning},
+                }
+            )
+        )
     return 0
 
 
