@@ -177,7 +177,8 @@ flowchart TB
 | `:core:hifz` (doc 07, P3) | `:core:domain` (`HifzPlanner`) + `:feature:hifz` |
 | `:core:mushaf`, `:core:mushaf-ui` (doc 05) | `:core:mushaf-render`. `MushafRepositoryImpl` is in `:core:data` |
 | `HijriService` (doc 07), `HijriCalendar` (earlier draft) | `HijriCalendarProvider` (D-27) |
-| `PageLayout` (earlier draft) | `PageModel` (fields owned by doc 05) |
+| `PageModel` (earlier doc 05 draft) | `PageLayout` (fields owned by doc 05) |
+| `WordIndex` (earlier doc 04 draft) | `WordId` |
 
 ### 3.3 Feature → module map
 
@@ -314,7 +315,7 @@ suspend inline fun <T> appCatching(crossinline block: suspend () -> T): AppResul
 fun Throwable.toAppError(): AppError                                         // maps UnknownHost/SocketTimeout→Offline, IOException(ENOSPC)→NoSpace, …
 ```
 
-**Identity rules.** Public APIs take the value types above (`SurahId`, `ParaId`, `ManzilId`, `RukuId`, `VerseKey`, `MushafId`, `PageIndex`, `RecitationId`, `WordIndex`), never raw `Int` ids. Raw ints appear only inside entities and DAOs.
+**Identity rules.** Public APIs take the value types above (`SurahId`, `ParaId`, `ManzilId`, `RukuId`, `VerseKey`, `MushafId`, `PageIndex`, `RecitationId`, `WordId`), never raw `Int` ids. Raw ints appear only inside entities and DAOs.
 
 **Rules**
 - One-shot repository calls that can fail for **environmental** reasons (network, disk, permission, licence) return `AppResult<T>`.
@@ -334,7 +335,7 @@ class AppScope(val scope: CoroutineScope)   // SupervisorJob() + dispatchers.def
 |---|---|---|
 | Room (content, packs, user) | `setQueryCoroutineContext(dispatchers.io)` | DAOs are `suspend` or `Flow` only (Room 3) |
 | DataStore | its own scope on `io` | One `DataStore<UserSettings>` instance per process |
-| Page assembly (pack rows plus words into `PageModel`) | `default` | Off the main thread, cached (§13) |
+| Page assembly (pack rows plus words into `PageLayout`) | `default` | Off the main thread, cached (§13) |
 | Canvas drawing | main/RenderThread | No allocation and no DB access in `draw` |
 | Media3 `MediaController`, session, player | **application main looper** | Media3 1.11 rule: getters throw off the main looper (r07 §2.6) |
 | FTS search | `io`, debounced 250 ms, `flatMapLatest` | Cancel on new input. `LIMIT 200` per page |
@@ -357,7 +358,7 @@ StrictMode is set in debug `Application.onCreate` (thread and VM policies, `pena
 @Serializable @JvmInline value class ManzilId(val value: Int) { init { require(value in 1..7) } }
 @Serializable @JvmInline value class RukuId(val value: Int) { init { require(value in 1..558) } }  // global ruku number
 @Serializable @JvmInline value class AyahId(val value: Int) { init { require(value in 1..6236) } } // Kufan global index; 1 = 1:1
-@Serializable @JvmInline value class WordIndex(val value: Int) { init { require(value in 1..83_669) } } // DK token id (D-06) = pack word.id
+@Serializable @JvmInline value class WordId(val value: Int) { init { require(value in 1..83_669) } } // DK token id (D-06) = content word_index = pack word.id
 @Serializable @JvmInline value class RecitationId(val value: String)   // doc 06 format, e.g. "alafasy.murattal.mp3q123"
 
 /** Kufan verse key. Canonical key for user data, audio, translations, search, sync ("2:255"). There is no `AyahKey`. */
@@ -420,7 +421,7 @@ data class ReadingPosition(val mushaf: MushafId, val page: PageIndex, val anchor
 enum class ReaderMode { MUSHAF, TRANSLATION }
 ```
 
-`PageModel` and its parts (lines, placed words, furniture, margin markers, `MushafGeometry`) are defined in `:core:model` with the names and fields from [05](05-mushaf-rendering-engine.md). Doc 05 owns that field list. This doc only requires that `PageModel` carries `mushaf: MushafId`, `page: PageIndex` and `verseRange: AyahRange`, plus the page's Para and Manzil. `labelOf`/`indexOf` above are the **only** place that converts between index and label.
+`PageLayout`, `PageLine`, `PlacedWord`, `PageFurniture`, `MarginMarker` and `MushafGeometry` are defined in `:core:model` with the fields from [05](05-mushaf-rendering-engine.md) §3.4. Doc 05 owns that field list. This doc only requires that `PageLayout` carries `mushaf: MushafId`, `page: PageIndex` and `verseRange: AyahRange`, plus the page's Para and Manzil. `labelOf`/`indexOf` above are the **only** place that converts between index and label.
 
 **Para boundaries in the Taj-16 layout.** Para 1 starts at page index 1 (label 2). For n = 2…28, Para n starts at page index 18n − 16; the formula does not hold for n = 1 (g01 §2.8). Code never relies on the formula: start pages come from the pack's `ayah_page` table via `MushafRepository.startPage`.
 
@@ -541,7 +542,7 @@ interface ContentRepository {
     suspend fun surah(id: SurahId): Surah
     suspend fun ayah(key: VerseKey): AyahText                         // uthmani + imlaei (Tanzil, verbatim)
     suspend fun ayahs(range: AyahRange): List<AyahText>
-    suspend fun words(range: AyahRange): List<Word>                   // DK tokens of the range, WordIndex order
+    suspend fun words(range: AyahRange): List<Word>                   // DK tokens of the range, WordId order
     suspend fun ayahMarkers(range: AyahRange): List<AyahMarker>       // Kufan display numbers incl. 118 disputed marks;
                                                                       // layout overrides come from pack `ayah_display_override`
     suspend fun resolveDisplayNumber(surah: SurahId, displayNumber: Int): VerseKey? // "Fatiha 6" → 1:7
@@ -554,10 +555,13 @@ interface ContentRepository {
 interface MushafRepository {
     fun available(): Flow<List<MushafSpec>>                           // installed layout packs, eligibility-filtered
     suspend fun spec(id: MushafId): MushafSpec
-    suspend fun page(id: MushafId, page: PageIndex): PageModel        // cached LRU; no runtime text overlay (§14.2)
+    suspend fun page(id: MushafId, page: PageIndex): PageLayout        // cached LRU; no runtime text overlay (§14.2)
     suspend fun pageOf(id: MushafId, key: VerseKey): PageIndex
     suspend fun verseRange(id: MushafId, page: PageIndex): AyahRange
     suspend fun startPage(id: MushafId, target: IndexTarget): PageIndex  // surah/para/manzil/ruku → page (from pack ayah_page)
+    suspend fun ayahSpan(id: MushafId, key: VerseKey): AyahPageSpan   // ayah_page row: pages/lines of the ayah (follow-along, khatam pos)
+    suspend fun geometry(id: MushafId): MushafGeometry                // pack `mushaf` row
+    suspend fun headerPage(id: MushafId, surah: SurahId): PageIndex   // page of the surah's header/basmala line
     fun prefetch(id: MushafId, center: PageIndex, radius: Int = 3)
 }
 
@@ -699,7 +703,7 @@ sealed interface Segment {
 sealed interface HighlightTarget {
     data class Ayah(val key: VerseKey) : HighlightTarget               // also while its translation item plays
     data class BasmalaLine(val surah: SurahId) : HighlightTarget
-    data class Word(val key: VerseKey, val wordId: WordIndex) : HighlightTarget   // v1.x (F-AU-12)
+    data class Word(val key: VerseKey, val wordId: WordId) : HighlightTarget   // v1.x (F-AU-12)
 }
 sealed interface PlaybackEvent {
     data class AyahCompleted(val key: VerseKey, val recitation: RecitationId, val atEpochMs: Long) : PlaybackEvent

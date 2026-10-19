@@ -187,52 +187,84 @@ The owner is accountable for every gate. External parties are named. Every decis
 **Assumptions.**
 - 30–35 productive h/week (midpoint 32.5) at 6 h/id gives **5.0 / 5.4 / 5.8 id per week**.
 - No separate admin overhead: outreach, hiring, Play Console and the hafiz/designer/lawyer work are ADM stories with estimates.
-- 2026-12-25 (Quaid-e-Azam Day) is a holiday, which costs one day in S5.
+- 2026-12-25 (Quaid-e-Azam Day) is a holiday, which costs one day in S5. Two holidays are **not** deducted:
+  - Iqbal Day (11-09, in S1; its 2026 status is unverified). It would cost 0.5 id, absorbed by S0/S1 slack or lever 1.
+  - Kashmir Day (02-05). It falls on the 100% rollout step, which is a Console action and is unaffected.
 - Velocity is unproven. The S1 and S2 actuals recalibrate everything (§4.2).
+- **Code-merge deadlines bind more tightly than total hours.**
+  - Tier A and any pull-in must be merged by **01-18**, which gives ≥ 7 days of closed-test exposure.
+  - Code-complete is **01-22**.
+  - S7 is stabilization and release prep only: at most ≈ 3.5 id of feature code can merge between 01-19 and 01-22.
 
 | Phase (weeks) | Capacity @30h | @32.5h (plan) | @35h | Demand: committed POR | Demand: full D-25 scope | Fits? |
 |---|---|---|---|---|---|---|
-| P0 (2) | 10.0 | **10.8** | 11.7 | 9.25 (7.75 eng + 1.5 ADM) | 9.25 | ✅ 1.6 id slack |
-| P1 (7) | 35.0 | **37.9** | 40.8 | 37.0 (35.5 P1 + 1.5 ADM) | **47.75** (P1 + the 10.75 id of P1-catalogue items in C) | ❌ Full P1 scope is ~9.8 id (~1.8 weeks) over. **Resolution:** C items move to S5–S7 |
-| P2 (6, −1 day) | 29.0 | **31.4** | 33.8 | 30.25 (C 10.75 + F 12.5 + A 6.5 + ADM 0.5) | **53.75** (+ S 2.0 + B 21.5) | ❌ Full P2 scope is ~22 id over. **Resolution:** Tier B → v1.1, Tier S pre-cut |
-| **Total to v1.0 (15 wks −1 day)** | 74.0 | **80.2** | 86.3 | **76.5** | **100.0** | POR fits with 3.7 id (4.6%) buffer + 9.0 id of ladder rungs L5–L9 |
+| P0 (2) | 10.0 | **10.8** | 11.7 | 10.5 (8.5 eng + 2.0 ADM) | 10.5 | ✅ 0.3 id slack |
+| P1 (7) | 35.0 | **37.9** | 40.8 | 37.25 (35.75 P1 + 1.5 ADM) | **48.75** (P1 + the 11.5 id of P1-catalogue items in C) | ✅ POR, 0.65 id slack. ❌ Full P1 scope is ~10.9 id (~2 weeks) over. **Resolution:** C items move to S5–S7 |
+| P2 (6, −1 day) | 29.0 | **31.4** | 33.8 | 32.0 (C 11.5 + F 13.5 + A 6.5 + ADM 0.5) | **57.5** (+ S 3.5 + B 22.0) | ❌ The POR is 0.6 id over in total, and **3.5 id of C work cannot merge before its deadline** (§4.1 "Unfunded" row). **Resolution:** lever 1, then rungs L5–L6 at the 01-04 checkpoint (§4.2). Tier B → v1.1; Tier S pre-cut |
+| **Total to v1.0 (15 wks −1 day)** | 74.0 | **80.2** | 86.3 | **79.75** | **105.25** | POR fits on paper with **0.45 id (0.6%) buffer**. The real buffers are lever 1 (≈ +1.9 id over the year-end), rungs L5–L8 (6.5 id) and the 11-30 launch rule |
 
 **What the numbers say.**
-- The Quran core alone (P0 eng + P1 + C) is **54.0 id, about 10 weeks**, against the 9 weeks of P0+P1. That is why some P1-catalogue items (search, Urdu string completion, repeat, gapped mode, zoom, ruku/sajda lists, a11y pass, storage manager, onboarding) land in S5–S7. They are still in v1.0.
-- At **30 h/week** the POR is 2.5 id over. Apply L5 and L6 in the S5 planning and keep L9 ready.
-- At **35 h/week**, the stretch tier (L1–L4) and B1–B3 come back.
-- The renderer, the pipeline and the audio engine (E-03, E-04, E-08: 27.0 id committed) are the irreducible core. Never trade them for companion features.
+- At plan estimates, the Quran core alone (P0 eng + P1 + C) is **55.75 id, about 10.3 weeks**, against the 9 weeks of P0+P1. That is why some P1-catalogue items (search, Urdu string completion, repeat, speed/sleep, settings, zoom, a11y pass, storage manager, onboarding) land in S5–S7. They are still in v1.0.
+- **At specialist estimates the Quran core is ≈ 90–110 id (§4.3), i.e. 17–20 weeks against the 15 weeks to v1.0.** If the AI speed-up does not materialise, no ladder can absorb that gap. This is why the launch rule exists.
+- At **30 h/week** the POR is ≈ 6 id over: apply L5 and L6 in the S5 planning, and expect the launch rule to fire.
+- At **35 h/week** (lever 1), the P2 shortfall is covered and the year-end break is the time to bank it. The stretch tier (L1–L4, L9) comes back only if S3 closes ≥ 100% *and* S5 closes ≥ 100%.
+- The renderer, the pipeline and the audio engine (E-03, E-04, E-08: 25.5 id committed, P0–C, incl. the new pack writer) are the irreducible core. Never trade them for companion features.
 
 ### 4.1 Sprint loading (POR, plan rate 5.4 id/week)
 
 | Sprint | Dates | Capacity | Planned | Of which ADM | Notes |
 |---|---|---|---|---|---|
-| S0 | 10-20 → 11-02 | 10.8 | 9.25 | 1.5 | Spikes + pipeline + outreach |
-| S1 | 11-03 → 11-16 | 10.8 | 10.5 | 0.75 | 16-line data join + renderer text layer + audio spike |
-| S2 | 11-17 → 11-30 | 10.8 | 10.75 | 0.75 | Reader alpha; G1 decision 11-19 |
-| S3 | 12-01 → 12-14 | 10.8 | 11.0 | 0 | Audio alpha (≈ 2% over; first slip candidate: E-11-S01 → S4) |
-| S4 | 12-15 → 12-21 | 5.4 | 4.75 | 0 | Daily-use hardening |
-| S5 | 12-22 → 01-04 | 9.75 | 9.75 | 0.25 | Search, UIDT, R2 + kill-switch, proofreading fixes; G2 01-04 |
-| S6 | 01-05 → 01-18 | 10.8 | 10.25 | 0.25 | Closed test 01-11; Tier A; G5/G4 01-18 |
-| S7 | 01-19 → 02-01 | 10.8 | 10.25 | 0 | Code-complete 01-22; RC 01-25; rollout 02-01 |
-| **Total** | | **80.2** | **76.5** | **3.5** | |
-| Conditional | G1 fails | — | +2.5 (E-03-S11) | | Funded by rungs L5–L7 (4.75 id) |
+| S0 | 10-20 → 11-02 | 10.8 | 10.5 | 2.0 | Spikes (incl. doc 04 S-1…S-5, HijrahDate) + pipeline + outreach + devices + domain |
+| S1 | 11-03 → 11-16 | 10.8 | 10.5 | 0.75 | 16-line data join + mushaf pack writer + renderer text layer + audio spike |
+| S2 | 11-17 → 11-30 | 10.8 | 10.75 | 0.75 | Reader alpha + bundled-pack registry; G1 decision 11-19; account decision 11-23; **launch rule 11-30** |
+| S3 | 12-01 → 12-14 | 10.8 | 10.75 | 0 | Audio alpha + design tokens |
+| S4 | 12-15 → 12-21 | 5.4 | 5.25 | 0 | Daily-use hardening + translation view + core goldens |
+| S5 | 12-22 → 01-04 | 9.75 | 9.75 | 0.25 | Closed-test prerequisites first (listing, eligibility, R2, notices); search; Urdu strings; final ornaments; R1 fixes; G2 01-04 |
+| S6 | 01-05 → 01-18 | 10.8 | 10.75 | 0.25 | Closed test ≤ 01-11; **Tier A merged by 01-18**; G6 01-11; G5/G4 01-18 |
+| S7 | 01-19 → 02-01 | 10.8 | 8.0 | 0 | ≤ 3.5 id of code to 01-22; release prep 4.5 id; ≈ 2.8 id stabilization reserve for closed-test fixes |
+| **Unfunded at plan rate** | 12-22 → 01-22 | — | **3.5** | 0 | C items with no slot before their deadline: E-08-S05, E-13-S04, E-14-S03, E-04-S07, E-04-S08, E-10-S04, E-11-S02. Funded by lever 1 (≈ +1.9 id at 35 h/week from 12-22 to 01-22), then L5 + L6 (1.75 id) at the 01-04 checkpoint |
+| **Total** | | **80.2** | **79.75** | **4.0** | |
+| Conditional | G1 fails | — | +4.0 (E-03-S11) | | Funded by rungs L5–L8 (6.5 id): a v1.0 without companion features |
+| Conditional | P0 kashida no-go | — | +0.5 (E-04-S07 Fallback 1) | | From the S7 stabilization reserve |
 
-### 4.2 Velocity checkpoints and levers
+### 4.2 Velocity checkpoints, the launch rule and levers
 
 | Checkpoint | Rule |
 |---|---|
-| End of S1 (2026-11-16) | Compute velocity = done id ÷ 2 weeks. If < 4.6 id/week (85% of plan), re-plan P2 now: pre-apply L5–L6 and re-size the remaining ladder. |
-| End of S2 (2026-11-30) | If cumulative done < 90% of planned, apply L5–L7 to P2, which makes v1.0 Quran-only + khatam. If < 75%, also decide on lever 3 and warn that a closed-test-only Ramadan is likely. |
-| End of S3 (2026-12-14) | Freeze the v1.0 POR. Tier B pull-ins are allowed only if S3 closed ≥ 100%. |
-| End of S5 (2027-01-04) | Floor at risk (any F/C story not started)? Cut L9, then move M5 by ≤ 3 days. Never shorten the 14-day closed test. |
-| 2027-01-22 | Code-complete cut-off. Anything unmerged moves to v1.1. |
+| End of S1 (2026-11-16) | Estimate ratio **r = actual id ÷ planned id** over all stories closed in S0–S1. Re-forecast the remaining POR × r. If the forecast exceeds the remaining capacity minus 3 id, apply L5–L6 now and warn that the launch rule is likely to fire. Shortlist freelancers for lever 3. |
+| **End of S2 (2026-11-30): pre-agreed launch rule (D-34)** | Compute r over S0–S2. **If r ≥ 1.3, or G1 was not granted on 11-19 and the clean-room track is not on plan** (operator contracted by 11-20, tooling started): Ramadan 1448 becomes a **closed-test/beta release** for the owner, family and testers (PERSONAL and BETA builds; widened only per §5.3). **Public v1.0 moves to 2027-03-22**, merged with v1.1 scope. The P2 sprints then re-plan against v1.1. **If r < 1.3:** continue the Ramadan public plan; if r is between 1.1 and 1.3, apply L5–L6 now. Decide lever 3 (freelancer) the same day. |
+| End of S3 (2026-12-14) | Freeze the v1.0 POR. Pull-ins (L9, L1–L4, Tier B) are allowed only if S3 closed ≥ 100%. |
+| End of S5 (2027-01-04) | Is the 3.5 id "Unfunded" list covered by lever 1? If not, apply L5 then L6. Is any F/C story not started? Then cut more rungs; never shorten the 14-day closed test. |
+| 2027-01-18 | Tier A / pull-in merge deadline (≥ 7 days of tester exposure). Anything later moves to v1.1. |
+| 2027-01-22 | Code-complete cut-off. Unmerged non-floor work moves to v1.1. An unmerged floor item moves the public date (§5.3). |
 
 **Levers, in order of use:**
-1. Owner hours toward 35 h/week, especially over the year-end break (+0.4 id/week).
-2. **Parallel agent sessions** on fully specified, low-risk stories (UI screens, DAOs, tests). Doc 13 defines the workflow. Count them as upside only, never in the plan.
-3. **Contract a freelance Android developer for Tier A + B companion work** (E-15, E-16, E-17; ≈ 8–12 id), under a written clean-room and no-GPL-copy clause (D-18) and an IP assignment. Decide at the S2 checkpoint; budget TBD by the owner.
+1. Owner hours toward 35 h/week, especially over the year-end break (+0.4 id/week; ≈ +1.9 id from 12-22 to 01-22). This is already needed for the P2 "Unfunded" row.
+2. **Parallel agent sessions** on fully specified, low-risk stories labelled `agent-ok` (UI screens, DAOs, tests). Doc 13 defines the workflow. Count them as upside only, never in the plan.
+3. **Contract a freelance Android developer** for Tier A + B companion work (E-15, E-16, E-17; ≈ 8–12 id). Conditions:
+   - a written clean-room and no-GPL-copy clause (D-18) and an IP assignment;
+   - shortlist by 11-16; decide at the 11-30 checkpoint; contract by 12-07; first PR by 12-14;
+   - budget **0.25 owner-id of review per freelancer-id** against the owner's capacity;
+   - this is the only route by which F-CP-02 adhan (B1 + B5) can enter v1.0;
+   - budget is set by the owner.
 4. Ladder rungs (§5).
+
+### 4.3 Estimate reconciliation (specialist docs vs this plan)
+
+Every specialist doc estimates its own area. This plan's estimates are lower because it assumes AI-assisted speed-up. The table puts both side by side, so the gap is visible and measured rather than hidden. Units: 1 id = 1 dev-day = 6 focused hours. Hour figures are converted at 6 h/id.
+
+| Area | Specialist estimate (doc, converted to id) | Overlap removed | This plan (id, committed P0–A) | Implied factor | Rationale |
+|---|---|---|---|---|---|
+| UI screens & components (doc 02 §14) | P1 ≈ 48 id, P2 ≈ 25 id. **Doc 02 states this is ≈ 2.6× this plan's UI allocation**, and splits it by release against these epic columns | Player UI (also in doc 06 #9, ≈ 2.7 id) | ≈ 18 id (P1 + C UI stories in E-01-S06, E-05, E-06, E-07, E-08-S05/S06, E-09-S03, E-10-S03/S04, E-11, E-12-S02, E-13, E-14) | ≈ 0.4 | Compose screens and states are the most agent-friendly work (doc 13). Highest risk of under-estimate |
+| Renderer (doc 05 §17) | P0 1.5 + P1 ≈ 13.5 = **15 id** | Goldens (also doc 10, ≈ 2 id) | E-04 8.25 + E-03-S12 0.75 = **9.0** | ≈ 0.7 | Careful, human-reviewed work; estimated close to specialist |
+| Audio, catalogue, downloads (doc 06 §17) | P1 ≈ 150 h = **25 id** (172 h ≈ 28.7 id total) | Player UI (under UI); `:core:remote` overlap with doc 04 A7 | E-08 + E-09 (excl. S02) + E-10 committed = **14.25** | ≈ 0.6 | Spike first (S1); timing pipeline is shared with E-03 |
+| Pipelines (doc 08 §15) | ≈ 104 h = **17.3 id** (P0+P1 ≈ 92 h = 15.3 id) | Catalogue/timing builders (counted under audio) | E-03 P0+P1+C excl. S12 9.5 + E-09-S02 1.25 = **10.75** | ≈ 0.7 (P0+P1) | Python stages are well specified; agents write them, the owner checks the asserts |
+| Architecture & platform (doc 04 §17, A1–A11) | ≈ **17 id** (A7 `:core:remote` alone 4 d; A8 PackManager 2.5 d) | A7 overlaps doc 06 #10–11 and E-23 | E-01 eng 4.5 + E-10-S07 1.0 + E-23-S02 0.75 + E-02-S04 0.75 = **7.0** | ≈ 0.5 (after overlap) | Skeleton and DI are boilerplate; the signed fetcher and pack registry are not |
+| QA / CI (doc 10 §15) | P0 25 h + P1 71 h = **16 id** | Per-story DoD tests are already inside each story estimate | E-02 P0+P1+C = **2.5** | n/a | Most test work sits inside the stories; the risk is that it is under-counted there |
+| Companion Tier A (doc 07 §1.1) | location 10 h + F-CP-01 20 h + F-CP-04 14 h + F-CP-07 core ≈ 8 h + F-BM-04 22 h ≈ 74 h = **12.3 id** | — | **6.5** | ≈ 0.55 | Pure-Kotlin core + three screens; OEM alarm work is excluded (v1.1) |
+| **Quran core (P0 + P1 + C)** | ≈ 136 id raw → **≈ 90–110 id after removing overlaps** | | **55.75 id** | **≈ 0.5–0.6** | **The whole POR rests on this factor.** It is measured at S1 (11-16) and decided at S2 (11-30) via the launch rule |
+
+**Plain statement.** If the AI speed-up holds (factor ≈ 0.55), the POR is ≈ 80 id and fits with the levers above. If it does not hold, the Quran core alone needs 90–110 id against 80 available, and a public Ramadan launch is not achievable. The 11-30 launch rule makes that call early and on data, not in January. Docs 02/04/05/06/07/08/10 keep their estimates as **upper bounds; this doc governs the schedule**.
 
 ---
 

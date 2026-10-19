@@ -38,7 +38,7 @@ Estimates are focused hours for a solo developer working with AI coding agents. 
 | F-CP-01 | Prayer times (region defaults, offsets, monthly table with Sehri/Iftar labels) | P2 | v1.0 | `:core:prayer`, `:feature:prayer` | adhan2, desugaring | 20 |
 | F-CP-02 | Adhan alarms + Adhan health check | P2 | v1.1 (v1.0 only if B1/B5 are pulled in) | `:core:prayer`, `:feature:prayer` | F-CP-01, adhan audio assets | 44 |
 | F-CP-03 | Qibla compass (sun mode + Rasd al-Qibla in P3) | P2 (+P3) | v1.1 | `:feature:prayer` (UI), `:core:prayer` (`QiblaSensor`) | location | 18 (+6) |
-| F-CP-04 | Hijri date, calendar, events, PK feed | P2 | v1.0 | `:core:prayer` (`HijriCalendarImpl`), `:feature:prayer` | R2 feed, signer (doc 08) | 14 |
+| F-CP-04 | Hijri date, calendar, events, PK feed | P2 | v1.0 | `:core:prayer` (`HijrahHijriCalendarProvider`), `:feature:prayer` | R2 feed, signer (doc 08) | 14 |
 | F-CP-05 | Tasbeeh | P2 | v1.0-stretch (L3) | `:feature:companion` | — | 10 |
 | F-CP-06 | Morning/evening azkar, core duas, Manzil dua | P2 | azkar v1.1; Manzil dua v1.0-stretch (L4) | `:feature:companion`, `:core:content` (`AzkarPackDb`) | `azkar` pack (doc 08), Urdu translation | 20 |
 | F-CP-07 | Ramadan: **core** = 30-day timetable, Home countdown card, Taraweeh preset; **extras** = Sehri alarm, sourced duas, share image, odd-night reminders | P2 | core v1.0; extras v1.1 | `:feature:companion` (Ramadan hub), `:core:prayer` (times) | F-CP-01, F-CP-04, F-BM-04 (extras: F-CP-02, azkar pack) | 16 (core ≈ 8) |
@@ -63,17 +63,17 @@ Doc 04 owns module names (§3.2). This doc uses only doc 04's modules; its earli
 
 | Doc 04 module | Contents from this doc | Former name in this doc |
 |---|---|---|
-| `:core:prayer` (android.library + hilt, P2) | Pure-Kotlin packages with no `android.*` imports: `PrayerTimesCalculator` (wraps adhan2, behind doc 04's `PrayerTimesRepository`), `RegionDefaults`, `QiblaMath`, `SolarPosition` (P3 sun mode), the Hijri resolver of §7.1, `IslamicEvents`. Android parts: `LocationProviderImpl` (LocationManagerCompat + `cities` pack), `HijriCalendarImpl`, `QiblaSensor` impl, `AlarmSchedulerImpl`, `AdhanAlarmReceiver`, `SystemEventsReceiver` (boot, time, zone, package replaced), `AdhanPlaybackService`, `ReminderScheduler`/`ReminderPlanner`, channel registry, direct-boot snapshot | `:core:prayer`, `:core:location`, `:core:notifications` (doc 04 splits these out only when reminders outgrow prayer) |
+| `:core:prayer` (android.library + hilt, P2) | Pure-Kotlin packages with no `android.*` imports: `PrayerTimesCalculator` (wraps adhan2, behind doc 04's `PrayerTimesRepository`), `RegionDefaults`, `QiblaMath`, `SolarPosition` (P3 sun mode), the Hijri resolver of §7.1, `IslamicEvents`. Android parts: `LocationProviderImpl` (LocationManagerCompat + `cities` pack), `HijrahHijriCalendarProvider` (D-27), `QiblaSensor` impl, `AlarmSchedulerImpl`, `AdhanAlarmReceiver`, `SystemEventsReceiver` (boot, time, zone, package replaced), `AdhanPlaybackService`, `ReminderScheduler`/`ReminderPlanner`, channel registry, direct-boot snapshot | `:core:prayer`, `:core:location`, `:core:notifications` (doc 04 splits these out only when reminders outgrow prayer) |
 | `:feature:prayer` (P2) | Prayer times screen, monthly table, city picker, adhan settings, **Adhan health check**, Qibla screen and calibration UX, Hijri calendar | `:feature:prayer`, `:feature:qibla` |
 | `:feature:companion` (P2) | Ramadan hub, tasbeeh, azkar sessions, dua library, Manzil-dua passage reader; Qaida lessons (P4) | `:feature:adhkar`, `:feature:qaida` |
 | `:feature:bookmarks` (P1; P2 additions) | Notes (F-BM-03), khatam planner, streaks and stats, group khatam text sheet. Splits into `:feature:khatam` when the planner exceeds 3 screens (doc 04 trigger) | `:feature:khatam` |
-| `:core:domain` | `KhatamMath` behind doc 04's `ComputeKhatamPlan` use case; `KhatamSheetParser`; P3 `hifz` package (FSRS port, `HifzPlanner`, rating mapper, heatmap maths). If the hifz package grows past ~2k LOC, doc 04 adds a `:core:hifz` JVM module | `:core:hifz` |
+| `:core:domain` | `KhatamMath` behind doc 04's `ComputeKhatamPlan` use case; `KhatamSheetParser`; P3 `hifz` package (FSRS port, `HifzPlanner`, rating mapper, heatmap maths) | `:core:hifz` |
 | `:core:groupkhatam` (P3, `play` flavor) | Firestore realtime group khatam | `src/play/` of `:feature:khatam` |
 | `:feature:hifz` (P3) | Dashboard, hide/reveal reader overlay, test/mark flow, recordings, report | — |
 | `:core:asr` (P4) | sherpa-onnx wrapper, VAD, aligner | `:core:recitation-ai` |
 | `:app` `widget` package | Glance receivers and widgets (Hilt `EntryPoint`s into repositories) | — |
 
-Receivers, services and widgets cannot use constructor injection, so they get dependencies through Hilt `@EntryPoint`. The `foss` flavor never contains Firebase. Interfaces (`PrayerTimesRepository`, `LocationProvider`, `HijriCalendar`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler`, `KhatamRepository`, `TasbeehRepository`, `NoteRepository`) are doc 04 §6's; features compile only against `:core:domain`.
+Receivers, services and widgets cannot use constructor injection, so they get dependencies through Hilt `@EntryPoint`. The `foss` flavor never contains Firebase. Interfaces (`PrayerTimesRepository`, `LocationProvider`, `HijriCalendarProvider`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler`, `KhatamRepository`, `TasbeehRepository`, `AzkarRepository`, `NoteRepository`) are doc 04 §6's; features compile only against `:core:domain`.
 
 ### 1.3 P2 tiers and sequencing (doc 09 FINAL v1.0 scope; doc 09 owns the ladder)
 
@@ -228,10 +228,10 @@ Doc 04 owns the `user.db` schema and the DDL of the content DB and every pack ty
 
 This doc uses doc 04 §8.3's URIs:
 - `criterion://page/{mushafCode}/{label}` · `criterion://ayah/{surah}/{ayah}` · `criterion://surah/{n}` · `/para/{n}` · `/manzil/{n}` · `/ruku/{id}`.
-- `criterion://play?scope=surah:18` (`para:23`, `range:2:285-2:286`, `passage:manzil-dua`) opens the reader with `autoplay`. Autoplay is honoured only for our own explicit `PendingIntent.getActivity`, so playback starts from a visible activity, which counts as user-initiated (§11.4).
-- `criterion://khatam/{id}` · `criterion://prayer` · `/qibla` · `/tasbeeh` · `/hijri`.
-
-**Requested additions to doc 04 §8.2–§8.3:** `criterion://prayer/health` (`AdhanHealthKey`, v1.1), `criterion://azkar/{category}` (`AzkarKey`, v1.1), `criterion://ramadan` (`RamadanKey`, v1.0), `criterion://hifz/today` (P3).
+- `criterion://resume` (continue reading).
+- `criterion://play?scope=surah:18` (`para:23`, `range:2:285-2:286`, `ayah:2:255`, `passage:manzil-dua`, …) opens the reader with `autoplay` and a `PendingPlayRequest`. Autoplay is honoured only for our own explicit `PendingIntent.getActivity` (reminders, widgets) or launcher shortcuts, so playback starts from a visible activity, which counts as user-initiated (§11.4). External links open the reader paused.
+- `criterion://khatam/{id}` · `criterion://prayer` · `/prayer/health` · `/qibla` · `/tasbeeh` · `/hijri` · `/azkar/{category}`.
+- P3 adds `criterion://hifz/today` (doc 04 adds it with `HifzKey`).
 
 ---
 
@@ -245,26 +245,37 @@ This doc uses doc 04 §8.3's URIs:
 
 **UX.** The prayer screen header shows "Lahore, Punjab ▾", which opens a picker with two options: "Use my location" and a search box with results. Details in [02](02-ux-ui-spec.md).
 
-**Data: the bundled `cities` pack (doc 04 §7.3 owns the DDL; `CitiesDb` in `:core:content`), built by doc 08 from GeoNames `cities15000.zip`.**
+**Data: the bundled `cities` pack (doc 04 §7.3 pack type, `CitiesDb` in `:core:content`; the columns are specified here), built by doc 08 from GeoNames `cities15000.zip`.**
 - Licence CC BY 4.0. Attribution "GeoNames, CC BY 4.0" goes in Credits (F-PL-04).
 - 34,173 rows, of which PK 372 (r08 §2.5).
-- Table `city(id PK /*geonameid*/, name, name_ur, ascii, country /*ISO cc*/, admin1, lat, lon, tz, population)` plus an FTS5 (unicode61) index over the names. This doc needs the FTS index to cover `name`, `ascii`, `name_ur` and the normalised Arabic-script alternate names (one space-joined column, e.g. `alt_names_norm`); doc 04 adds that column to the DDL.
+
+```kotlin
+@Entity(tableName = "city") data class City(@PrimaryKey val id: Long /*geonameid*/, val name: String, val ascii: String,
+  @ColumnInfo(name = "name_ur") val nameUr: String?, val lat: Double, val lon: Double, val cc: String,
+  val admin1: String?, val tz: String, val population: Int)
+@Entity(tableName = "city_alias", primaryKeys = ["alias_norm", "city_id"], indices = [Index("city_id")])
+data class CityAlias(@ColumnInfo(name = "alias_norm") val aliasNorm: String, @ColumnInfo(name = "city_id") val cityId: Long)
+@Entity(tableName = "country") data class Country(@PrimaryKey val cc: String, val nameEn: String, val nameUr: String?)
+@Entity(tableName = "admin1") data class Admin1(@PrimaryKey val code: String /*"PK.04"*/, val name: String)
+```
 
 Pipeline rules (doc 08 implements them):
-- **Alternate names:** `ascii` lower-cased, plus every Arabic-script entry of `alternatenames` (any char in U+0600–U+06FF), normalised with the D-11 Urdu folder.
+- **Aliases:** `ascii` lower-cased, plus every Arabic-script entry of `alternatenames` (any char in U+0600–U+06FF), normalised with the D-11 Urdu folder.
 - **`name_ur`:**
   - For PK, IN and AF, use the first Arabic-script alias that contains an Urdu-specific letter (ٹ ڈ ڑ ں ے ہ ھ گ), else the first Arabic-script alias.
   - A hand-checked override CSV covers the 100 most populous PK cities (≈ 2 h owner work).
-- **admin1** holds the resolved admin-1 name, joined from GeoNames `admin1CodesASCII.txt` (same licence). Country display names come from `Locale("", country).getDisplayCountry()`.
+- **admin1** comes from GeoNames `admin1CodesASCII.txt` (same licence).
 
 **Algorithms.**
 - **Search.** Run one query per keystroke (debounced 150 ms):
 
   ```sql
-  -- :q = the normalised input as an FTS5 prefix query, e.g. '"لاہ"*' or '"lah"*'
-  SELECT c.* FROM city_fts f JOIN city c ON c.id = f.rowid WHERE city_fts MATCH :q
-  ORDER BY (c.country = :homeCc) DESC, c.population DESC LIMIT 30;
+  SELECT c.* FROM city_alias a JOIN city c ON c.id = a.city_id
+  WHERE a.alias_norm >= :q AND a.alias_norm < :q || char(0x10FFFF)      -- prefix range on the PK index
+  GROUP BY c.id ORDER BY (c.cc = :homeCc) DESC, c.population DESC LIMIT 30;
   ```
+
+  `alias_norm` is already lower-cased and folded, so a range scan on the primary key serves prefix search (SQLite's `LIKE` would not use the index without `NOCASE`). Doc 04 §7.3's FTS5 index over names is therefore optional for this query.
 
 - **Nearest city** for a GPS fix: take candidates inside lat ±1°, lon ±1.2°, rank by haversine distance and pick the minimum. If there are none within 50 km, show "Near <nearest>" but use the raw rounded coordinates with the nearest city's `tz`.
 - **One-shot fix:**
@@ -737,7 +748,7 @@ fun readings(): Flow<QiblaReading>        // callbackFlow, SENSOR_DELAY_GAME, UI
 - A signed PK month-start feed maintained monthly by the owner.
 - Month view and an events list.
 
-### 7.1 Algorithm (Hijri resolver, pure Kotlin in `:core:prayer`; behind doc 04's `HijriCalendar`, impl `HijriCalendarImpl`)
+### 7.1 Algorithm (Hijri resolver, pure Kotlin in `:core:prayer`; behind doc 04's `HijriCalendarProvider`, impl `HijrahHijriCalendarProvider`)
 
 ```kotlin
 data class HijriDay(val year: Int, val month: Int, val day: Int, val source: Source, val fromMaghrib: Boolean, val provisional: Boolean)
@@ -766,7 +777,7 @@ fun hijriFor(civil: LocalDate, now: ZonedDateTime?, maghrib: java.time.Instant?,
 - **Rollover needs Maghrib,** so it requires a city. Without one, there is no rollover.
 - **Provisional:** a provisional day shows "(expected)".
 - **First run in PK:** the default `userOffsetDays` for PK is **−1** until the first verified feed arrives, so the date matches PK on day one. Once the feed is active for the current month, the feed wins and the user offset applies only when the feed doesn't cover the date.
-- **Device check and fallback (D-27):** `HijrahDate` via core-library desugaring is unverified on API 24–25. On first use per process, `HijriCalendarImpl` self-tests `HijrahDate.from(2026-10-12) == 1448-05-01`. If that fails, or if `HijrahDate` throws (outside the Umm al-Qura range, roughly 1300–1600 AH, unverified), it uses ICU `android.icu.util.IslamicCalendar(ISLAMIC_UMALQURA)` (API 24; r07) for the rest of the process. The fallback lives in the Android layer behind doc 04's `HijriCalendar` interface; the pure resolver above takes the calculated date as an input.
+- **Device check and fallback (D-27):** `HijrahDate` via core-library desugaring is unverified on API 24–25. On first use per process, `HijrahHijriCalendarProvider` self-tests `HijrahDate.from(2026-10-12) == 1448-05-01`. If that fails, or if `HijrahDate` throws (outside the Umm al-Qura range, roughly 1300–1600 AH, unverified), it uses ICU `android.icu.util.IslamicCalendar(ISLAMIC_UMALQURA)` (API 24; r07) for the rest of the process. The fallback lives in the Android layer behind doc 04's `HijriCalendarProvider` interface; the pure resolver above takes the calculated date as an input.
 - **Month names:** Pakistani style. Urdu: محرم، صفر، ربیع الاول، ربیع الثانی، جمادی الاول، جمادی الثانی، رجب، شعبان، رمضان، شوال، ذوالقعدہ، ذوالحجہ. English: Muharram, Safar, Rabi-ul-Awwal, Rabi-us-Sani, Jumada-al-Ula, Jumada-al-Ukhra, Rajab, Sha'ban, Ramadan, Shawwal, Zul-Qa'dah, Zul-Hijjah.
 
 ### 7.2 Events (`IslamicEvents`, a constant in code; neutral labels; no fadha'il text)
@@ -796,12 +807,12 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
 ### 7.4 Signed PK month-start feed
 
 - **URL:** `${CDN_BASE_URL}/v1/feeds/hijri-pk.json` plus a detached `hijri-pk.json.sig` (doc 04 §1). Hosted on R2 (D-24).
-- **Signature:** the `.sig` holds the base64 Ed25519 signature over the **exact file bytes** (no envelope, no canonicalisation). The app verifies it with the same two pinned public keys and `Ed25519Verifier`/`SignedFileFetcher` as the pack `index.json` (doc 04 §7.6, D-30). The JSON carries `kid`, `sequence` and `expires`. Doc 08 builds and signs the file; the private key stays offline on the owner's machine.
+- **Signature:** the `.sig` holds the base64 Ed25519 signature over the **exact file bytes** (no envelope, no canonicalisation). The app verifies it with the same two pinned public keys and `Ed25519Verifier`/`SignedFileFetcher` as the pack `index.json` (doc 04 §7.6, D-30). The JSON carries `kid`, `sequence`, `generatedAt` and `expiresAt` (doc 04 §7.6 names). Doc 08 builds and signs the file; the private key stays offline on the owner's machine.
 
 ```json
 {
   "schema": 1, "kid": "k1", "region": "PK", "authority": "Central Ruet-e-Hilal Committee",
-  "sequence": 37, "generatedAt": "2026-10-12T16:05:00Z", "expires": "2026-11-26T16:05:00Z",
+  "sequence": 37, "generatedAt": "2026-10-12T16:05:00Z", "expiresAt": "2026-11-26T16:05:00Z",
   "months": [
     { "hijri": "1448-05", "start": "2026-10-13", "status": "CONFIRMED",
       "source": "Ruet-e-Hilal announcement / MoRA notification", "announced": "2026-10-12T15:30:00Z" },
@@ -813,8 +824,8 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
 
 - **Client rules:**
   - Reject the feed when the signature is bad under both pinned keys, `sequence` ≤ the cached sequence (anti-rollback), or the schema is unknown.
-  - Cache the last verified file in `files/remote/` (doc 04 §7.7).
-  - `isExpired(now)` = `now > expires` (doc 08 sets `expires` = `generatedAt` + 45 days). When expired, show "Moon-sighting data not updated; showing calculated date" in settings, and calculate any month the feed doesn't cover.
+  - Cache the last verified file as `files/remote/feeds/hijri-pk.json` (doc 04 §7.7).
+  - `isExpired(now)` = `now > expiresAt` (doc 08 sets `expiresAt` = `generatedAt` + 45 days). When expired, show "Moon-sighting data not updated; showing calculated date" in settings, and calculate any month the feed doesn't cover.
   - Keep ≤ 24 months of entries.
   - `notices` (optional) render as an in-app card only; they never push.
 - **Fetch cadence:**
@@ -823,7 +834,7 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
   - A feed change that alters today's date → refresh the Home Ramadan card and timetable; from v1.1 also `rescheduleAll(RAMADAN_CHANGED)` and a widget update.
 - **Ops runbook (owner, ~5 min × 12 per year; r08):**
   1. On the evening of the 29th, follow the Ruet-e-Hilal announcement.
-  2. Run doc 08's `crit hijri set <hijri-month> <start> --source … --announced …`, which confirms the month and bumps `sequence` and `expires`.
+  2. Run doc 08's `crit hijri set <hijri-month> <start> --source … --announced …`, which confirms the month and bumps `sequence` and `expiresAt`.
   3. Run `crit sign hijri` on the owner's machine (offline key; never in CI).
   4. Run `crit publish feeds --go`, which uploads to R2 and verifies by fetching and checking the signature (doc 08 §9.2 owns the exact commands).
   - **SLA:** ≤ 2 h after the announcement; **≤ 1 h for Ramadan, Shawwal and Dhul-Hijjah.**
@@ -1018,7 +1029,7 @@ That gives 18 rows and 79 ayahs. The total is computed from the r08 list and mus
 - **No full-screen intent in v1** (D-16).
 
 **Algorithms.**
-- **Ramadan detection:** `HijriCalendar` (§7) gives the effective month.
+- **Ramadan detection:** `HijriCalendarProvider` (§7) gives the effective month.
   - "Ramadan mode" runs from the evening of 29 Sha'ban (provisional) or the confirmed start, until 1 Shawwal.
   - The start shows "(expected)" until the feed confirms it.
 - **Timetable:** `days = 30` starting on the 1 Ramadan civil date.

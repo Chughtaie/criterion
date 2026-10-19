@@ -148,7 +148,7 @@ Module names are doc 04 §3.2's list. Doc 04 merges some areas until they grow: 
 | `:core:remote` (→ `:core:network` + `:core:download`) | ✅ verifiers, download state machine | | ✅ MockWebServer, work-testing, JobScheduler shadow | | Manual MQ-DL | `Ed25519VerifierTest` (RFC 8032 + Wycheproof), `SignedFileFetcherTest`, `MirrorFailoverTest`, `CatalogueParserTest`, `RangeResumeTest`, `ChecksumTest`, `ZipInstallTest`, `HostSelectionTest` (UIDT vs Worker) |
 | `:core:data` | ✅ with fakes | | ✅ | | | `*RepositoryTest`, `ContentPolicyTest`, `PackRepositoryTest` (licence flags, kill-switch), `NoticesTest` |
 | `:core:audio` | ✅ | V-T mirror | ✅ ExoPlayer on Robolectric, MediaSession | | L6 `AudioStartBenchmark` | `PlaybackStateHubTest`, `ResolvingDataSourceTest`, `BasmalaStrategyTest`, `TimingGuardTest`, `AudioFocusPolicyTest`, `PlaybackResumptionTest` |
-| `:core:mushaf-render` | ✅ geometry | V-M mirror | ✅ NATIVE graphics | ✅ **mushaf goldens** | L5 `WidthDriftTest`; L6 `PageTurnBenchmark` | `LineGeometryTest`, `HitTestTest`, `GeometryParityTest`, `MushafGoldenTest`, `KashidaNativeGraphicsTest` |
+| `:core:mushaf-render` | ✅ geometry | V-M mirror | ✅ NATIVE graphics | ✅ **mushaf goldens** | L5 `WidthDriftTest`; L6 `PageTurnBenchmark` | `LineGeometryTest`, `HitTestTest`, `GeometryParityTest`, `PageHashTest`, `MushafGoldenTest`, `KashidaNativeGraphicsTest` |
 | `:core:prayer` (→ `:core:location` + `:core:notifications`) | ✅ decisions | | ✅ ShadowAlarmManager | | Soak MQ-AD (v1.1) | `PrayerTimesGoldenTest`, `HijriTest`, `RamadanTimetableTest`, `MonthStartFeedTest`, `CityDbTest` (cities15000 Urdu names), `CoarseLocationFlowTest`; v1.1: `QiblaTest`, `PrayerSchedulerTest`, `RescheduleTriggersTest`, `AdhanModeDecisionTest`, `ChannelsTest`, `ReminderPlannerTest` |
 | `:core:designsystem` | | | ✅ Compose | ✅ component goldens | | `ThemeGoldenTest` (4 themes × en/ur), `RowsGoldenTest` |
 | `:core:navigation` | ✅ | | | | | `NavKeySerializationTest` (every NavKey round-trips, incl. `ReaderKey`), `DeepLinkParserTest`, `ShortcutsTest` (v1.1) |
@@ -302,7 +302,7 @@ Module names are doc 04 §3.2's list. Doc 04 merges some areas until they grow: 
 | V-M12, V-M15, V-M16 | `FontInvariantsTest` (NATIVE graphics) | The shipped TTF loads through the app's `Typeface` path. الْكِتٰبُ advance is 2060 at cv01=0 and **2847** at cv01=1 (upem 1000), which guards against the cv-less QUL CDN font (g04 §1 #11a) |
 | V-M13, V-M14 | `GeometryParityTest` (§7.1) | App geometry equals the pack's `word.x0`/`x1` (doc 05 §3) within 0.5% of line width on all 548 pages |
 | V-M17 | `.ayahPage` | `ayahPage(key)` for all 6,236 keys equals the page auto page-turn targets |
-| V-M18, V-M19 | Release gate (§12.6) | — |
+| V-M18, V-M19 | `PageHashTest` (doc 05 §3.5) + release gate (§12.6) | Every `page_hash` recomputed from the packaged pack equals the stored one; for PUBLIC every hash is in `certified_pages.json` |
 | V-P01–V-P05 | `PackInvariantsTest` | Bundled Junagarhi (+ Ahsan-ul-Bayan footnotes) and Saheeh open through Room. Every translation row has its Arabic ayah (D-22). Attribution strings exact (Saheeh → "Noor International Center") |
 | V-T01–V-T08, V-T10 | `TimingPackInvariantsTest` | `AyahTracker` over each bundled timing pack never yields an ayah outside the surah. The guard tuple is present. Disabled surahs surface as `highlight = DISABLED` |
 | V-X01–V-X03, V-X05, V-X06 | `SignedIndexVerifierTest`, `CatalogueEligibilityTest` (§3.5) | The bundled envelope snapshots verify with the committed public key (`data/keys/`) |
@@ -464,6 +464,7 @@ The test-side `GoldenPageSelector` picks pages by rule from the packaged DBs (sa
 | Quarters | The page with 6:73 (mid-ayah ثلثة at word 10), the P4 ¾ page (3:198) and the P7 ¼ page (5:113) | Quarter labels, mid-ayah anchor |
 | Text edge cases | Pages with 72:16 (QUL merge), 4:112, 18:19, 59:13, 27:21 (hafiz-decided spellings), 2:282 (longest ayah), 1 page containing U+202E handling | Data rules from g01 |
 | Dense kashida | Top 5 pages by count of cv01 = 3 words, top 5 by max residual gap, label 51 (r04 prototype page, 3:40–49) | Justification extremes |
+| Renderer specifics (doc 05 §14.3) | Labels **5, 8, 160** and the first page with `scale < 1` (pipeline report) | `drawTextRun` left-edge assertion; ruku + «الربع» collision; ruku + «الثلثة» + «السجدة» stacked; overflow handling |
 | Last page | **549** | Empty slots, final surahs, closing ornament |
 
 That is ≈ 60 pages, which form the **PR core set**. Nightly runs **all 548 pages** in the light theme at w360 (§12.3).
@@ -836,7 +837,7 @@ flowchart LR
 ### 10.2 Certificate and its binding to the app build
 
 - **Certificate content** (doc 08 template; legal wording from doc 11): layout, `build_id`, the `certified_pages.json` hash, page count 548/548, reviewer names and qualifications, a statement mirroring Punjab Act 2011 s.5(3), signature and date. The scan is stored privately; its SHA-256 is committed next to `signoff.csv`.
-- **Binding.** The certificate binds to the **text layer**: per-page word-position and glyph-run hashes listed in `certified_pages.json` (docs 05 §14.5, 08), not to the ornament layer. **V-M19** requires every page's current `page_hash` to have an `OK` row and a certificate for the build family. For a PUBLIC build (`-Pcriterion.release=production`), `verifyContentEligibilityPlayPublicRelease` (doc 04 §11.3) fails unless every page hash of the bundled layout pack is in `certified_pages.json` and the G1 evidence is present. The app release gate (§12.6) adds one more check: the `build_id` inside the **packaged** layout pack (`mushaf.indopak16_taj.dk`, from `src/public/assets/packs/`) and `quran_content.db` (from `content_meta`) must be one that `crit validate all --tier PUBLIC` just validated. That way the AAB cannot carry an uncertified asset even when the repo's LFS copy is correct.
+- **Binding.** The certificate binds to the **text layer** of each page: `page.page_hash` (doc 05 §3.5: lines, word rows with positions and kashida, margin markers, furniture texts, overrides, font hash), listed in `certified_pages.json`. Ornament art is excluded. `PageHashTest` (doc 05 §14.2, run on PR in `:core:mushaf-render`) recomputes every `page_hash` from the packaged pack and fails on any mismatch. **V-M19** requires every page's current `page_hash` to have an `OK` row and a certificate for the build family. For a PUBLIC build (`-Pcriterion.release=production`), `verifyContentEligibilityPlayPublicRelease` (doc 04 §11.3) fails unless every page hash of the bundled layout pack is in `certified_pages.json` and the G1 evidence is present. The app release gate (§12.6) adds one more check: the `build_id` inside the **packaged** layout pack (`mushaf.indopak16_taj.dk`, from `src/public/assets/packs/`) and `quran_content.db` (from `content_meta`) must be one that `crit validate all --tier PUBLIC` just validated. That way the AAB cannot carry an uncertified asset even when the repo's LFS copy is correct.
 - **Re-certification scope** = pages whose `page_hash` changed (doc 08 delta PDF). A font change (new `font_sha256`) forces doc 08's 30-page sample re-review. PERSONAL and BETA builds skip the G5 gate but show the "pre-release — proofreading in progress" banner until G5 (D-29).
 
 ### 10.3 Render regression between versions (app side)
@@ -1306,13 +1307,14 @@ The personal sideload build is not produced here: it is built on the owner's mac
 
 | Track | Who | When | Purpose |
 |---|---|---|---|
-| Sideload / internal testing | Owner + ≤ 5 family members | From 2026-12-21 (P1 end, D-25), weekly builds | Daily-use dogfooding; personal-build content allowed |
-| Closed testing | **≥ 15 testers** (to keep 12 opted in for 14 days if on a personal account, r09 §2.6): family, masjid circle, WhatsApp group; ≥ 5 on Tier B brands; ≥ 3 huffaz or regular daily readers; ≥ 2 elderly users on large-font settings | **Start ≤ 2027-01-11** (D-25), RCs every 3–4 days | Device coverage, adhan soak at scale, Urdu UX, text-error reports; Play pre-launch report |
-| Production staged rollout | Public | After gates (§12.6); Ramadan 1448 ≈ 8–9 Feb 2027 | See §14 |
+| Sideload (`fossPersonalRelease`, PERSONAL) | Owner only, on the owner's own devices (D-29: personal-only content never goes to third parties) | From P1, at least weekly | Daily-use dogfooding with personal-only content |
+| Play internal testing (`playPublicRelease`, BETA) | Owner + ≤ 5 family members | From the first BETA build that has an eligible layout pack (G1 granted, or the clean-room pack), weekly | Dogfooding the exact public-tier build |
+| Closed testing (`playPublicRelease`, BETA) | **≥ 15 testers** (to keep 12 opted in for 14 days if on a personal account, r09 §2.6): family, masjid circle, WhatsApp group; ≥ 5 on Tier B brands; ≥ 3 huffaz or regular daily readers; ≥ 2 elderly users on large-font settings | Opens **2027-01-11** at the latest; **2026-12-28** if G1 is granted and the build is ready (doc 09). RCs every 3–4 days | Device coverage, Urdu UX, text-error reports, Play pre-launch report (and the adhan soak at scale if B1 is in). Content: G1-cleared or clean-room mushaf only; PENDING audio allowed; banner until G5 |
+| Production staged rollout (`playPublicRelease`, PUBLIC) | Public | Go/No-Go 2027-01-25; rollout starts 2027-02-01, 100% by 02-05 (doc 09); Ramadan 1448 ≈ 8–9 Feb 2027. If the 2026-11-30 checkpoint triggers doc 09's launch rule, Ramadan runs as a closed-test release and public v1.0 moves to 2027-03-22 | See §14 |
 
 **Feedback channels (no SDKs, D-20):**
 - In-app **Send feedback**: an email intent pre-filled with app version, device model, Android version and locale, shown to the user before sending.
-- In-app **Report text error** (F-PL-05): page label, line, ayah key, chosen category and free text, sent by email or opening a prefilled GitHub-issue form. It goes into `data/curated/errata/<layout>.csv` triage.
+- In-app **Report text error** (F-PL-05): page label, line, ayah key, chosen category and free text, sent by an email intent with the structured subject from doc 02 §4.21 (no backend). It goes into `data/curated/errata/<layout>.csv` triage.
 - A beta WhatsApp group, with a pinned message on how to report and the weekly known-issues list.
 - Play closed-test private feedback and pre-launch report findings.
 
@@ -1320,7 +1322,7 @@ The personal sideload build is not produced here: it is built on the owner's mac
 
 | Severity | Definition | Response | Fix target |
 |---|---|---|---|
-| S1 | Quran text or mark error; crash or ANR on a core flow; adhan not firing; data loss (bookmarks or last-read) | Same day | Hotfix ≤ 48 h, or kill-switch now (text) |
+| S1 | Quran text or mark error; crash or ANR on a core flow; adhan not firing (once F-CP-02 ships); data loss (bookmarks or last-read) | Triage ≤ 24 h; reporter acknowledged ≤ 72 h | Text: signed notice or kill-switch ≤ 48 h, corrected build submitted ≤ 72 h of confirmation (doc 12 D-22). Other S1: hotfix build submitted ≤ 72 h |
 | S2 | Wrong index or scope (e.g. Para boundary), audio highlight wrong for a surah, download corruption | ≤ 2 days | Next RC |
 | S3 | UI or Urdu layout issue, minor perf | Weekly | Planned |
 | S4 | Suggestions | Backlog (doc 09) | — |
@@ -1328,9 +1330,9 @@ The personal sideload build is not produced here: it is built on the owner's mac
 **Closed-test exit criteria** (needed before production):
 - 0 open S1 and ≤ 3 open S2, each with a workaround;
 - in the Play Console closed-track vitals for the last 7 days: no crash cluster affecting > 1 tester, 0 ANRs on core flows;
-- MQ-AD soak passed on ≥ 4 OEM brands;
+- MQ-AD soak passed on ≥ 4 OEM brands (only if F-CP-02 is in the release via B1);
 - MQ-RD, MQ-AU, MQ-DL, MQ-UR and MQ-A11Y passed on Tier A and Tier B;
-- G5 certificate signed;
+- G5 certificate signed (target 2027-01-18) and `certified_pages.json` matching the release candidate's layout pack;
 - 14 days elapsed with ≥ 12 opted-in testers (personal account only).
 
 ---

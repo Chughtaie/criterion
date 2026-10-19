@@ -23,7 +23,7 @@ Status: Draft v1 — 2026-10-19
 | ID | Requirement | Phase | Acceptance criteria (testable) |
 |---|---|---|---|
 | F-AU-01 | Reciter catalogue + favourite qari, chosen in onboarding (F-PL-01) | P1 | The picker lists only recitations eligible for this build's content tier (`BuildConfig.CONTENT_TIER`, §3.4). Alafasy 123 is preselected. The choice persists across restarts. There are no reciter photos (D-12). Remote kill-switch takes effect ≤ 24 h after the catalogue is published. |
-| F-AU-02 | Play scopes: Surah, Para, Manzil, Ruku, Page, ayah range, single ayah, play-from-here | P1 | Every scope builds a correct plan (§7). Para uses the Indo-Pak table: Para 4 starts at **3:92**, P7 5:83, P11 9:94, P14 15:2, P20 27:60, P21 29:45, P23 36:22. A Play button exists on every Surah, Para and Manzil index row (F-IX-01..03), on ruku navigation (F-IX-04), and in the ayah sheet (F-RD-04). |
+| F-AU-02 | Play scopes: Surah, Para, Manzil, Ruku, Page, ayah range, single ayah, play-from-here, passage (multi-range, e.g. Manzil dua), whole Quran | P1 | Every scope builds a correct plan (§7). Para uses the Indo-Pak table: Para 4 starts at **3:92**, P7 5:83, P11 9:94, P14 15:2, P20 27:60, P21 29:45, P23 36:22. A Play button exists on every Surah, Para and Manzil index row (F-IX-01..03), on ruku navigation (F-IX-04), and in the ayah sheet (F-RD-04). |
 | F-AU-03 | Gapless playback + timing-driven highlight | P1 | The highlight changes within ±150 ms of the timing-table start (media time) in 95 % of transitions. Highlighting is off (playback still works) for surahs in `highlightDisabledSurahs`, for invalid packs, and when the ETag/length guard fails. |
 | F-AU-04 | Gapped verse-by-verse mode | P1 personal; public after G2 | Per-ayah items with item-exact highlight and the basmala rules (§7.4). Hidden in PUBLIC builds while `licenceStatus = PENDING`. |
 | F-AU-05 | Repeat ayah ×N, range ×M / ∞, pause after ayah (fixed or proportional) | P1 | The repeat counter shows "2/3". Pauses are accurate to ±100 ms and don't drop the FGS. Changing the repeat mid-playback keeps the current ayah. |
@@ -979,7 +979,7 @@ exo.createMessage { _, payload -> hub.onAyah(payload as VerseKey) }
 
 - **Message lifecycle.** Messages are kept in a list and `cancel()`ed whenever the playlist is replaced. They are scheduled for appended window items at append time.
 - **Delivery.** They fire in media time, so speed doesn't matter, and `deleteAfterDelivery(false)` makes them re-fire after a backward seek.
-- **After a seek or transition** (`onPositionDiscontinuity` with `DISCONTINUITY_REASON_SEEK` / `AUTO_TRANSITION`, or `onMediaItemTransition`), compute `binarySearch(starts, currentPosition + clipStart)`. It yields the ayah whose `start ≤ pos`, or the intro when `pos < start(first)`, and is published immediately.
+- **After a seek or transition** (`onPositionDiscontinuity` with `DISCONTINUITY_REASON_SEEK` / `AUTO_TRANSITION`, or `onMediaItemTransition`), compute `binarySearch(starts, currentPosition + clipStart)`. It yields the ayah whose `start ≤ pos`, or the intro when `pos < start(first)`, and is published immediately, **even when the ayah is unchanged** (hub contract 2).
 - **Initial segment at clip start:** `Intro(s)` if `a0 == 1` and `introEndMs > 300`, else `Ayah(s, a0)`.
 - **Highlight span.** Ayah *a* stays highlighted from `start(a)` until `start(a+1)`, including the trailing pause.
 
@@ -1041,7 +1041,7 @@ The reader computes the live position as `positionMs + (now − emittedAt) × sp
 
 **Contract.**
 1. It is updated only on the main thread.
-2. It emits on segment, status, plan, repeat-counter, speed, sleep or error changes; **never on position ticks** (≤ a few emissions per second). Every emission re-samples `positionMs`, so a seek inside the current ayah also emits (doc 05 cancels a stale pending turn on any new `seq`).
+2. It emits on segment, status, plan, repeat-counter, speed, sleep or error changes; **never on position ticks** (≤ a few emissions per second). It **also re-emits after every seek**, including a seek within the same ayah (`onPositionDiscontinuity` with `DISCONTINUITY_REASON_SEEK`), and on every repetition start, with a fresh `positionMs` sample and a new `seq`. Doc 05's follow-along depends on this to cancel and recompute a pending page turn.
 3. The highlight is **kept while paused**; it is cleared on IDLE / ENDED / stop.
 4. It is a Hilt `@Singleton` in the app process. The reader reads it directly, without IPC. When the service isn't running, the state is `IDLE`.
 5. `AyahCompleted` fires when an ayah's last repetition ends; `PlanEnded` when the plan finishes (after the last range pass); `Error` mirrors `state.error`. Doc 07 may use these for stats and hifz, which stay on-device (D-20).
