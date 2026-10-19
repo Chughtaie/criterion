@@ -191,7 +191,7 @@ The owner is accountable for every gate. External parties are named. Every decis
 - The Quran core alone (P0 eng + P1 + C) is **54.0 id, about 10 weeks**, against the 9 weeks of P0+P1. That is why some P1-catalogue items (search, Urdu string completion, repeat, gapped mode, zoom, ruku/sajda lists, a11y pass, storage manager, onboarding) land in S5–S7. They are still in v1.0.
 - At **30 h/week** the POR is 2.5 id over. Apply L5 and L6 in the S5 planning and keep L9 ready.
 - At **35 h/week**, the stretch tier (L1–L4) and B1–B3 come back.
-- The renderer, the pipeline and the audio engine (E-03, E-04, E-08: 30.75 id) are the irreducible core. Never trade them for companion features.
+- The renderer, the pipeline and the audio engine (E-03, E-04, E-08: 27.0 id committed) are the irreducible core. Never trade them for companion features.
 
 ### 4.1 Sprint loading (POR, plan rate 5.4 id/week)
 
@@ -212,7 +212,7 @@ The owner is accountable for every gate. External parties are named. Every decis
 
 | Checkpoint | Rule |
 |---|---|
-| End of S1 (2026-11-16) | Compute velocity = done id ÷ 2 weeks. If < 4.6 id/week (85% of plan), re-plan P2 now: pre-apply L5–L6, and drop E-04-S08 from S7 to v1.1. |
+| End of S1 (2026-11-16) | Compute velocity = done id ÷ 2 weeks. If < 4.6 id/week (85% of plan), re-plan P2 now: pre-apply L5–L6 and re-size the remaining ladder. |
 | End of S2 (2026-11-30) | If cumulative done < 90% of planned, apply L5–L7 to P2, which makes v1.0 Quran-only + khatam. If < 75%, also decide on lever 3 and warn that a closed-test-only Ramadan is likely. |
 | End of S3 (2026-12-14) | Freeze the v1.0 POR. Tier B pull-ins are allowed only if S3 closed ≥ 100%. |
 | End of S5 (2027-01-04) | Floor at risk (any F/C story not started)? Cut L9, then move M5 by ≤ 3 days. Never shorten the 14-day closed test. |
@@ -464,7 +464,7 @@ flowchart LR
   G --> H[Hafiz round 2 on device renders<br/>01-05 to 01-15]
   H --> I[G5 certificate 01-18]
   I --> J[Go/No-Go 01-25]
-  K[Closed test >= 01-11, 14 days] --> J
+  K[Closed test from 01-11, 14 days] --> J
   L[G1 permission 11-19] --> J
   M[G3 brand 12-14] --> N[Icon + listing S6-S7] --> J
   O[Play account / D-U-N-S] --> K
@@ -558,6 +558,8 @@ flowchart LR
 | E-23 Hosting & signed static files (R2) | 04 | — (enabler) | — | — | — | 1.5 | — | — | — | — | — | **1.5** |
 | E-24 Hardening & release readiness | 10 | — (enabler) | — | 1 | — | 1.5 | — | — | — | — | — | **2.5** |
 | **Total** | | | **7.75** | **35.5** | **10.75** | **12.5** | **6.5** | **2** | **21.5** | **2.5** | **3.5** | **102.5** |
+
+The 102.5 id total includes 2.5 id of conditional work (X). Without it, the full scope is 100.0 id; the POR (P0 + P1 + C + F + A + ADM) is 76.5 id.
 
 ### 11.2 Epic detail
 
@@ -925,3 +927,5 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 4. **External lead times.** D-U-N-S / Organization-account and Play review times are unverified. The 12-14 decision rule protects the 01-11 closed-test start.
 5. **Velocity.** AI-assisted velocity (5.4 id/week) is unproven. The S1 checkpoint (11-16) is the first real measurement, and the ladder should be re-sized then.
 6. **Clean-room operator.** The operator must be someone who has never opened the QUL/Waqar/QuranApp 16-line data. The owner has (Day 1), so the owner cannot be the operator. Budget and recruitment are needed only if G1 fails.
+7. **Pack manager.** F-PL-06 (content-pack & storage manager) is tagged P1. This plan delivers the **storage-manager half** in v1.0 (E-10-S04). The **pack half** (signed `index.json`, installer) arrives with B8 / v1.1, because no downloadable pack exists in v1.0: translations are bundled (D-09) and timing tables are bundled (assumption 5). Docs 04, 06 and 08 should treat the pack format as v1.1, with the signed-file verifier (E-23-S02) shared from v1.0.
+8. **Urdu UI.** F-PL-03 / D-21 (Urdu UI from MVP) is met at P1 exit for infrastructure and the language switch. **String-complete Urdu lands in S5** (E-13-S02, carry-over), before the closed test.
