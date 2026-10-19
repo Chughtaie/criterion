@@ -98,7 +98,7 @@ flowchart TB
   subgraph CoreImpl["Implementation core (bound via Hilt)"]
     DATA[":core:data [P0]<br/>repository impls, PackManager, ContentPolicy"]
     CON[":core:content [P0]<br/>Room3 RO: QuranContentDb + pack DB classes"]
-    DB[":core:database [P0]<br/>Room3 user.db + DataStore&lt;UserSettings&gt;"]
+    DB[":core:database [P0]<br/>Room3 user.db + typed DataStore UserSettings"]
     REM[":core:remote [P1]<br/>OkHttp, signed fetch (Ed25519), downloader, UIDT/Work hosts"]
     AU[":core:audio [P1]<br/>Media3 MediaLibraryService, PlaybackStateHub (doc 06)"]
     PR[":core:prayer [P2]<br/>adhan2, Hijri, qibla, location, alarms, adhan FGS, reminders"]

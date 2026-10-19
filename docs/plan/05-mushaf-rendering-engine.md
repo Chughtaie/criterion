@@ -106,7 +106,7 @@ flowchart LR
 
 - **tw (text width).** The text block width is 1.0 tw. All horizontal page geometry is in tw.
 - **x fractions.** `x0`, `x1` are integers in `frac_unit = 100 000` per tw. They are **LTR within the text block**: 0 = left edge, 100 000 = right edge. A justified line's first word in reading order has `x1 = 100000`.
-- **Slots.** Slots are 1..`lines_per_page` after the remap. Body y positions are given in **slot units** (for example 5.5 = centre of slot 5, measured from the top of the text block), so they scale with the runtime line pitch. Header and footer y positions are band fractions (0 = top of band, 1 = bottom).
+- **Slots.** Slots are 1..`lines_per_page` after the remap. Body y positions are given in **slot units**: slot *k* spans [k, k+1), so 5.5 is the centre of slot 5, and px = `textTop + (y − 1)·pitch`. They therefore scale with the runtime line pitch. Header and footer y positions are band fractions (0 = top of band, 1 = bottom).
 - **em.** The page em is `em_ratio × text width`. Ink extents and furniture sizes are in milli-em, relative to the baseline (negative = above).
 
 ### 3.3 Logical DDL (pack schema v1)
@@ -401,7 +401,8 @@ for each AYAH line at page em E (L = 1/E em available):
     assert |x + g·E·scale| < 1e-4  (left edge reached exactly)
     line.scale = scale; line.gap_em = g
 # 3. vertical metrics (mushaf-wide)
-pitch_min = 1.05 × max over lines of (max ink_bottom − min ink_top) × E_line / 1000     # no slot collisions
+pitch_min = 1.05 × max over vertically adjacent lines (a above b) of
+            (max ink_bottom(a) − min ink_top(b)) / 1000 × em(p)·scale   # descent of a + ascent of b, tw; no collisions
 baseline_offset_em = −(median ink_top + median ink_bottom) / 2 / 1000                   # ink centred in slot
 ```
 
@@ -456,7 +457,7 @@ Pipeline report (CI artefact): the distribution of `gap_em` per variant, the cou
 
 ```
  ┌───────────────────────────────────────────────────────────────┐
- │  الهمزة ۱۰۴ العصر ۱۰۳        ۵۴۴         عمّ ۳۰               │  ← header band (above frame)
+ │  ‹surah(s) + no.›          ‹label›         ‹Para words + no.›  │  ← header band (above frame)
  │ ╔═══════════════════════════════════════════════════════╗     │
  │ ║ ───────────────────────────────────────────────────── ║  ع  │  slot 1     ← outer margin strip
  │ ║ ───────────────────────────────────────────────────── ║ ۱/۵ │  slot 2       (ruku badge, labels)
@@ -467,7 +468,7 @@ Pipeline report (CI artefact): the distribution of `gap_em` per variant, the cou
  │ ╚═══════════════════════════════════════════════════════╝     │
  │                          منزل ۷                                │  ← footer band
  └───────────────────────────────────────────────────────────────┘
-   inner margin                                     outer margin (RIGHT because label 544 is even)
+   inner margin                                     outer margin (RIGHT because the label is even)
 ```
 
 (The strings are illustrative. The header is **not mirrored**: Para on the right, page label in the centre, surah(s) on the left, on every page.)
@@ -825,7 +826,7 @@ The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04
   - Traversal follows reading order (`isTraversalGroup` on the overlay, `traversalIndex` = order on the page).
 - **Page node.** "Page {label} of 549, Para {n}, {surah}". The pager exposes scroll actions, so TalkBack can turn pages with a two-finger swipe.
 - **Fatiha numbering in a11y labels.** Labels use Kufan numbers (1:1 = basmala), matching audio and translation.
-- **Touch targets.** Ayah boxes are ≥ 48 dp tall at default zoom on phones (pitch ≈ 0.135 tw ≈ 122 px at 1080 px).
+- **Touch targets.** Single-line ayah boxes are ≈ 46 dp tall at default fit on a 1080-px, 420-dpi phone (pitch ≈ 0.135 tw ≈ 122 px). Multi-line ayahs are larger, and zoom raises the size further.
 - **Font scale.** The fixed mushaf page doesn't follow the system font scale; zoom does, and "Large text" reflow (P3) follows it.
 - **Contrast.** §9 rules, enforced by `ThemeContrastTest`.
 - **Tests.** Compose semantics tests (every ayah of index 4 has a node with the right label and 6 custom actions), plus a manual Accessibility Scanner and TalkBack pass per release ([Quality & CI](10-quality-testing-ci.md)).
@@ -923,7 +924,7 @@ The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04
 |---|---|---|
 | `KashidaDeviceTest` (P0, before the reader sprint) | Physical API 24/25 + emulators API 26, 30, 35 (KVM CI runner) | `getRunAdvance` at `textSize = 1000` with the shipped TTF: الْكِتٰبُ = 2060 / 2847 / 3615 / 4384 (cv01 0..3) and بِسْمِ = 1216 / 1405 / 1594 / 1783, within ±0.5% (g04 §2.7) |
 | `DrawTextRunOriginTest` | Same | The ink of a run drawn at x with `Align.LEFT`, RTL starts ≥ x and ends ≤ x + advance |
-| `FullBookCaptureTest` (debug build, nightly + release) | API 30 emulator + the physical low-end device | Renders all 548 pages offscreen at 1080 px width. Perceptual diff (SSIM ≥ 0.98) against the pipeline's PNG proofs. Pages below the threshold are listed for human review. This closes the gap between the proof the hafiz signs and what users see (FC-8). |
+| `FullBookCaptureTest` (debug build, nightly + release) | API 30 emulator + the physical low-end device | Renders all 548 pages offscreen at 1080 px text-block width with `pitch_nominal`, the same geometry as the pipeline PNGs. Perceptual diff (SSIM ≥ 0.98) against the pipeline's PNG proofs. Pages below the threshold are listed for human review. This closes the gap between the proof the hafiz signs and what users see (FC-8). |
 | `ReaderSmokeTest` | API 24, 30, 35 | Open → swipe 10 → long-press → sheet → play from here → auto page-turn within 1 s of the ayah boundary |
 
 ### 14.5 Pipeline-level proofs ([Data pipelines](08-data-pipelines.md))
@@ -977,7 +978,7 @@ class PageGeometry private constructor(
     val fontPx get() = model.emRatio * s
     fun x(frac: Float) = textLeft + frac * s
     fun slotTop(slot: Int) = textTop + (slot - 1) * pitchPx
-    fun slotCenter(slotUnits: Float) = textTop + (slotUnits - 0.5f) * pitchPx
+    fun slotY(slotUnits: Float) = textTop + (slotUnits - 1f) * pitchPx      // slot k spans [k, k+1)
     fun baseline(slot: Int, scale: Float) =
         slotTop(slot) + pitchPx / 2f + model.spec.baselineOffsetEm * fontPx * scale
     fun spanRect(span: SlotSpan, inset: Float = 0.08f) = Box(
@@ -1049,7 +1050,7 @@ class HitTester(private val geo: PageGeometry) {
         }
     }
     private fun markerAt(u: Float, v: Float): Hit = geo.model.markers.firstOrNull { m ->
-        isInOuterMargin(u) && kotlin.math.abs(v + 0.5f - m.yCenterSlot) < markerHalfHeight(m.kind)
+        isInOuterMargin(u) && kotlin.math.abs((v + 1f) - m.yCenterSlot) < markerHalfHeight(m.kind)   // v+1 = slot units
     }?.let { Hit.Marker(it) } ?: Hit.None
     private fun isInOuterMargin(u: Float) = if (geo.model.outerSide == Side.RIGHT) u > 1f else u < 0f
     private fun markerHalfHeight(k: MarkerKind) = if (k == MarkerKind.RUKU) 0.8f else 0.7f
@@ -1100,7 +1101,7 @@ class PageRenderer @Inject constructor(private val ornaments: OrnamentPainters) 
             for (r in geo.model.furniture) {
                 if (!geo.marginsShown && r.band == BAND_MARGIN) continue
                 val p = paints.get(geo.fontPx * r.sizeEm, r.kashida)
-                val (x, y) = geo.furnitureOrigin(r, p)            // band → px; baseline from y centre
+                val (x, y) = geo.furnitureOrigin(r, p)            // ext. fn in :core:mushaf-ui: band → px, baseline from y centre
                 if (r.rotation == 0) nc.drawTextRun(r.text, 0, r.text.length, 0, r.text.length, x, y, true, p)
                 else nc.withRotation(r.rotation.toFloat(), geo.furnitureCenterX(r), geo.furnitureCenterY(r)) {
                     drawTextRun(r.text, 0, r.text.length, 0, r.text.length, x, y, true, p) }
@@ -1205,7 +1206,7 @@ class FollowAlongController(
     private fun canAutoTurn() = now() - lastUserTouch >= 8_000
 
     fun start() = scope.launch {
-        hub.distinctUntilChanged { a, b -> a.ayah == b.ayah && a.isPlaying == b.isPlaying }.collect { st ->
+        hub.distinctUntilChanged { a, b -> a.ayah == b.ayah && a.isPlaying == b.isPlaying && a.speed == b.speed }.collect { st ->
             pending?.cancel()
             val ayah = st.ayah ?: return@collect
             if (!st.isPlaying || !followEnabled()) return@collect

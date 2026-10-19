@@ -223,61 +223,75 @@ Module names follow r07 §2.10; doc 04 owns the final list.
 
 ---
 
-## 4. L2 — content invariants (INV-01 … INV-23)
+## 4. L2 — content invariants (app-side mirror of doc 08 §11)
 
-**Where they run.**
-1. **Pipeline (source of truth, doc 08).** The pytest/assert gates run while building `quran_content.db` and the packs. A failure stops the build.
-2. **App side.** `:core:content` `ContentInvariantsTest` (Robolectric + `BundledSQLiteDriver`) runs the same checks against **the exact asset file that will be packaged**, plus Room's open path. This catches drift between pipeline and app: wrong asset version, stale lock file, schema mismatch.
+**Two layers.**
+1. **Pipeline: the source of truth.** Doc 08 §11 owns the invariant IDs and thresholds; this doc never restates a number differently. `crit validate all` runs them in `tools.yml`:
+   - **V-C01–V-C24**: content DB;
+   - **V-M01–V-M19**: mushaf pack;
+   - **V-P01–V-P06**: translation and tafsir packs;
+   - **V-T01–V-T10**: timing packs;
+   - **V-X01–V-X08**: catalogue, index, feeds and geo.
+2. **App side: the same facts through the app's own read path.** The suites are `ContentInvariantsTest` (`:core:content`), `MushafPackInvariantsTest` + `FontInvariantsTest` (`:core:mushaf-render`), `PackInvariantsTest` (translations) and `TimingPackInvariantsTest` (`:core:audio`). They re-check every invariant that can be checked from the shipped files, through Room + `BundledSQLiteDriver`, our DAOs and repositories, and our font loading. They read the **LFS-committed assets exactly as packaged** (doc 08 §2). This catches what the pipeline cannot see:
+   - a stale or wrong asset, or an LFS pointer file instead of the binary;
+   - Room schema or identity drift;
+   - DAO and query bugs;
+   - normalizer divergence;
+   - geometry drift between `word_pos` and our renderer.
 
-Expected constants live once in `tools/content-spec/expected.json`. Both sides read it, so the numbers are never duplicated by hand.
+   Every test name and failure message carries the doc 08 ID, so a red build points at the matching pipeline check.
 
-| ID | Invariant (all must hold for `taj16` + base content) | Source |
+**Double entry.** The app-side tests read the same curated CSVs the pipeline builds from (`data/curated/paras.csv`, `manzils.csv`, `sajdas.csv`, `para_quarters.csv` …, copied as test resources by a `copyCuratedTestData` Gradle task), so DB = CSV is checked twice. The **L1 tests in §3.1 also hard-code the D-07 facts as Kotlin literals**: the 7 Indo-Pak Para starts, 18n−16, the by-end ruku vector, the manzil surahs, and the sajda set. A mistaken CSV edit therefore fails against the Decision Register, not just against itself.
+
+| Doc 08 IDs | App-side test | What the app side adds |
 |---|---|---|
-| INV-01 | 114 surahs; 6,236 ayahs; per-surah ayah counts equal Tanzil `quran-data.js`; global ids 1..6236 contiguous | D-06, r05 |
-| INV-02 | Tanzil Uthmani and Simple-Clean texts are **verbatim**: per-column SHA-256 of the concatenated source text equals the pinned source hash (CC BY 3.0 "changing it is not allowed") | D-08 |
-| INV-03 | DK token stream: **83,669 tokens, 77,433 words, 6,236 ends (6,235 numbered + 1 bare), 118 U+08E2, 1 U+202E, 558 U+08D6, 15 U+08DB, 0 standalone-mark tokens**. 114 surah-title lines and 112 basmala lines are skipped | g01 §2.8 step 3 |
-| INV-04 | DK ↔ QUL mapping: 83,668 QUL word positions, every one mapped. Identity except **72:16 (QUL w1 = DK t1–2)**. First/last skeleton match per line, with the **frozen whitelist {4:112:3, 18:19:34, 59:13:1}**. The whitelist size never grows without a hafiz decision recorded | D-06, g01 |
-| INV-05 | Layout: **548 pages × 16 slots**. Every DK token appears exactly once and in reading order. Every ayah line maps to a contiguous range. Empty slots restored on pp. 1–2 and 548. **p.529 header/basmala order fixed**. 80 `SURAH_NAME_WITH_BASMALA` lines + 32 separate basmala lines (incl. surah 2's, in the sar-lauh panel) = 112. Surah 9 is title-only. Index 1 remapped to slots 10/11/12–16 (sar-lauh template on indices 1–2) | g01, g02 §3 rec 9 |
-| INV-06 | Para table = D-07 exactly: 30 rows, the 7 Indo-Pak starts, start page_index 18n−16 (n = 1..28), 508, 528, each starting at the top line. Names equal the frozen list | D-07, g02 |
-| INV-07 | 7 manzils starting at surahs 1, 5, 10, 17, 26, 37, 50, on page_index **[1, 96, 187, 254, 330, 401, 466]**. `page.footer_manzil` = manzil of the page's last ayah, for all 548 pages | D-07, g01 step 9, g02 rec 8 |
-| INV-08 | Rukus: **558** rows that partition all 6,236 ayahs contiguously. Surah ruku counts match the header strings (Shu'ara 11, Qasas 9, Luqman 4). Ruku ends at **26:51, 26:68, 28:82, 31:30, 56:38** (not 56:40). `para_ruku` NULL only for Fatiha. Para of a ruku = Para of `last_ayah`. Per-Para by-end counts = **16,16,17,14,17,14,19,17,18,17,16,16,19,22,21,17,17,17,19,16,19,18,17,19,20,18,20,20,22,39** | D-07, g02 §1 #5–8 |
-| INV-09 | Sajda: 15 rows. `print_no` 1..14 unique, including 38:24. 22:77 is `shafii_only` with label «السجدة عند الامام الشافعی رح». The positions equal the 15 U+08DB marks in DK | D-07, g02 |
-| INV-10 | Para quarters: **90 rows** (30 × 3), strictly ordered within each Para. Corrections present: P4 ¾ = 3:198, P7 ¼ = 5:113, P7 ¾ = 6:73 word 10. **Release builds additionally require `verified_source IS NOT NULL` on all 90** (53 still need hand-checking, g02 rec 6) | D-07 |
-| INV-11 | `ayah_marker`: **6,354 rows = 6,236 Kufan ends + 118 «۵» disputed marks**. A disputed mark is never an ayah boundary (no audio, highlight or count effect). The `taj16` Fatiha display override has 7 rows with `show_number = 0`; data keys stay Kufan | D-06, g02 rec 2–3 |
-| INV-12 | Pages: `page_label = page_index + 1` (2..549). `mushaf.first_page_label = 2`. `outer_margin = 'R'` iff the label is even. Header Para/surah fields are non-null on every page | D-04, g02 |
-| INV-13 | 114 surah header strings exist, match the generator rule («سورة {name} {مكية/مدنية} وهي … آية و … ركوعات», rukus omitted for 1), and carry a `proofread = 1` flag before release | g02 rec 10 |
-| INV-14 | Font: the shipped TTF SHA-256 equals the pipeline's regenerated conversion of `indopak.otf` @4213fab (source SHA-256 pinned). **The `cv01` feature is present and active**: الْكِتٰبُ advance is 2060 at cv01=0 and **2847** at cv01=1 (upem 1000). This guards against shipping the cv-less QUL CDN font (g04 §1 #11a). **0 `.notdef`** over all words after shaping | D-05, g04 |
-| INV-15 | Justification: per line, Σ(width_frac) + gaps ≤ 1.0 + 1e-6 (no overflow). `cv01 ∈ {0,1,2,3}`. Word x-positions decrease monotonically (RTL). Inter-word gaps ≥ 0.10 em hard and 0.18–0.31 em target band (warn outside; r04 §2.5). Centered lines (headers, basmala, short last lines) are flagged and not justified | D-05, r04 |
-| INV-16 | Search: each FTS table has 6,236 rows (Arabic) or the translation's row count. Golden queries over the 3 Arabic columns: الصلاة 55, الصلوة 55, السماوات 180, السموت 180, يأيها الذين آمنوا 90, ابرهيم 40, إبراهيم 56, مالك يوم الدين 1, ملك يوم الدين 1, إِيَّاكَ نَعْبُدُ 1 (r05 §2.7.5, measured under FTS4). Single-column `text_norm` (g04): الرحمن 45 (first = 1:1), trigram رحم 201. **The FTS5 baseline is captured from DB v0 in P0, reviewed and frozen; later changes need a reviewed diff** | D-11 |
-| INV-17 | Python and Kotlin normalizers are byte-identical on `normalizer_vectors.json`, including the 6,236 × 3 normalized-column hashes | D-11 |
-| INV-18 | Translations (base: Urdu Junagarhi + Ahsan-ul-Bayan footnotes, English Saheeh): rows keyed by Kufan key, covering 6,236 (merged-verse rows explicit). Source SHA-256 and QuranEnc version recorded. Text unmodified vs source. Attribution strings exact (Saheeh → "Noor International Center"). No translation row lacks a matching Arabic ayah | D-09 |
-| INV-19 | Hygiene: the search, copy and TTS columns contain no PUA or control characters. **No pipeline input URL or host matches quran.com / api.quran.com / quran.foundation / qurancdn.com** (QF terms, r05 risk) | D-08, D-09 |
-| INV-20 | Room: the `room_master_table` identity hash equals the exported schema's hash. `PRAGMA user_version` = `@Database(version)`. **The no-master copy opens and passes `onValidateSchema`**. FTS tokenizer options equal the schema (`unicode61`, `trigram`) | D-10, g04 §2.4 |
-| INV-21 | Licence metadata: every source in `content_meta.sources_json` and every pack has licence, attribution, URL, retrieved-at and `commercialOk`. The credits screen (F-PL-04) resolves every entry. Non-commercial content is absent from monetized builds | D-17, D-22 |
-| INV-22 | Timing packs, per recitation and surah (g03 §2.6): ayahs 1..n complete; strictly increasing; `end > start`; intro stored as ayah 0; last end ≤ duration + 1,000 ms (clamped); guard tuple (content_length, etag, duration_ms) present; letter-count off-by-one detector selects k = 0 after repair (r ≥ 0.6). Expected **DISABLE** list asserted (e.g. 118 s1/s21; 112 s9/52/53; 31 s12/40/80; 92 s4). Never read 74 or 53. Timing host = audio host | D-12, g03 |
-| INV-23 | Signed indexes: `index.json` and `catalogue.json` verify with the release public key. Each listed file's size and sha256 match the published object. `minAppVersion` ≤ current. Kill-switch entries are well-formed | D-10, D-24 |
+| V-C01, V-C02 | `ContentInvariantsTest.counts`, `.tanzilVerbatim` | Counts through `QuranRepository`. Verbatim: the hash of DAO-returned Uthmani/imla'i text equals the source hash in `content_meta` (CC BY 3.0 "no changes", D-08) |
+| V-C03, V-C05, V-C06 | `.ayahMarkers` | 6,354 markers via DAO. `AyahBoundaryProvider` (used by audio, highlight and counting) **never** treats one of the 118 «۵» marks as a boundary |
+| V-C07, V-C08, V-C09, V-M03 | — (pipeline only) | Needs QUL inputs that the app repo does not hold |
+| V-C10, V-M05 | `.paraStarts` | + `ParaTableTest` (L1 literals). `PageRepository.paraOf(page)` is correct on all 548 pages |
+| V-C11, V-M06, V-M07 | `.manzils`, `.pageFurniture` | Footer manzil, header Para/surahs and outer-margin side through `PageRepository` for all 548 pages |
+| V-C12, V-M10 | `.rukus` | + `RukuTest` (L1 literal vector 16,16,17,…,39). `RukuNavigator` next/prev visits all 558 in order |
+| V-C13 | `.sajdas` | The 22:77 label string as the UI shows it; the F-IX-06 list has 15 entries |
+| V-C14, V-C15 | `.quarters` | `verified_source` non-null whenever `BuildConfig.PROFILE != "personal"`. 6:73 word 10 anchor resolvable by "jump to quarter" |
+| V-C16 | `AliasTest` | Alias resolution through `SearchRepository` (yaseen → 36 first) |
+| V-C17 | `.surahHeaders` | Header string as drawn equals the DB row (also covered by goldens) |
+| V-C18 | `SearchInvariantsTest` | The r05 query vectors run through the **app's** Kotlin normalizer + FTS5 query builder, not the pipeline's SQL, and must give the same counts. Any re-baseline is a reviewed change in both docs |
+| V-C19 | `NormalizerParityTest` (§3.3) | Kotlin side of `normalization_vectors.json`: byte-identical output |
+| V-C20, V-C21 | `PrepackagedSchemaTest` (§5.2) | The **no-master open** (forces `onValidateSchema`), bad-hash and tokenizer-mismatch negatives, re-copy on version bump. The same open tests run for every pack DB type (`MushafPackDb`, `TranslationPackDb`, `TimingPackDb`) |
+| V-C22 | `.hygiene` + `CopyShareSanitizerTest` | The sanitizer is applied on every copy, share and TTS path (lint rule `NoRawQuranTextShare`, §11.2) |
+| V-C24, V-X04 | `CreditsCoverageTest` | Every attribution row and every pack/recitation attribution resolves to an F-PL-04 entry in en and ur |
+| V-M01, V-M02, V-M04, V-M08, V-M09, V-M11 | `MushafPackInvariantsTest` | Through `PageLayoutRepository` → geometry engine. Sar-lauh remap of index 1 honoured by hit-testing. Taj Fatiha shows no digits |
+| V-M12, V-M15, V-M16 | `FontInvariantsTest` (NATIVE graphics) | The shipped TTF loads through the app's `Typeface` path. الْكِتٰبُ advance is 2060 at cv01=0 and **2847** at cv01=1 (upem 1000), which guards against the cv-less QUL CDN font (g04 §1 #11a) |
+| V-M13, V-M14 | `GeometryParityTest` (§7.1) | App geometry equals `word_pos` within 0.5% of line width on all 548 pages |
+| V-M17 | `.ayahPage` | `ayahPage(key)` for all 6,236 keys equals the page auto page-turn targets |
+| V-M18, V-M19 | Release gate (§12.6) | — |
+| V-P01–V-P05 | `PackInvariantsTest` | Bundled Junagarhi (+ Ahsan-ul-Bayan footnotes) and Saheeh open through Room. Every translation row has its Arabic ayah (D-22). Attribution strings exact (Saheeh → "Noor International Center") |
+| V-T01–V-T08, V-T10 | `TimingPackInvariantsTest` | `AyahTracker` over each bundled timing pack never yields an ayah outside the surah. The guard tuple is present. Disabled surahs surface as `highlight = DISABLED` |
+| V-X01–V-X03, V-X05, V-X06 | `SignedIndexVerifierTest`, `CatalogueEligibilityTest` (§3.5) | The bundled envelope snapshots verify with the committed public key (`data/keys/`) |
+| V-X07, V-X08 | `CityDbTest`, `MonthStartFeedTest` | — |
 
-Pre-release only (not on every PR): the **owner's 5 checkpoint pages** from his own copy (labels 2, 39, 70, 115, 483; g02 §4) match our render, and this is checked off in the certificate (§10).
+**App-only content checks** (no doc 08 equivalent):
+- `verifyLfsAssets` (§11.3): every packaged `.db`/`.sqlite`/`.ttf` is a real binary, not a Git LFS pointer.
+- `content_meta.build_id` of each packaged asset is printed into the release notes, and must match the `build_id` the G5 sign-off covers (§10.2).
+- The owner's 5 checkpoint pages (labels 2, 39, 70, 115, 483; g02 §4) are compared with our **app** render, not only the proof PDF, before the first public release.
 
 **App-side sketch** (`:core:content`, Robolectric):
 
 ```kotlin
 @RunWith(RobolectricTestRunner::class)
 class ContentInvariantsTest {
-    private val spec = ExpectedSpec.load()            // tools/content-spec/expected.json (copied as test resource)
-    private val db = TestContentDb.openShippedAsset() // createFromAsset + BundledSQLiteDriver, read-only
+    private val curated = CuratedData.load()           // data/curated/*.csv copied as test resources
+    private val repo = TestContentDb.openShippedAsset() // createFromAsset + BundledSQLiteDriver, read-only, via QuranRepository
 
-    @Test fun inv01_counts() = runTest {
-        assertThat(db.count("SELECT COUNT(*) FROM ayah")).isEqualTo(6236)
-        assertThat(db.ayahsPerSurah()).containsExactlyElementsIn(spec.ayahsPerSurah).inOrder()
+    @Test fun `V-C01 counts`() = runTest {
+        assertThat(repo.ayahCount()).isEqualTo(6236)
+        assertThat(repo.ayahsPerSurah()).containsExactlyElementsIn(curated.ayahsPerSurah).inOrder()
     }
-    @Test fun inv06_paraStarts() = runTest {
-        spec.paraStarts.forEach { (para, key, pageIndex) ->
-            assertWithMessage("Para $para").that(db.paraStart(para)).isEqualTo(key to pageIndex)
-        }
+    @Test fun `V-C10 V-M05 para starts`() = runTest {
+        curated.paras.forEach { p -> assertWithMessage("V-C10 Para ${p.number}").that(repo.paraStart(p.number)).isEqualTo(p.startKey to p.startPageIndex) }
     }
-    @Test fun inv08_rukuPerPara() = runTest { assertThat(db.rukusPerParaByEnd()).isEqualTo(spec.rukusPerPara) }
-    // … one @Test per INV id; the message always names the INV id for triage
+    @Test fun `V-C12 rukus per para by end`() = runTest { assertThat(repo.rukusPerParaByEnd()).isEqualTo(D07.RUKUS_PER_PARA) }
+    // … one test per mirrored ID; failure messages always name the doc 08 ID
 }
 ```
 
@@ -715,61 +729,61 @@ Devices: Infinix or Tecno, Samsung A, Redmi, Vivo Y, Oppo A, and the owner's pho
 
 ## 10. Content QA: proofreading, certificate, render regression
 
-### 10.1 Hafiz proofreading workflow (G5, D-22)
+Doc 08 §5.6 and §14 own the proof tooling (`proof.py`) and the sign-off data:
+- `proof/<layout>/<build_id>/para-NN.pdf` plus 1260 px PNGs;
+- `page_hash` per page;
+- `delta-<build>.pdf` for changed pages;
+- `data/curated/errata/<layout>.csv`;
+- `data/legal/proofreading/<layout>-<build>.signoff.csv`;
+- release gate **V-M19**.
+
+This section defines the **QA process** around that tooling and the app-side regression checks.
+
+### 10.1 Hafiz proofreading process (G5, D-22)
 
 ```mermaid
 flowchart LR
-  P[Pipeline build vN] --> R[Render all 548 pages to PDF<br/>app-equivalent geometry + font]
-  R --> H1[Pass 1: Hafiz A<br/>full read vs owner's Taj print]
-  H1 --> L[(content-qa/issues.csv)]
-  L --> F[Fix in pipeline<br/>(data rule / override, never hand-edit DB)]
-  F --> D[diff_renders vN→vN+1]
-  D --> H2[Pass 2: Hafiz B<br/>changed pages + 10% sample + golden set]
-  H2 -->|0 open issues| C[Sign certificate<br/>bound to content sha256]
-  C --> G[G5 cleared for this layout+version]
+  P[tools.yml build<br/>build_id B1] --> R[proof PDFs para-01..30<br/>+ special-decision sheet]
+  R --> H1[Pass 1: Reviewer A<br/>all 548 pages vs owner's Taj print]
+  H1 --> E[(data/curated/errata/taj16.csv)]
+  E --> F[Fix as pipeline rule / override<br/>never hand-edit a DB]
+  F --> D[delta PDF: pages whose page_hash changed]
+  D --> H2[Pass 2: Reviewer B<br/>delta pages + 10% sample + golden set]
+  H2 -->|0 open errata| S[signoff.csv rows OK ×548<br/>+ signed certificate]
+  S --> G[V-M19 passes → G5 cleared for build family]
 ```
 
-- **Reviewers:** two qualified huffaz or qaris, ideally one with a madrasa sanad (owner to source). The fee and SLA are agreed in writing. Effort: Pass 1 is **15–20 h** for 548 pages (g01 §3 rec 7 budget); Pass 2 is 4–6 h.
-- **Packet.** The pipeline produces:
-  - `proof-<layout>-<contentVersion>.pdf`: one page per sheet with page label, line numbers 1–16 in the margin, and the page's ayah range;
-  - a page checklist (`proof-checklist.csv`: page, reviewer, status, notes);
-  - the special-decision sheet. Items on it: 59:13 and 27:21 spellings; the 4:112:3 and 18:19:34 whitelist entries; Fatiha display; the U+202E handling; the 53 unverified quarter marks (≈ 45 min hand-check, g02 rec 6); the 114 surah header strings (≈ 75 verified so far, g02 rec 10).
-- **Issue log** `content-qa/issues.csv`: `id, page_label, line, word_index, category{text, harakat, waqf, ayah_marker, ruku, sajda, quarter, manzil, para, header, ornament, layout}, severity{S1 text/marks, S2 marker/metadata, S3 layout/ornament}, found_by, decision, fix_commit, verified_by`.
-- **Fix rule.** Every fix is a pipeline rule or override table row (doc 08) with a test. **Nobody edits the SQLite file by hand.**
-- **Owner checkpoint.** The owner photographs labels 2, 39, 70, 115 and 483 from his own copy (edition variance, g02 §4). They are compared side by side and recorded in the certificate.
-- The print and scan images are used **for QA only**. They are never committed, shipped or uploaded as CI artifacts (g02 rec 12).
+- **Reviewers.** Two qualified huffaz or qaris, ideally one with a madrasa sanad; the owner sources them. Fee and turnaround are agreed in writing.
+- **Effort.** Pass 1 takes **15–20 h** for 548 pages (g01 §3 rec 7 budget). Pass 2 takes 4–6 h. Reviewer B is a second pair of eyes; doc 08's loop needs only one reviewer per round, and this second pass is our added QA requirement for the first public certificate of each layout.
+- **Special-decision sheet.** Doc 08 §14 lists the known decisions. QA adds:
+  - the U+202E handling;
+  - the 4:112:3 / 18:19:34 whitelist entries;
+  - the 7 Indo-Pak Para-start pages, read as a set.
+- **Errata severity** (column added to `errata/taj16.csv` triage):
+  - **S1**: wrong letter, harakat or waqf mark; missing or extra word or ayah marker;
+  - **S2**: wrong ruku, sajda, quarter, manzil or Para marker or header;
+  - **S3**: layout, ornament or spacing.
 
-### 10.2 Proofreading certificate
+  Any S1 or S2 open blocks the sign-off.
+- **Owner checkpoint.** Before round 1, the owner's photos of labels 2, 39, 70, 115 and 483 are compared with the proof (doc 08 §14) **and** with the app render (§4).
+- The print and scan images are used for QA only. They are never committed, shipped or uploaded as CI artifacts (g02 rec 12).
 
-Stored as `docs/legal/proofreading/<layout>-<contentVersion>.pdf` (signed scan) plus a machine-readable entry in `docs/legal/proofreading/certificates.yml`:
+### 10.2 Certificate and its binding to the app build
 
-```yaml
-- layout: taj16                      # D-04
-  content_version: 2026.12.1
-  content_db_sha256: "<sha256 of quran_content.db>"
-  font_sha256: "<sha256 of shipped TTF>"
-  pages: 548
-  scope: [arabic_text, harakat, waqf_marks, ayah_markers, ruku, sajda, para, manzil, quarters, surah_headers]
-  reviewers:
-    - { name: "<Hafiz/Qari name>", qualification: "<sanad / institution>", pass: 1, date: 2027-01-05 }
-    - { name: "<second reviewer>", qualification: "<…>", pass: 2, date: 2027-01-09 }
-  open_issues: 0
-  statement: "I have read every page of this layout against the Taj Company 16-line print and found it free of error."  # Urdu + English
-  owner_checkpoints: [2, 39, 70, 115, 483]
-```
+- **Certificate content** (doc 08 template; legal wording from doc 11): layout, `build_id`, page count 548/548, reviewer names and qualifications, a statement mirroring Punjab Act 2011 s.5(3), signature and date. The scan is stored privately; its SHA-256 is committed next to `signoff.csv`.
+- **Binding.** **V-M19** requires every page's current `page_hash` to have an `OK` row and a certificate for the build family. The app release gate (§12.6) adds one check: the `build_id` inside the **packaged** `mushaf.taj16.sqlite` and `quran_content.db` (from `content_meta`) must be one that `crit validate all --profile public` just validated. That way the APK cannot carry an uncertified asset even when the repo's LFS copy is correct.
+- **Re-certification scope** = pages whose `page_hash` changed (doc 08 delta PDF). A font change (new `font_sha256`) forces doc 08's 30-page sample re-review. Personal-profile builds skip the gate but show "pre-release text — not yet certified" on the credits screen.
 
-**CI enforcement.** The release workflow computes the SHA-256 of the packaged content DB and font. **Public-track builds fail unless a `certificates.yml` entry matches both hashes with `open_issues: 0`** (G5). Personal and internal builds skip this check but show a "pre-release text — not yet certified" line on the credits screen.
+### 10.3 Render regression between versions (app side)
 
-### 10.3 Render regression diffing between pipeline versions
-
-The tool is `tools/mushaf-pipeline/diff_renders.py <vA> <vB>`. It runs in the data-pipeline workflow on every content-version bump and on demand.
-1. **Data diff.** Per page it compares the `word` text, `line` ranges, `ayah_marker`, `margin_marker`, `page` furniture and `word_pos` (x-fraction deltas > 0.001).
-2. **Pixel diff.** Pages are rendered at 1260 px. It reports the changed-pixel ratio and an overlay image (A red / B blue).
-3. **Classification** of every changed page:
-   - **TEXT**: any word text, harakat, waqf or marker change. Needs hafiz re-check of those pages.
-   - **LAYOUT**: justification, positions or ornaments only. Needs owner visual review.
+`page_hash` covers the **data**. The app's **pixels** can also change when we edit the renderer, ornaments, themes or Compose code. That case is covered by:
+1. **Mushaf goldens (§7).** Zero tolerance, so any pixel change on a golden page fails PR CI.
+2. **Full 548-page nightly** (§12.3). It diffs against the stored baseline for the current (`build_id`, renderer version) and emits `compareRoborazzi` HTML (side-by-side + overlay) as an artifact.
+3. **Classification at approval** (PR template checkbox):
+   - **DATA**: `page_hash` changed (from `tools.yml`). The hafiz delta re-review is mandatory before a `public` release.
+   - **RENDER-ONLY**: `page_hash` unchanged, pixels changed (renderer, ornament, theme). The owner reviews the overlay report. Glyph-shape changes that come from the renderer, e.g. a new font-feature setting, are escalated to the hafiz as a 30-page sample, mirroring doc 08's font rule.
    - **NONE**.
-4. **Output.** `render-diff-<vA>-<vB>.html` (artifact, retained 90 days), plus `recert-scope.json` listing the TEXT pages. A certified layout whose new version has TEXT pages needs a **delta certificate** for exactly those pages, with the certificate entry `scope: delta, pages: [...]`. A LAYOUT-only change keeps the previous certificate but records the owner's review.
+4. **Cross-check with pipeline proofs.** For each golden page, the pipeline's 1260 px proof PNG (doc 08 §5.6) and our app render go into the review report side by side. They are not pixel-compared, because the rasterizers differ; `GeometryParityTest` carries the numeric comparison.
 
 ### 10.4 Translation and audio content QA
 
@@ -829,55 +843,65 @@ The tool is `tools/mushaf-pipeline/diff_renders.py <vA> <vB>`. It runs in the da
 
 ### 11.4 Licence checks
 
-- **Libraries.** AboutLibraries plugin 15.3.0 generates the library list for F-PL-04. CI runs the export task in strict mode with an **allowlist** of Apache-2.0, MIT, BSD-2/3-Clause, ISC, OFL-1.1, Unicode-DFS and EPL-2.0 (only if a dependency needs it). Anything else fails, including **GPL/LGPL/AGPL** in the runtime classpath, so both G4 licence options stay open (D-18). The exact 15.3.0 DSL (`strictMode`, `allowedLicenses`) is verified in P0.
-- **Clean-room check (D-18).**
-  - `tools/cleanroom/scan.py` fails CI if any file contains the GPL project package names `com.quran.labs.androidquran` or QuranApp's namespaces.
-  - It also fails on any `Copyright` header naming those projects.
-  - Ported Apache/MIT files (QuranKit, LinePageGeometryEngine, FSRS-Kotlin) must carry their original header plus an entry in `THIRD_PARTY_NOTICES.md`.
-- **Content packs (D-10, D-17).**
-  - `tools/licence-check/check_packs.py` validates every entry in `index.json` and `catalogue.json`: licence, attribution, source URL, `commercialOk`, `buildEligibility` and `licenceStatus` are present.
-  - Release builds pass `--channel public|beta|personal --monetized true|false`. It fails if:
-    - a `public` catalogue contains `licenceStatus: PENDING` or `PERSONAL_ONLY` recitations or packs;
-    - a **monetized** build (play flavor with `MONETIZED=true` from v1.5) can reach a pack with `commercialOk: false`, such as Tanzil-sourced Jalandhari;
-    - QF/quran.com-hosted content is present in any bundled or pack data (INV-19).
-- **Permissions register.** Before public builds, `docs/legal/permissions.yml` (g01 §2.8 step 0) must show `qul_res_11: granted` (**G1**) and a granted status for each public recitation host (**G2**). The release workflow reads it.
+- **Libraries.** AboutLibraries plugin 15.3.0 generates the library list for F-PL-04. CI runs the export task in strict mode with an **allowlist**: Apache-2.0, MIT, BSD-2/3-Clause, ISC, OFL-1.1, Unicode-DFS, and EPL-2.0 only if a dependency needs it. Anything else fails, including **GPL/LGPL/AGPL** in the runtime classpath, so both G4 licence options stay open (D-18). The exact 15.3.0 DSL (`strictMode`, `allowedLicenses`) is verified in P0.
+- **Clean-room (D-18).**
+  - `tools/ci/cleanroom_scan.py` fails CI if any source file contains the GPL projects' package names (`com.quran.labs.androidquran`, QuranApp namespaces) or a copyright header naming them.
+  - Ported Apache/MIT files (QuranKit, LinePageGeometryEngine, FSRS-Kotlin) must keep their original header and have an entry in `THIRD_PARTY_NOTICES.md`.
+- **Content and audio eligibility (D-09, D-12, D-17).** This is doc 08's profile gate (§8.4) and **V-X04–V-X06**. The app build passes its profile as a Gradle property: `-Pcriterion.profile=personal|public|public_monetized` (`BuildConfig.PROFILE`). The release workflow runs `crit validate all --profile <profile>`. It fails when:
+  - a `public*` build bundles or lists an item whose `permission_ref` is not `granted`/`archived` in `data/legal/permissions.yml` (G1 for `qul_res_11`, G2 for recitations);
+  - a `public_monetized` build can reach a non-commercial item (e.g. Tanzil Jalandhari);
+  - a personal-only recitation (Shamshad Ali Khan, Husary Muallim, Qari Sadaqat Ali) appears in a `public*` catalogue.
+- **QF-content guard (r05 risk, D-09).** `tools/ci/no_qf_hosts.py` fails if any URL in `data/pins.lock`, the bundled catalogue/index snapshots or the app's network allowlist matches `quran.com`, `api.quran.com`, `quran.foundation` or `qurancdn.com`. The F-BM-07 sync client (P3) is exempted only by its explicit module path.
 
 ---
 
 ## 12. CI/CD architecture (GitHub Actions)
 
+There are six workflows. Doc 08 owns `tools.yml`, `upstream-drift.yml` and `verify-live.yml` (pipeline, drift, live-object checks). This doc owns `android.yml`, `nightly.yml` and `release.yml`, plus runner, caching and secrets conventions for all of them (doc 08 §12).
+
 ```mermaid
 flowchart LR
-  subgraph PR["pr.yml (every PR + push main) ≤15 min"]
-    A1[guard: wrapper validation, verifyToolchain] --> A2[static: spotless, lint, guards]
-    A1 --> A3[unit + Robolectric tests]
+  subgraph T["tools.yml (doc 08) — PR/push touching tools/**, data/**, core/*/schemas/**"]
+    T1[uv sync, ruff, pytest] --> T2[crit fetch (private inputs, read-only)] --> T3[build all stages] --> T4[crit validate all: V-C/M/P/T/X] --> T5[repro + compare with LFS assets, delta PDFs]
+  end
+  subgraph A["android.yml (doc 10) — every PR + push main, ≤ 15 min"]
+    A1[guard: wrapper validation, verifyToolchain, verifyLfsAssets] --> A2[static: spotless, lint, guards, licence/cleanroom/QF scans]
+    A1 --> A3[unit + Robolectric + app-side invariants]
     A1 --> A4[goldens core set NATIVE sdk36]
-    A1 --> A5[content: fetch locked DB → INV suite<br/>or rebuild if tools/ changed]
-    A2 & A3 & A4 & A5 --> A6[assemble: bundlePlayRelease + assembleFossRelease (unsigned), size + 16 KB]
+    A2 & A3 & A4 --> A5[assemble play+foss release (unsigned), size + 16 KB]
   end
-  subgraph N["nightly.yml (02:00 PKT, skip if no new commits)"]
-    N1[full 548 goldens] --> N4[report + issue on failure]
-    N2[GMD instrumented api24/26/30/36/37] --> N4
-    N3[macrobench + baseline profile api34] --> N4
-    N5[buildHealth, Kover, kashida sdk26] --> N4
+  subgraph N["nightly.yml (02:00 PKT, skipped if no new commits)"]
+    N1[full 548 goldens + kashida sdk26 + buildHealth + Kover]
+    N2[GMD instrumented api24/30/36 + api37 audio] 
+    N3[macrobench + baseline profile api34 (trend)]
   end
-  subgraph DP["data-pipeline.yml (tools/** or dispatch)"]
-    D1[fetch pinned inputs (sha256)] --> D2[build DB + packs] --> D3[INV gates] --> D4[render PDF + diff_renders] --> D5[publish to private R2 + lock PR]
+  subgraph D["upstream-drift.yml (doc 08, weekly) + verify-live.yml (doc 08, daily)"]
+    D1[issues only — never publishes]
   end
-  subgraph UD["upstream-drift.yml (weekly)"]
-    U1[Tanzil, QuranEnc, DK repo, mp3quran ETags, everyayah md5, mirrors, toolchain] --> U2[drift issue / kill-switch PR]
-  end
-  subgraph RL["release.yml (tag v*) — env: release (owner approval)"]
-    R1[gates: certificates, permissions, licence checks] --> R2[signed AAB (upload key) + foss APK] --> R3[mapping + symbols archive, AboutLibraries, checksums] --> R4[GitHub Release draft; manual Play upload P1–P2]
+  subgraph R["release.yml (tag v*) — env: release, owner approval"]
+    R1[release-gate: crit validate all --profile P + app gates] --> R2[signed AAB (upload key) + foss APK] --> R3[mapping, checksums, AboutLibraries] --> R4[draft GitHub Release; manual Play upload P1–P2]
   end
 ```
 
+**Signing boundary** (doc 08 §12):
+- **No CI job ever holds the Ed25519 content-signing key or an R2 write token.** Packs, catalogue, index envelopes and the PK month-start feed are signed and published from the owner's machine (`just sign && just publish --go`) after `tools.yml` is green.
+- CI does hold the **Play upload key**, but only inside the protected `release` environment (§12.6).
+
 ### 12.1 Shared CI conventions
 
-- **Runners.** `ubuntu-24.04`, pinned so goldens stay deterministic. Timeouts: PR jobs 30 min, nightly 120 min. `concurrency: { group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true }`.
-- **Actions** (versions from r07 §2.7): `actions/checkout@v7` (7.0.1), `actions/setup-java@v6` (6.1.0, Temurin 21), `gradle/actions/setup-gradle@v6` (6.4.0), `actions/upload-artifact@v7` (7.0.2). Pin each to its commit SHA in P0; Renovate keeps them updated. Python uses the runner's `python3` in a venv with `pip install --require-hashes -r tools/requirements.lock`. That lock pins fontTools 4.67 and uharfbuzz 0.56.3, the versions g04 measured with.
+- **Runners.**
+  - Use `ubuntu-24.04`, pinned so goldens stay deterministic. Timeouts: PR jobs 30 min, nightly 120 min.
+  - Every workflow sets `concurrency: { group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true }`.
+- **Actions** (versions from r07 §2.7):
+  - `actions/checkout@v7` (7.0.1) with **`lfs: true`**, because the generated assets are LFS-committed (doc 08 §2);
+  - `actions/setup-java@v6` (6.1.0, Temurin 21);
+  - `gradle/actions/setup-gradle@v6` (6.4.0);
+  - `actions/upload-artifact@v7` (7.0.2).
+
+  Pin each to its commit SHA in P0; Renovate keeps them updated. Python jobs use `setup-uv` and `uv sync --frozen`, as doc 08 specifies.
+- **LFS bandwidth.** Cache `.git/lfs` with `actions/cache`, keyed by the hash of `git lfs ls-files -l`, so routine PRs do not re-download the ~20 MB of assets.
 - **Gradle caching.** `setup-gradle` with `cache-read-only: ${{ github.ref != 'refs/heads/main' }}`. Configuration cache, build cache and parallel are on (r07 §2.12).
-- **Maven Central 429 retries** (g04 §2.3 #1). Add to `gradle.properties`:
+- **Maven Central 429 retries** (g04 §2.3 #1), in `gradle.properties`:
 
   ```properties
   systemProp.org.gradle.internal.http.connectionTimeout=60000
@@ -886,71 +910,64 @@ flowchart LR
   systemProp.org.gradle.internal.repository.initial.backoff=1000
   ```
 
-- **Supply chain.** `gradle/verification-metadata.xml` (SHA-256 for all artifacts, generated with `--write-verification-metadata sha256`) and wrapper validation in setup-gradle. GitHub secret scanning and push protection are on.
-- **Content DB input.**
-  - `quran_content.db` is **not committed**: it is QUL-derived until G1, and the repo may go public at G4.
-  - `content/content.lock.json` = `{version, sha256, size, objectKey}`. The Gradle task `fetchContentDb` downloads it from the private R2 bucket `criterion-build` (read-only token in secret `R2_BUILD_RO_*`), verifies the hash and caches it in `~/.gradle/criterion-content/`.
-  - Without a token (fork PRs), content-dependent tests are **skipped with a visible notice**, not passed.
+- **Supply chain.**
+  - `gradle/verification-metadata.xml` holds SHA-256 checksums for all artifacts (`--write-verification-metadata sha256`).
+  - setup-gradle validates the wrapper.
+  - GitHub secret scanning and push protection are on.
+- **Secrets.**
+
+  | Secret | Scope |
+  |---|---|
+  | `R2_PRIVATE_RO` | `tools.yml` only: read-only, private input bucket `criterion-private` (doc 08) |
+  | `UPLOAD_KEYSTORE_B64`, `UPLOAD_STORE_PASSWORD`, `UPLOAD_KEY_ALIAS`, `UPLOAD_KEY_PASSWORD` | `release` environment only |
+
+  Nothing else exists. Fork PRs get no secrets, so `tools.yml` skips private-input stages and says so loudly.
 - **Minutes budget.** Private-repo GitHub-hosted minutes are limited [unverified quota; check the account plan in P0]. So:
   - PRs target ≤ 15 min;
-  - the nightly skips when `main` has no new commits since the last green run;
+  - the nightly skips when `main` has not moved;
   - GMD and macrobench run Mon/Wed/Fri;
-  - full goldens run only when `:core:mushaf-render`, the content lock or the font changed.
-  - If minutes run short, register the owner's PC as a self-hosted runner, used for nightly only.
+  - full goldens run only when `:core:mushaf-render`, a packaged asset or the font changed.
 
-### 12.2 `pr.yml`
+  If minutes run short, register the owner's PC as a self-hosted runner for the nightly only.
+
+### 12.2 `android.yml`
 
 ```yaml
-name: pr
+name: android
 on:
   pull_request: {}
   push: { branches: [main] }
-concurrency: { group: pr-${{ github.ref }}, cancel-in-progress: true }
+concurrency: { group: android-${{ github.ref }}, cancel-in-progress: true }
 permissions: { contents: read, pull-requests: write }
-env:
-  GRADLE_OPTS: -Dorg.gradle.daemon=false
-  R2_BUILD_RO_KEY: ${{ secrets.R2_BUILD_RO_KEY }}
-  R2_BUILD_RO_SECRET: ${{ secrets.R2_BUILD_RO_SECRET }}
 jobs:
   checks:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-        with: { fetch-depth: 0 }
+        with: { lfs: true }
       - uses: actions/setup-java@v6
         with: { distribution: temurin, java-version: '21' }
       - uses: gradle/actions/setup-gradle@v6
         with: { cache-read-only: "${{ github.ref != 'refs/heads/main' }}" }
-      - name: Toolchain guard
-        run: ./gradlew verifyToolchain
-      - name: Detect pipeline changes
-        id: chg
-        run: echo "tools=$(git diff --name-only origin/main...HEAD | grep -E '^(tools/|content/)' -c || true)" >> "$GITHUB_OUTPUT"
-      - name: Rebuild content DB (tools changed)
-        if: steps.chg.outputs.tools != '0'
-        run: |
-          python3 -m venv .venv && . .venv/bin/activate
-          pip install --require-hashes -r tools/requirements.lock
-          python3 -I tools/content-pipeline/build.py --inputs-from r2 --out build/content --also-no-master
-          python3 -I -m pytest -q tools/   # INV gates (doc 08)
-      - name: Static + unit + Robolectric + content invariants
+      - name: Guards
+        run: ./gradlew verifyToolchain verifyLfsAssets ForbiddenTestResourceDirCheck verifyModuleGraph
+      - name: Static + unit + Robolectric + app-side content invariants
         run: >
           ./gradlew spotlessCheck lintFossDebug lintPlayDebug
-          verifyModuleGraph verifyMergedManifestFossRelease verifyMergedManifestPlayRelease
+          verifyMergedManifestFossRelease verifyMergedManifestPlayRelease
           verifyRuntimeDependenciesFossRelease verifyRuntimeDependenciesPlayRelease
-          ForbiddenTestResourceDirCheck
-          testFossDebugUnitTest :core:content:testDebugUnitTest
+          testFossDebugUnitTest testDebugUnitTest
           --continue
       - name: Goldens (core set, NATIVE, sdk 36)
         run: ./gradlew testGoldens verifyRoborazziDebug -ProboSdks=36 --continue
       - name: Assemble release (unsigned) + size + 16 KB
-        run: ./gradlew :app:bundlePlayRelease :app:assembleFossRelease verifyNoDebugProbes verify16kAlignment verifyAppSize verifyContentLock
-      - name: Licence checks
+        run: ./gradlew :app:bundlePlayRelease :app:assembleFossRelease verifyNoDebugProbes verify16kAlignment verifyAppSize
+      - name: Licence, clean-room, QF-host scans
         run: |
           ./gradlew :app:exportLibraryDefinitions
-          python3 -I tools/licence-check/check_packs.py --channel beta --monetized false
-          python3 -I tools/cleanroom/scan.py
+          python3 -I tools/ci/cleanroom_scan.py
+          python3 -I tools/ci/no_qf_hosts.py
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -962,7 +979,10 @@ jobs:
           retention-days: 7
 ```
 
-**Branch protection on `main`:** the `pr / checks` job is required; linear history; no direct pushes, except the bot PRs from nightly (baseline profile) and drift (kill-switch), which also go through `pr`.
+**Branch protection on `main`:**
+- `android / checks` is always required; `tools / *` is required when it triggers.
+- Linear history; no direct pushes.
+- The nightly's baseline-profile bot PR also goes through `android.yml`.
 
 ### 12.3 `nightly.yml`
 
@@ -993,10 +1013,12 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
+        with: { lfs: true }
       - uses: actions/setup-java@v6
         with: { distribution: temurin, java-version: '21' }
       - uses: gradle/actions/setup-gradle@v6
-      - run: ./gradlew :core:mushaf-render:testGoldens -Pgoldens=full -ProboSdks=36 :core:mushaf-render:testKashidaSdk26 -ProboSdks=26
+      - run: ./gradlew :core:mushaf-render:testGoldens -Pgoldens=full -ProboSdks=36
+      - run: ./gradlew :core:mushaf-render:testKashidaSdk26 -ProboSdks=26
       - run: ./gradlew buildHealth koverHtmlReport --continue
   devices:
     needs: gate
@@ -1005,6 +1027,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
+        with: { lfs: true }
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -1013,13 +1036,13 @@ jobs:
         with: { distribution: temurin, java-version: '21' }
       - uses: gradle/actions/setup-gradle@v6
       - name: Instrumented tests on Gradle Managed Devices
-        run: ./gradlew nightlyGroupDebugAndroidTest -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect
+        run: ./gradlew nightlyGroupDebugAndroidTest api37DebugAndroidTest -Pandroid.testoptions.manageddevices.emulator.gpu=swiftshader_indirect
       - name: Baseline profile + macrobenchmarks (emulator = trend only)
         run: >
           ./gradlew :app:generateBaselineProfile
           :baselineprofile:api34BenchmarkReleaseAndroidTest
           -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR
-      - run: python3 -I tools/ci/bench_trend.py build/outputs/benchmark --history gh-pages:bench/history.json --alert 0.10
+      - run: python3 -I tools/ci/bench_trend.py build/outputs/benchmark --history bench/history.json --alert 0.10
       - uses: actions/upload-artifact@v7
         if: always()
         with: { name: nightly-${{ github.run_id }}, path: '**/build/outputs/**', retention-days: 14 }
@@ -1027,14 +1050,14 @@ jobs:
     needs: [full-goldens, devices]
     if: always()
     runs-on: ubuntu-24.04
-    permissions: { issues: write, contents: write }
+    permissions: { issues: write, contents: write, pull-requests: write }
     steps:
       - uses: actions/checkout@v7
       - run: tools/ci/nightly_report.sh   # opens/updates "Nightly failing" issue; moves tag nightly-green on success; opens baseline-profile PR if changed
         env: { GH_TOKEN: ${{ github.token }} }
 ```
 
-GMD definitions live in `:app` and `:baselineprofile` (AGP 9.4 DSL names to be confirmed in P0):
+The GMD definitions live in `:app` and `:baselineprofile`. The AGP 9.4 DSL names are to be confirmed in P0:
 
 ```kotlin
 testOptions.managedDevices {
@@ -1056,86 +1079,64 @@ testOptions.managedDevices {
 - `DesugarTimeOnDeviceTest` (HijrahDate + adhan2 on API 24);
 - `ReaderE2ETest` (open, swipe, toolbar labels);
 - `PlaybackE2ETest` (local fixture, notification shown);
-- `DownloadE2ETest` (local MockWebServer on device);
+- `DownloadE2ETest` (MockWebServer on device);
 - `PerAppLanguageE2ETest`;
 - `EdgeToEdgeInsetsTest`;
 - `PredictiveBackTest`;
-- `BackgroundAudioHardeningTest` (api37, with `cmd audio set-enable-hardening throw` via UiAutomation shell).
+- `BackgroundAudioHardeningTest` (api37: runs `cmd audio set-enable-hardening throw` through the UiAutomation shell; recitation must stay audible through the FGS).
 
-### 12.4 `data-pipeline.yml`
+The `api26` device is used on demand for kashida checks; it is not in the nightly group.
 
-```yaml
-name: data-pipeline
-on:
-  push: { branches: [main], paths: ['tools/**', 'content/**'] }
-  workflow_dispatch:
-    inputs: { publish: { type: boolean, default: false } }
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    environment: ${{ inputs.publish && 'content-publish' || '' }}   # publish needs owner approval
-    steps:
-      - uses: actions/checkout@v7
-        with: { fetch-depth: 0 }
-      - run: python3 -m venv .venv && . .venv/bin/activate && pip install --require-hashes -r tools/requirements.lock
-      - name: Fetch pinned inputs (QUL export, DK @4213fab, Tanzil, QuranEnc, timing JSON) — sha256-verified
-        run: . .venv/bin/activate && python3 -I tools/fetch_inputs.py --manifest tools/inputs.lock.json --from r2
-        env: { R2_KEY: ${{ secrets.R2_BUILD_RO_KEY }}, R2_SECRET: ${{ secrets.R2_BUILD_RO_SECRET }} }
-      - name: Build DB, packs, timing packs; run INV-01..23
-        run: . .venv/bin/activate && python3 -I tools/build_all.py --out out/ --also-no-master && python3 -I -m pytest -q tools/
-      - name: Render proof PDF + golden list + diff vs previous content version
-        run: |
-          . .venv/bin/activate
-          python3 -I tools/mushaf-pipeline/render_pdf.py out/quran_content.db --layout taj16 --out out/proof-taj16.pdf
-          python3 -I tools/mushaf-pipeline/diff_renders.py --prev "$(jq -r .version content/content.lock.json)" --next out/ --report out/render-diff.html
-      - uses: actions/upload-artifact@v7
-        with: { name: content-${{ github.sha }}, path: out/, retention-days: 90 }
-      - name: Sign indexes + publish to R2 + open content.lock PR
-        if: inputs.publish
-        run: . .venv/bin/activate && python3 -I tools/publish.py --sign-key-env ED25519_SIGNING_KEY --bucket criterion-build --open-lock-pr
-        env:
-          ED25519_SIGNING_KEY: ${{ secrets.ED25519_SIGNING_KEY }}   # only in the 'content-publish' environment
-          R2_KEY: ${{ secrets.R2_BUILD_RW_KEY }}
-          R2_SECRET: ${{ secrets.R2_BUILD_RW_SECRET }}
-          GH_TOKEN: ${{ github.token }}
-```
+### 12.4 Pipeline, drift and live-object workflows (owned by doc 08)
 
-Public objects (signed `catalogue.json`, pack `index.json`, packs, timing packs, PK month-start feed; D-24) are published by the same `publish.py --bucket criterion-public` from the protected environment. Nothing public is published from PR context.
+- **`tools.yml`** (doc 08 §12). Steps:
+  1. uv, ruff, pytest;
+  2. `crit fetch all` (private inputs from `criterion-private` with `R2_PRIVATE_RO`);
+  3. build all stages;
+  4. `crit validate all` (V-C/M/P/T/X);
+  5. rebuild twice for reproducibility and compare with the LFS-committed assets (a PR that changes data must include the updated assets);
+  6. size report;
+  7. artifacts (`delta-*.pdf`, PNG diffs, `normalization_vectors.json`).
 
-### 12.5 `upstream-drift.yml` (weekly)
+  Doc 10 adds two rules: the runner is `ubuntu-24.04`, and `.git/lfs` is cached as above. When `tools.yml` changes a packaged asset in a PR, `android.yml` on the same PR re-runs the app-side invariants (§4) and the goldens, which may fail with a mushaf diff that needs the §10.3 classification.
+- **`upstream-drift.yml`** (doc 08 §12; weekly, Monday 02:17 UTC). It covers Tanzil, QuranEnc versions, mp3quran timing JSON and ETag/Content-Length of every catalogue audio file, everyayah checksums, the DK repo HEAD and GeoNames. It opens issues and **never publishes**. On an mp3quran change the app's own guard (§8.2 `TimingGuardTest`) already disables highlight for that surah until a rebuilt timing pack ships. Doc 10 asks doc 08 to add two read-only checks to the same job, both of which also only open issues:
+  - **toolchain drift**: latest AGP, Gradle, Kotlin, Compose BOM, Media3 and Room 3 from `maven-metadata.xml` vs `libs.versions.toml`, and the stable Android Studio's AGP ceiling (g04 §1 #8);
+  - **DontKillMyApp** vendor JSON hash (`api/v2/<vendor>.json`, CC BY) for the in-app OEM guidance.
+- **`verify-live.yml`** (doc 08; daily). It checks live envelope signatures and expiry and HEADs a sample of URLs. Failures are S2 issues (§13).
 
-```yaml
-name: upstream-drift
-on:
-  schedule: [ { cron: '0 22 * * 0' } ]   # Mon 03:00 PKT
-  workflow_dispatch: {}
-permissions: { contents: write, issues: write, pull-requests: write }
-jobs:
-  drift:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - run: python3 -m venv .venv && . .venv/bin/activate && pip install --require-hashes -r tools/requirements.lock
-      - name: Check upstreams
-        run: . .venv/bin/activate && python3 -I tools/drift/check_all.py --report drift.md --killswitch-pr
-        env: { GH_TOKEN: ${{ github.token }} }
-```
+### 12.5 Versioning, signing and mapping
 
-`check_all.py` checks:
+**Version codes.**
+- Tag `vMAJOR.MINOR.PATCH[-rc.N]`.
+- `versionCode = MAJOR*1_000_000 + MINOR*10_000 + PATCH*100 + n`, where `n` = RC number (1–98) and **final = 99**. Examples: `v1.0.0-rc.3` → 1000003; `v1.0.0` → 1000099; `v1.1.0-rc.1` → 1010001.
+- P1 internal builds use `v0.MINOR.PATCH-rc.N`.
+- Both flavors share the code. Play enforces monotonicity per package.
 
-| Upstream | Check | Action on drift |
-|---|---|---|
-| Tanzil Uthmani / Simple-Clean / `quran-data.js` | SHA-256 of the download vs `inputs.lock.json` | Issue: "Tanzil changed: review the diff, re-run the pipeline" |
-| QuranEnc translations (Junagarhi, Saheeh, Hilali-Khan, pack languages) | Published version vs the pinned version | Issue plus a draft PR bumping `inputs.lock.json` (QuranEnc "keep updated" condition) |
-| DigitalKhatt `digitalkhatt.org` | `git ls-remote` HEAD vs 4213fab; SHA-256 of `hb/indopak.otf` at HEAD | Issue; never auto-adopted (INV-14 widths and goldens would change) |
-| QUL resources | Not automatable (login). The checklist reminds the owner to read QUL update emails (g01 §2.8 step 1) | Issue checklist item |
-| mp3quran gapless audio (shortlist reads × 114 surahs ≈ 1.4k HEADs) | `ETag` + `Content-Length` vs the timing-pack guard (g03 §2.6; every 123/30/51 file was re-uploaded 2026-09-27) | **Auto PR**: set `highlight: disabled` for the changed surahs in the catalogue override, plus an issue to regenerate timing |
-| everyayah / islamic.network (gapped, personal/beta) | `000_checksum.md5` hash; mirror HEAD 200 | Issue; mirror order update PR |
-| R2-hosted audio + public indexes | HEAD 200, sha256 sample (5%) | Issue (S2) |
-| Toolchain | Latest AGP/Gradle/Kotlin/Compose BOM/Media3/Room3 from maven-metadata vs `libs.versions.toml`; Android Studio stable AGP ceiling | Issue (Renovate handles library PRs; AGP > 9.4 waits for a stable IDE, g04 §1 #8) |
-| DontKillMyApp vendor JSON | `api/v2/<vendor>.json` hash (CC BY) | Issue: refresh the in-app OEM guidance |
+**Profile per build.**
+
+| Track | Profile |
+|---|---|
+| Sideload and internal | `personal` |
+| Closed test | `public`, or `personal` with private testers if G1/G2 have not cleared (doc 11 decides) |
+| Production | `public` |
+| v1.5 supporter IAP (play flavor) | `public_monetized` |
+
+**Signing.**
+- **Play App Signing**: Google holds the app signing key; we hold only the **upload key**, so a lost upload key can be reset through Play support.
+- The upload keystore is stored as `UPLOAD_KEYSTORE_B64` plus passwords in the `release` environment, which needs owner approval. An offline backup sits in the owner's password manager.
+- The `foss` flavor gets its own key only if foss distribution is chosen (doc 11). Its SHA-256 is registered for Android developer verification (r09 §2.6).
+- Debug builds use a committed debug keystore so the signature stays stable for sideloads.
+
+**R8 mapping.**
+- AGP embeds the mapping in the AAB's `BUNDLE-METADATA`, and Play uses it to deobfuscate vitals [unverified: confirm on the first internal upload in P1; if it is missing, upload `mapping.txt` in the Console's App bundle explorer].
+- Every `mapping.txt` is also archived permanently with the draft release.
+- No native symbols are needed: there is no NDK code, and `libsqliteJni.so` is a prebuilt.
+
+**AboutLibraries.** The plugin regenerates the library JSON on every build. The credits screen (F-PL-04) merges it with the content `attribution` rows and the pack/catalogue attributions (V-C24, V-X04); REL-03 verifies the result.
+
+**Play upload.**
+- **Manual through P2.** The owner uploads the signed AAB from the draft release to internal, then closed, then production.
+- Automate in P3 with the Play Developer Publishing API (service account in the `release` environment), using a tool verified against AGP 9.4 at that time.
 
 ### 12.6 `release.yml`
 
@@ -1145,25 +1146,26 @@ on: { push: { tags: ['v*'] } }
 jobs:
   release:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 75
     environment: release                       # required reviewer: owner
     permissions: { contents: write }
     steps:
       - uses: actions/checkout@v7
-        with: { fetch-depth: 0 }
+        with: { fetch-depth: 0, lfs: true }
       - uses: actions/setup-java@v6
         with: { distribution: temurin, java-version: '21' }
       - uses: gradle/actions/setup-gradle@v6
         with: { cache-read-only: true }
-      - name: Derive version + channel
+      - uses: astral-sh/setup-uv@v6            # pin by SHA in P0 (doc 08 uses setup-uv)
+      - name: Derive version + profile
         id: v
-        run: python3 -I tools/ci/version.py "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"   # versionName, versionCode, channel
-      - name: Release gates
+        run: python3 -I tools/ci/version.py "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"   # versionName, versionCode, profile
+      - name: Release gate (doc 08) + app gates (doc 10)
         run: |
-          python3 -I tools/ci/release_gates.py --channel ${{ steps.v.outputs.channel }} \
-            --permissions docs/legal/permissions.yml --certificates docs/legal/proofreading/certificates.yml \
-            --content-lock content/content.lock.json
-          python3 -I tools/licence-check/check_packs.py --channel ${{ steps.v.outputs.channel }} --monetized false
+          uv sync --frozen
+          uv run --frozen python -I -m crit validate all --profile ${{ steps.v.outputs.profile }}   # V-C15, V-M19, V-X04–X06, permissions
+          python3 -I tools/ci/release_gates.py --profile ${{ steps.v.outputs.profile }} \
+            --permissions data/legal/permissions.yml --evidence qa/runs/${{ steps.v.outputs.versionName }}/
       - name: Decode upload keystore
         run: echo "$UPLOAD_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
         env: { UPLOAD_KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_B64 }} }
@@ -1171,14 +1173,15 @@ jobs:
         run: >
           ./gradlew check testGoldens verifyRoborazziDebug -ProboSdks=36
           :app:bundlePlayRelease :app:assembleFossRelease
-          verify16kAlignment verifyAppSize verifyContentLock verifyNoDebugProbes :app:exportLibraryDefinitions
+          verifyLfsAssets verifyPackagedBuildIds verify16kAlignment verifyAppSize verifyNoDebugProbes :app:exportLibraryDefinitions
+          -Pcriterion.profile=${{ steps.v.outputs.profile }}
           -Pcriterion.versionCode=${{ steps.v.outputs.versionCode }} -Pcriterion.versionName=${{ steps.v.outputs.versionName }}
           -PcriterionSigningStoreFile=$RUNNER_TEMP/upload.jks
         env:
           ORG_GRADLE_PROJECT_criterionSigningStorePassword: ${{ secrets.UPLOAD_STORE_PASSWORD }}
           ORG_GRADLE_PROJECT_criterionSigningKeyAlias: ${{ secrets.UPLOAD_KEY_ALIAS }}
           ORG_GRADLE_PROJECT_criterionSigningKeyPassword: ${{ secrets.UPLOAD_KEY_PASSWORD }}
-      - name: Archive mapping + symbols + checksums
+      - name: Archive mapping + checksums
         run: |
           mkdir dist && cp app/build/outputs/bundle/playRelease/*.aab dist/
           cp app/build/outputs/apk/foss/release/*.apk dist/ || true
@@ -1191,36 +1194,15 @@ jobs:
         if: always()
 ```
 
-**Signing and keys.**
-- **Play App Signing** is used: Google holds the app signing key; we hold only the **upload key**, so a lost upload key can be reset via Play support.
-- The upload keystore lives as `UPLOAD_KEYSTORE_B64` plus passwords in the `release` environment secrets, with an offline backup in the owner's password manager.
-- The `foss` flavor gets its own key only if foss distribution is chosen (doc 11). Its SHA-256 is registered for Android developer verification (r09 §2.6).
-- Debug builds use a committed debug keystore so the signature is stable for internal sideloads.
+`verifyPackagedBuildIds` reads `content_meta.build_id` and the pack `build_id`s from the assets inside the built AAB. It fails unless they equal the IDs that `crit validate all` just validated. Under `public*` that validation includes the V-M19 sign-off.
 
-**Version codes.**
-- Tag `vMAJOR.MINOR.PATCH[-rc.N]`.
-- `versionCode = MAJOR*1_000_000 + MINOR*10_000 + PATCH*100 + n`, where `n` = the RC number (1–98) and **final = 99**. Examples: `v1.0.0-rc.3` → 1000003; `v1.0.0` → 1000099; `v1.1.0-rc.1` → 1010001.
-- P1 internal daily builds use `v0.MINOR.PATCH-rc.N`.
-- Both flavors share the code. Play enforces monotonicity per package.
+**Release gates by profile** (`crit` gate + `release_gates.py`):
 
-**R8 mapping.**
-- AGP embeds the R8 mapping in the AAB's `BUNDLE-METADATA`, which Play uses to deobfuscate vitals stack traces [unverified: confirm on the first internal upload in P1, and upload manually in the Console under App bundle explorer → Downloads if it is missing].
-- `mapping.txt` for every release is also archived forever in the draft release and in private R2.
-- No native symbols are needed: there is no NDK code, and `libsqliteJni.so` is a prebuilt.
-
-**AboutLibraries.** The plugin regenerates the library JSON at build time. The credits screen (F-PL-04) merges it with `content_meta.sources_json` and the pack/catalogue attributions (INV-21). REL-03 verifies the result.
-
-**Upload to Play.**
-- **Manual through P2.** The owner uploads the signed AAB from the draft release to internal, then closed, then production. This is low frequency and avoids wiring a service-account key early.
-- Automate in P3 with the Play Developer Publishing API (service account in the `release` environment), using a tool verified against AGP 9.4 at that time.
-
-**Release gates by channel** (`release_gates.py`):
-
-| Channel (tag suffix / input) | Gates |
+| Profile | Gates |
 |---|---|
-| `personal` (sideload, internal track) | Tests and guards only. Personal-only content allowed |
-| `beta` (closed test) | + no PENDING audio in the catalogue unless the tester list is private + the G1 state recorded (a closed test of QUL-derived data before G1 is allowed only with private testers; doc 11 decides) |
-| `public` (production) | + **G1** granted, **G2** for every public recitation, **G3** brand fields set (app name not "Criterion"), **G4** licence file present, **G5** certificate matching the hashes, **G6** legal note on file, QB budgets attached (benchmark JSON from real devices, 7-day adhan soak log) |
+| `personal` (sideload, internal, private closed test) | Tests and guards only. Personal-only content allowed. Credits show "pre-release text — not yet certified" |
+| `public` (closed test once gates clear; production) | + **G1** (`qul_res_11: granted`) and **G2** (every listed recitation granted or archived), both from `data/legal/permissions.yml` via the doc 08 profile gate. **G5** (V-M19). **G3**: app label is not "Criterion" and the brand fields are set. **G4**: `LICENSE` decision file present. **G6**: legal-note reference present in `data/legal/permissions.yml` (doc 11 key). **Evidence attached** in `qa/runs/<version>/`: real-device benchmark JSON (QB-03..07), MQ-AD soak log (QB-11), MQ-REL results |
+| `public_monetized` (v1.5) | + no non-commercial item reachable (V-X05) + commercial-content audit note (D-17) |
 
 ---
 
