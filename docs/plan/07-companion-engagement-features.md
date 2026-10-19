@@ -836,7 +836,7 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
 
 **Tests.**
 - `HijrahDate.from(2026-10-12)` = 1448-05-01 (UQ).
-- With the feed (start 2026-10-13): 2026-10-13 → 1448-05-01 FEED; 2026-10-12 → 1448-04-30 (requires the previous month in the fixture).
+- With the feed (start 2026-10-13): 2026-10-13 → 1448-05-01 FEED; 2026-10-12 → the last day of 1448-04, per the fixture's start date for that previous month.
 - k = 29 with no next month → day 30, provisional; k = 30 → falls back.
 - Maghrib rollover: 17:59 vs 18:03 Karachi.
 - Signature tampering → rejected. A replayed lower sequence → rejected.

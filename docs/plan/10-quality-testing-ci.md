@@ -58,7 +58,7 @@ These budgets are the acceptance thresholds for the release workflow (§12.6) an
 | QB-10 | Battery, 1 h screen-off recitation | Downloaded file: ≤ 3% of a 5,000 mAh battery. Streaming on Wi-Fi: ≤ 5%. No partial wakelock held > 60 s after pause or stop | `dumpsys batterystats --reset` → 1 h → `dumpsys batterystats` (+ Battery Historian), Ref-low | Manual pre-release (MQ-AU-20) *[inferred targets]* |
 | QB-11 | Adhan punctuality | With exact-alarm permission and the vendor guidance applied: **0 missed of 35** over 7 days per matrix device; lateness p95 ≤ 60 s, max ≤ 180 s | In-app lateness log (Adhan health check, F-CP-02) | 7-day soak (MQ-AD), release gate for F-CP-02 |
 | QB-12 | Download integrity | 100% of completed files match the expected MD5/SHA-256. Resume after kill or network drop without re-downloading finished bytes | Unit + MockWebServer tests; MQ-DL | PR (unit), pre-release (manual) |
-| QB-13 | Text correctness | **0 known open errors** in shipped Arabic text, marks or layout. Report-text-error: acknowledge ≤ 48 h; fix or kill-switch ≤ 7 days (D-22) | Content invariants, hafiz certificate, F-PL-05 inbox | Release gate (G5); ops SLA |
+| QB-13 | Text correctness | **0 known open errors** in shipped Arabic text, marks or layout. Report-text-error: acknowledge ≤ 48 h; signed advisory ≤ 24 h after confirmation (doc 08 §14); fixed content ≤ 7 days for S1 (D-22) | Content invariants, hafiz certificate, F-PL-05 inbox | Release gate (G5); ops SLA |
 | QB-14 | Follow-along accuracy (F-AU-03/F-RD-05) | Highlighted ayah = audible ayah within ±300 ms at ≥ 95% of ayah starts in sampled surahs (1, 36, 67 + 3 random) for every highlight-enabled reciter (g03 §2.5.2 shows 83–87% within ±300 ms *before* onset snapping) | Pipeline onset check + manual listen (MQ-AU-15) | Timing-pack publication gate |
 | QB-15 | Accessibility (F-PL-07) | All interactive elements have labels. Touch targets ≥ 48 dp. Text contrast ≥ 4.5:1 (UI chrome). Usable at font scale 2.0. TalkBack can complete the 6 core journeys (MQ-A11Y) | Compose UI tests + Accessibility Scanner + manual | PR (automated subset), pre-release (manual) |
 | QB-16 | Build health | PR workflow ≤ 15 min wall-clock (warm cache). 0 lint errors. 0 new baseline entries without review | Actions timing | Ongoing |
@@ -123,7 +123,7 @@ Module names follow r07 §2.10; doc 04 owns the final list.
 | `:core:model` (JVM) | ✅ | | | | | `VerseKeyTest`, `PageLabelTest`, `ParaTableTest`, `ManzilTest`, `RukuTest`, `SurahMetaTest` |
 | `:core:common` (JVM) | ✅ | | | | | `OutcomeTest`, `AppErrorMappingTest` |
 | `:core:domain` (JVM) | ✅ | | | | | `PlanExpanderTest`, `AyahTrackerTest`, `SleepTimerTest`, `KhatamPlannerTest`, `ResolveScopeTest`, `NextPrayerTest` |
-| `:core:content` | ✅ normalizers | ✅ **INV suite** | ✅ Room/FTS5, no-master, re-copy | | L5 FTS5 on API 24 | `ContentInvariantsTest`, `PrepackagedSchemaTest`, `SearchDaoTest`, `NormalizerParityTest` |
+| `:core:content` | ✅ normalizers | ✅ **V-C mirror** | ✅ Room/FTS5, no-master, re-copy | | L5 FTS5 on API 24 | `ContentInvariantsTest`, `PrepackagedSchemaTest`, `SearchDaoTest`, `NormalizerParityTest` |
 | `:core:database` (user.db) | | | ✅ DAOs, migrations, backup rules | | | `UserDbMigrationTest`, `BookmarkDaoTest`, `LastReadDaoTest`, `BackupRulesTest` |
 | `:core:datastore` | ✅ serializer | | ✅ | | | `UserSettingsSerializerTest` (defaults, unknown-field tolerance, corruption handler) |
 | `:core:network` | ✅ verifiers | | ✅ MockWebServer | | | `SignedIndexVerifierTest` (Ed25519), `MirrorFailoverTest`, `CatalogueParserTest` |
@@ -138,7 +138,7 @@ Module names follow r07 §2.10; doc 04 owns the final list.
 | `:core:navigation` | ✅ | | | | | `NavKeySerializationTest` (every NavKey round-trips), `DeepLinkParseTest` |
 | `:feature:*` | ✅ ViewModels | | ✅ Compose UI | ✅ screen goldens | L5 E2E | `<Screen>ViewModelTest`, `<Screen>ScreenTest` |
 | `:app` | | | ✅ Hilt graph | | L5 smoke, L6 startup | `HiltGraphTest`, `ManifestGuard` (Gradle), `FlavorDependencyGuard` (Gradle) |
-| `tools/*` (Python) | pytest | ✅ **INV suite (source of truth)** | | pipeline renders | | doc 08 |
+| `tools/*` (Python) | pytest | ✅ **V-C/M/P/T/X (source of truth)** | | pipeline renders | | doc 08 |
 
 ---
 
@@ -217,7 +217,7 @@ Module names follow r07 §2.10; doc 04 owns the final list.
 
 | Suite | Cases |
 |---|---|
-| `SignedIndexVerifierTest` (D-10) | `index.json` and `catalogue.json` Ed25519 signatures verify against the pinned public key. A tampered sha256, size or licence field fails. The kill-switch entry removes the pack from the UI and blocks its use. |
+| `SignedIndexVerifierTest` (D-10) | Consumes the pipeline's exported vectors (`tools/catalogue/test_vectors/`, doc 08). `index.json` and `catalogue.json` Ed25519 envelopes verify against the committed public key. A 1-byte tamper and a replayed older `sequence` (anti-rollback) are both rejected. A tampered sha256, size or licence field fails. The kill-switch entry removes the pack from the UI and blocks its use. |
 | `PackEligibilityTest` (D-17) | A pack with `commercialOk=false` (e.g. Tanzil Jalandhari) is hidden when `BuildConfig.PROFILE == "public_monetized"`. Eligibility flags for the profiles `personal`/`public`/`public_monetized` (doc 08 §8.4) are honoured per flavor/channel. |
 | `CatalogueEligibilityTest` (D-12) | A `public*`-profile catalogue never lists permission-pending recitations (Shamshad Ali Khan, Husary Muallim, Qari Sadaqat Ali). Reads 74 and 53 never carry timing. Timing host = audio host for every recitation. |
 
@@ -353,7 +353,7 @@ Rules that go with the plugin:
 | Test | Fixture (built by the pipeline in CI, g04 §2.10 flags) | Expectation |
 |---|---|---|
 | `shippedAsset_opens_andQueries` | Shipped DB (with master table) | 6,236 rows. FTS5 MATCH and trigram work. `sqlite_version()` = 3.50.1 with `ENABLE_FTS5` |
-| `noMasterCopy_passesFullValidation` | `--no-master` copy of the same build | Opens. Room runs `onValidateSchema` and accepts the extra non-entity tables (`word`, `line`, `page`, `ruku` …) |
+| `noMasterCopy_passesFullValidation` | `--no-master` copy of the same build | Opens. Room runs `onValidateSchema` and accepts the extra non-entity tables (`content_meta`, `attribution`, …). The same no-master open runs for each pack DB type |
 | `noMasterNoTriggers_roomAddsTriggers` | `--no-master --skip-triggers` | Opens. The sync triggers exist afterwards |
 | `badHash_rejected` | `--bad-hash` | `IllegalStateException` containing "Room cannot verify the data integrity" |
 | `tokenizerMismatch_rejected` | Negative fixture (porter instead of unicode61, no master) | Rejected with "Pre-packaged database has an invalid schema" |
@@ -402,12 +402,13 @@ Rules that go with the plugin:
 1. **`MushafGoldenTest`** renders our real Compose Canvas renderer (`:core:mushaf-render`) under Robolectric NATIVE graphics. It reads the shipped content DB and font and captures with `captureRoboImage()`.
 2. **`GeometryParityTest`** is a JVM test with no pixels. Every word box from our geometry engine (page width W → x, width, baseline) must equal the pipeline's `word_pos` (`left_frac × W`, `width_frac × W`) **within 0.5% of line width** for all 548 pages. This catches drift between the offline precompute and on-device drawing logic independently of the rasterizer.
 3. **`WidthDriftTest`** (L5, instrumented on GMD API 24/26/30/36 and on real devices). It runs `Paint.getRunAdvance` with the shipped TTF plus each word's `cv01` value against the offline HarfBuzz width, with a tolerance of 0.5% (r04 §2.10 step 6). It samples 2,000 words, including every word with cv01 = 3, plus الْكِتٰبُ = 2060 / 2847 / 4384 at cv01 = 0/1/3 (g04 rec 10).
+4. **`WordBoxDeviceParityTest`** (L5, GMD API 24/26/36 and real devices; doc 08 §16 acceptance #4). It lays out 30 random pages at **1080 px** width on the device, takes word boxes from the renderer's hit-test geometry (device `Paint` advances), and requires them to differ from the pipeline's `word_pos` by **≤ 1 px**.
 
 Limitation (g04 §4): Robolectric's native runtime is **one** HarfBuzz 2.6.4 / ICU 68 build for every SDK. Goldens catch **our** regressions, not OEM or old-platform shaping differences; those are covered by `WidthDriftTest` and the device matrix.
 
 ### 7.2 Golden page set
 
-The pipeline emits `golden_pages.json` from rules, so the set follows the data. The list is frozen per `build_id` and reviewed whenever it changes.
+The test-side `GoldenPageSelector` picks pages by rule from the packaged DBs (sajda, ruku, quarter and header queries), so the set follows the data. Its output is frozen in `src/test/resources/golden_pages.json`, regenerated when `build_id` changes, and reviewed as a diff.
 
 | Group | Pages (label = index + 1) | Why |
 |---|---|---|
@@ -1075,7 +1076,7 @@ testOptions.managedDevices {
 ```
 
 **Instrumented suite (L5, ≈ 25 tests):**
-- `WidthDriftTest`;
+- `WidthDriftTest`, `WordBoxDeviceParityTest`;
 - `BundledFts5OnDeviceTest` (FTS5 + trigram on the API 24 image);
 - `DesugarTimeOnDeviceTest` (HijrahDate + adhan2 on API 24);
 - `ReaderE2ETest` (open, swipe, toolbar labels);
