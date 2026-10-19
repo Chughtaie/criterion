@@ -1,7 +1,8 @@
 ---
 description: Triage failing Roborazzi goldens (doc 13 §8.4, MA-3)
 ---
-Run MA-3 (doc 13 §8.4) on the current Roborazzi failures. Do not re-record anything.
+Run MA-3 (doc 13 §8.4) on the current Roborazzi failures. Classify every diff before re-recording anything;
+only diffs classified as intended are re-recorded (step 5).
 
 1. Collect: list the failing goldens and the commits since the last green `master`. If the mushaf pack
    changed, also collect the pipeline's `--changed-since` page list and `delta-<build>.pdf` (doc 08 §5.6).

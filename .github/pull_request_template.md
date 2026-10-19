@@ -11,6 +11,6 @@ Level reached: V? (see doc 13 §5)
 ## Content / licence / policy impact
 - [ ] none  - [ ] new dependency/asset/pack (licence + manifest updated)  - [ ] manifest/permission change  - [ ] curated data or text path touched (content-review)
 ## Docs updated
-- [ ] doc 09 story marked done  - [ ] spec doc(s) updated  - [ ] ADR proposed (doc 12)  - [ ] CLAUDE.md (commands/modules)
+- [ ] PROGRESS.md row updated  - [ ] spec doc(s) updated  - [ ] ADR proposed (doc 12)  - [ ] CLAUDE.md (commands/modules)
 ## Follow-ups / next steps
 - …

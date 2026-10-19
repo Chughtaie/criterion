@@ -234,7 +234,7 @@ same PR.
 |---|---|---|---|---|---|---|---|
 | E-19-S01 | Sources & Credits | S6 | F | agent | todo |  |  |
 | E-19-S02 | Report text error | S6 | F | agent | todo |  |  |
-| E-19-S03 | Privacy policy page + Data-safety answers | S5 | F | agent | todo |  |  |
+| E-19-S03 | Privacy policy page + Data-safety answers | S5 | F | shared | todo |  |  |
 | E-19-S04 | Content-governance policy + provenance log (`docs/legal/`) | S5 | ADM | owner | todo |  |  |
 | E-19-S05 | Signed notices (F-PL-11) | S5 | F | agent | todo |  |  |
 
@@ -281,5 +281,5 @@ same PR.
 
 | ID | Title | Sprint | Tier | Who | Status | Branch | PR |
 |---|---|---|---|---|---|---|---|
-| E-24-S01 | Daily-use hardening | S4 | P1 | agent | todo |  |  |
+| E-24-S01 | Daily-use hardening | S4 | P1 | shared | todo |  |  |
 | E-24-S02 | v1.0 release hardening | S7 | F | agent | todo |  |  |
