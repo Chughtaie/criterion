@@ -86,7 +86,7 @@ Receivers, services and widgets cannot use constructor injection, so they get de
 - **Pull-ins.** A Tier B item enters v1.0 only through doc 09 §5.2's pull-in order (B1…B17) and only if it is merged by **2027-01-18**. The adhan scheduler (B1) and full adhan (B5) are realistic only if the freelancer lever is pulled at the 2026-11-30 checkpoint. The **Sehri alarm** rides on B1: it is v1.0-stretch only if B1 is pulled in that way, otherwise v1.1.
 - **No mid-Ramadan release.** Anything not in the v1.0 build waits for v1.1 (2027-03-22). From 2027-02-05 to Eid (≈ 2027-03-10) only hotfixes ship (doc 09 §12).
 - **Sprint placement (doc 09).** S6 (2027-01-05 → 01-18) builds all of Tier A: E-15-S01..S03 (prayer core, location, prayer screen), E-18-S01 (khatam planner), E-16-S01 (Hijri + PK feed) and E-16-S03 (Ramadan core). Hijri and Ramadan core sit in S6 so testers get ≥ 7 days with them before Go/No-Go. S7 is stabilisation and release prep only.
-- **Pull-forward candidate:** `:core:prayer`'s calculator package with its golden tests has no UI. An agent can build it whenever P1 has slack (doc 09: S4); the spike already proves adhan2 works.
+- **Pull-forward candidate:** `:core:prayer`'s calculator package with its golden tests has no UI. An agent can build it whenever P1 has slack (e.g. S4's spare capacity, if doc 09 moves E-15-S01 there); the spike already proves adhan2 works.
 
 ### 1.4 External content deliverables (owner-driven; doc 03 tracks the rights)
 
@@ -199,32 +199,23 @@ enum class AdhanMode { OFF, SILENT, SHORT, FULL }
 
 `ReminderSettings`, `RamadanSettings`, `TasbeehSettings` and `StreakSettings` are defined in their own sections.
 
-**Mapping onto doc 04 §7.5 (doc 04 owns `UserSettings`).** These classes are the field-level spec. `LocationSetting`, `PrayerSettings` and `AdhanSettings` fill `UserSettings.prayer`; `HijriSettings` fills `UserSettings.hijri`; `ReminderSettings` fills `UserSettings.reminders` (per-reminder enable and time also live in the `reminder` table). `RamadanSettings`, `TasbeehSettings` and `StreakSettings` need new `ramadan`, `tasbeeh` and `streaks` sections in doc 04. Two semantics must survive the merge: `method`/`asr` = `null` means "region default" (needed for diaspora users), and the adhan enable flow pre-selects **FULL for all five prayers**, while silent/vibrate/DND keep it silent unless the user opts in (`playInSilent`, default off; doc 01 F-CP-02 AC 3).
+**Where it lives.** Doc 04 §7.5 embeds this as `UserSettings.companion: CompanionSettings` (types in `:core:model`) and fixes the defaults: `location = null` (prayer features idle until set); `method`/`asr` = `null` means the region default (needed for diaspora users); the adhan enable flow pre-selects **FULL for all five fard prayers**, while silent/vibrate/DND keep it silent unless the user opts in (`playInSilent`, default off; doc 01 F-CP-02 AC 3); reminders ≤ 3/day with quiet hours 22:30–05:00.
 
 ### 2.5 Storage map
 
-Doc 04 owns the `user.db` schema and every pack type's DDL except the `azkar` pack, which this doc owns (doc 04 §7.3). **`user.db` v1** is frozen on 2026-12-21 and already contains every P1 and P2 table, so neither the v1.0 Ramadan release nor v1.1 needs a migration. **P3 tables (hifz, group-khatam cache) arrive in `user.db` v2** through a tested migration (doc 04 §7.4 migration policy).
+Doc 04 owns the `user.db` schema and the DDL of the content DB and every pack type (§7.2–§7.4); this doc owns the algorithms and the companion content rules. **`user.db` v1** is frozen on 2026-12-21 and already contains every P1 and P2 table below, including those for features that default to v1.1, so neither the v1.0 Ramadan release nor v1.1 needs a migration. **P3 tables arrive in `user.db` v2**, the first migration (doc 04 §7.4 migration policy).
 
-| Store | Tables / files | Phase | Notes |
+| Store | Tables / files (doc 04 names) | Phase | Notes |
 |---|---|---|---|
-| `user.db` **v1** (doc 04 §7.4) | `khatam_plan`, `khatam_progress` (F-BM-04, Taraweeh plan, group text sheet as `kind = 'GROUP_SHEET'`); `tasbeeh_counter`, `tasbeeh_day` (F-CP-05); `adhan_log` (F-CP-02); `reminder` (F-CP-09); `note` (F-BM-03); `reading_day`, `page_dwell` (F-BM-05, khatam auto-suggest, reminder suppression) | P2 | Auto Backup includes them. Column needs below |
-| `user.db` **v1**, requested additions (doc 04 must add before the 2026-12-21 freeze) | `alarm_schedule` (§5.2, the scheduled set used for cancel-diffing and missed detection; rebuilt after restore); `azkar_progress(day, category_id, dhikr_id, count)` (§9.2); `reminder_log(day, type, scheduled_at, delivered_at, outcome)` (§11.2) | P2 | Without them, v1.1 forces a migration |
-| `user.db` **v2** (P3) | `hifz_plan`, `hifz_page`, `hifz_session`, `hifz_mistake`, `hifz_recording`; realtime group-khatam cache (`:core:groupkhatam`) | P3 | Recordings are files under `filesDir/hifz/rec/`, excluded from backup |
-| `quran_content.db` (read-only, doc 04 §7.2) | `passage` + `passage_range` (code `manzil-dua` etc.; shared with F-IX-08 quick access) | P1 | Built by doc 08 |
-| `azkar` pack (doc 04 §7.3; DDL in §9.2 here) | `pack_info`, `dhikr_category`, `dhikr`, `dhikr_translation`, `daily_ayah` | P2 (v1.1) | Bundled as `azkar.core`; signed index entries can update it. Quranic items store only ayah ranges; their Arabic always comes from `quran_content.db` (D-30) |
-| `cities` pack (doc 04 §7.3) | `pack_info`, `city(id, name, name_ur, ascii, country, admin1, lat, lon, tz, population)` + FTS5 unicode61 over the names | P2 (v1.0) | Pre-installed from the APK, ~1.5 MB compressed (r08 §2.5). A pack, so geo updates don't bump the content version |
+| `user.db` **v1** (doc 04 §7.4) | `khatam_plan`, `khatam_progress` (§14); `group_khatam`, `group_khatam_part` (§17.1); `tasbeeh_preset`, `tasbeeh_session`, `tasbeeh_day` (§8); `azkar_progress` (§9); `alarm_schedule`, `adhan_log` (§5); `reminder`, `reminder_log` (§11); `note` (§16); `page_dwell`, `reading_day` (§14, §15) | P2 | Auto Backup includes them; `alarm_schedule` is rebuilt after restore. Earlier names in this doc: `khatam_portion` → `khatam_progress`, `page_read_log` → `page_dwell`, `activity_day` → `reading_day`, `alarm_log` → `adhan_log` |
+| `user.db` **v2** (P3) | `hifz_plan`, `hifz_page`, `hifz_session`, `hifz_mistake`, `hifz_recording` (§18.2); realtime group-khatam cache (`:core:groupkhatam`) | P3 | Recordings are files under `filesDir/hifz/rec/`, excluded from backup |
+| `quran_content.db` (read-only, doc 04 §7.2) | `passage` + `passage_range` (code `manzil-dua` etc.; shared with F-IX-08 quick access); `daily_ayah` (366 rows from v1.1, may be empty in v1.0) | P1/P2 | Built by doc 08 |
+| `azkar` pack (doc 04 §7.3 DDL; content rules in §9 here) | `pack_info`, `dhikr_category`, `dhikr`, `dhikr_translation` | P2 (v1.1) | Bundled as `azkar.core` from v1.1. Quranic items reference ayahs by `quran_ranges` and always render from `quran_content.db` (D-30) |
+| `cities` pack (doc 04 §7.3; columns per §3 here) | `pack_info`, `city`, `city_alias`, `country`, `admin1` | P2 (v1.0) | Pre-installed from the APK, ~1.5 MB compressed (r08 §2.5). A pack, so geo updates don't bump the content version |
 | `res/raw` | Adhan audio (AAC-LC `.m4a` ≤ 1 MB each), takbeer and Sehri clips (`.ogg` Vorbis) | P2 (v1.1) | Bundled, so adhan works offline from first launch |
 | Device-protected storage | `alarm_snapshot.json`, `boot_log.jsonl` | P2 (v1.1) | Readable in direct boot (§5.4) |
-| Remote cache (doc 04 §7.7) | `files/remote/hijri-pk.json` (+ `.sig`, `.etag`), fetched from `${CDN_BASE_URL}/v1/feeds/hijri-pk.json` | P2 (v1.0) | §7.4 |
+| Remote cache (doc 04 §7.7) | `files/remote/feeds/hijri-pk.json` (+ `.sig`, `.etag`), fetched from `${CDN_BASE_URL}/v1/feeds/hijri-pk.json` | P2 (v1.0) | §7.4 |
 | Packs (D-10c) | `hifz-mutashabihat` (P3, QUL permission), `ai-model-*` (P4), `qaida-audio` (P4) | P3/P4 | Signed `index.json` entries with licence flags |
-
-**Columns this doc needs in doc 04's v1 tables** (doc 04 owns the DDL; listed so the freeze includes them):
-- `khatam_plan`: `preset TEXT` (e.g. `TARAWEEH_27`), `cursor_ayah_id INTEGER` (first unread ayah, Kufan), `copies INTEGER NOT NULL DEFAULT 1` (group sheet). The existing `stop_at_ruku` is this doc's "snap to ruku"; `start_*`/`end_*` surah:ayah are the plan range; `kind = 'RAMADAN'` marks the Taraweeh plan.
-- `khatam_progress`: one row per completed portion (`unit_index` = portion sequence, or `(copy − 1) × partsPerCopy + part` for a group sheet), plus `from_ayah_id`, `to_ayah_id`, `via TEXT` (`MANUAL|SUGGESTED|AUDIO`). `done_at` must be nullable so a group-sheet part can be `CLAIMED` (name in `claimed_by`) before it is done.
-- `tasbeeh_counter`: `title_ur TEXT`, `phases_json TEXT` (e.g. 33/33/34), `phase INTEGER`, `loop INTEGER`, `builtin_key TEXT`.
-- `adhan_log`: `request_code`, `type` (`ADHAN|SEHRI|TEST|…`), `lateness_ms`, `exact_allowed`, `standby_bucket`, `api`, and the wider `outcome` set of §5.2. Keep the newest 200 rows.
-- `reading_day`: `portion_done INTEGER`, `freeze_used INTEGER`; `day` = epochDay of the **Quran day** (§2.6).
-- `page_dwell`: per-day rows (`day` in the key) or a sibling `page_dwell_day(day, mushaf_id, page_index, seconds)`, because the khatam auto-suggest and reminder suppression need today's dwell, not lifetime totals.
 
 ### 2.6 Time primitives
 

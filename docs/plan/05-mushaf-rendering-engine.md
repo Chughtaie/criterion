@@ -2,7 +2,7 @@
 
 **Purpose.** This doc specifies how Criterion draws the Quran page by page like the printed **Taj Company 16-line Indo-Pak mushaf**: typeset, ayah-aware, theme-able, and fast on low-end phones. It defines the mushaf pack data model, the contract with the offline pipeline that precomputes every position, the on-device rendering algorithm, page templates and furniture, the ornament brief for the designer, interaction (tap, long-press, selection, audio follow-along), themes, zoom, the pager, accessibility, performance budgets, the test strategy, and the fallback paths with objective switch triggers. An engineer or AI agent should be able to build the renderer from this doc without redoing research.
 
-**Status:** Draft v1 — 2026-10-19
+**Status:** Draft v2 — 2026-10-19 (review fixes: per-tier pack location, doc 04 shared types, `ayah_marker` in the content DB, G5 `page_hash`)
 **Owner:** Mushaf rendering. **Reads with:** [Architecture](04-architecture.md), [Data pipelines](08-data-pipelines.md), [Audio engine](06-audio-engine.md), [UX/UI spec](02-ux-ui-spec.md), [Content & licensing](03-content-data-licensing.md), [Quality & CI](10-quality-testing-ci.md).
 
 ### Key decisions in this doc
@@ -28,7 +28,7 @@
 1. **Print-faithful 16-line Indo-Pak pages.** Every page has the same words on the same lines as the Taj print. Paging, labels, header, footer and margin notes follow the print's rules (g02 §2.8).
 2. **Ayah-aware.** Exact tap hit-testing, selection, audio highlight, auto page-turn and screen-reader nodes per ayah. Word boxes are kept for v1.x word highlight and hifz masking.
 3. **Crisp at any size, in any theme.** Everything is vector. Night and AMOLED swap colours and never invert bitmaps.
-4. **Fast and small.** ≤ 8 ms to record a page on a mid-range phone, < 300 ms to the first page, about 1 MB of APK download for layout + text + placements (r04 §2.9).
+4. **Fast and small.** ≤ 8 ms to record a page on Ref-high (doc 10's Pixel 6a-class reference), < 300 ms to the first page, about 1 MB of APK download for layout + text + placements (r04 §2.9).
 5. **Deterministic.** The same pack + font always gives the same pixels on the device and in the pipeline proofs. Goldens and proofs are therefore meaningful.
 
 ### 1.2 Fidelity criteria against the Taj 16-line print (acceptance)
@@ -97,7 +97,7 @@ flowchart LR
 |---|---|
 | Pack id / file | `mushaf.<code>.<script>` (doc 04): `mushaf.indopak16_taj.dk`. Bundled asset `packs/mushaf_layout/mushaf.indopak16_taj.dk@<ver>.db`; installed file `files/packs/mushaf_layout/mushaf.indopak16_taj.dk/<ver>/pack.db` (SQLite, read-only after install) |
 | Mushaf identity (doc 04 `MushafId` enum, code + numeric id) | `INDOPAK_16_TAJ("indopak16_taj", 1)` 548 pp · `INDOPAK_15_HAFIZI("indopak15_hafizi", 2)` 610 · `INDOPAK_13_TAJ("indopak13_taj", 3)` 847 · `MADANI_15("madani15", 4)` 604. `user.db` stores the **code** (doc 04 §7.4). Packs store both: `mushaf.id` / `pack_info.mushaf_id` = numeric id, `mushaf.code` / `pack_info.mushaf_code` = code. |
-| Bundled location (per tier) | `app/src/personal/assets/packs/mushaf_layout/` holds the QUL-derived pack (licence status `PERSONAL_ONLY` until G1). `app/src/public/assets/packs/mushaf_layout/` holds **only** a G1-cleared pack or the clean-room pack (D-06); until then it is empty and a public-tier release fails `verifyContentEligibility` (doc 04 §11.3). The pack is **never** in `src/main/assets`. On first run (and on a content bump) `PackManager.ensureBundledInstalled()` copies it to `files/packs/mushaf_layout/…` during onboarding, outside the first-page budget. `PackDbOpener` opens it by absolute path (doc 04 §7.3). |
+| Bundled location (per tier) | `app/src/personal/assets/packs/mushaf_layout/` holds the QUL-derived pack (licence status `PERSONAL_ONLY` until G1). That path is **gitignored**: the pack is never committed to git or Git LFS, and a Gradle task copies it from `~/criterion-data` / `data/private/` at build time. Only public-eligible packs (G1-cleared or clean-room) may be committed via LFS. `app/src/public/assets/packs/mushaf_layout/` holds **only** a G1-cleared pack or the clean-room pack (D-06); until then it is empty and a public-tier release fails `verifyContentEligibility` (doc 04 §11.3). The pack is **never** in `src/main/assets`. On first run (and on a content bump) `PackManager.ensureBundledInstalled()` copies it to `files/packs/mushaf_layout/…` during onboarding, outside the first-page budget. `PackDbOpener` opens it by absolute path (doc 04 §7.3). |
 | Font | `app/src/main/assets/fonts/criterion_indopak.ttf` (OFL, eligible in every tier): glyf conversion of digitalkhatt.org `ClientApp/src/assets/fonts/hb/indopak.otf` @ `4213fab` (2,569,560 B CFF2, 3,999 glyphs, cv01–cv18) → about 1.63 MB TTF with identical advances (g04 §2.7). `pack_info.font_sha256` must equal the asset's SHA-256 (CI check). |
 | Updates and revocation | A corrected layout or word (hafiz-approved, D-22) is a new `pack_info.version` **bundled in an app update** (text-error SLA: triage ≤ 24 h, signed notice ≤ 48 h, corrected build submitted ≤ 72 h). The remote control plane never changes layout data or Quran text (D-30). The Ed25519-signed `index.json` / `notices.json` (detached `.sig`, doc 04 §7.6, §14.3) can only revoke a version (kill-switch, D-22) or put a notice on a page or ayah. A revoked bundled default keeps rendering with the notice banner until the corrected app update arrives, because v1.0 has no other layout to fall back to. Downloaded mushaf packs (v1.1 pack system) only **add** further layouts (15/13-line P3, Madani P4). |
 | Eligibility (D-29) | `pack_info.licence_status` ∈ {PERMITTED, HOST_GRANT, PENDING, PERSONAL_ONLY, REVOKED}, plus `basis` (free text), `eligible_tiers` (subset of PERSONAL, BETA, PUBLIC), `commercial_ok` and `foss_ok`. A pack built from QUL res. 11 is `PERSONAL_ONLY`, `eligible_tiers = PERSONAL`, until **G1** clears. BETA (closed test) and PUBLIC may bundle only a G1-cleared or clean-room pack. PUBLIC additionally needs **G5**: `proof_certificate_id` set, and every page's `page.page_hash` listed in `certified_pages.json` (§14.5). |
@@ -127,6 +127,7 @@ CREATE TABLE pack_info (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL);
 --       licence_status (PERMITTED|HOST_GRANT|PENDING|PERSONAL_ONLY|REVOKED), basis,
 --       eligible_tiers ('PERSONAL' | 'PERSONAL,BETA,PUBLIC' …), commercial_ok, foss_ok,
 --       proof_certificate_id (NULL until G5), fatiha_style='taj_unnumbered'
+-- (bundled.json / index.json carry the same eligibility as camelCase licenceStatus, basis, eligibleTiers, commercialOk)
 
 CREATE TABLE mushaf (
   id                 INTEGER NOT NULL PRIMARY KEY,  -- MushafId numeric id: 1 = INDOPAK_16_TAJ
@@ -898,7 +899,7 @@ The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04
 - **Per-ayah semantics nodes.** `AyahSemanticsOverlay` is a `Layout` that places one zero-content `Box` per ayah on the page, at the bounding box of its `ayahSpans` (about 11 per page on average: 6,236 / 548). Each box has:
   - `contentDescription`: "{surah name in UI language}, ayah {n}". With the setting **Read translation with ayah** on, the bundled translation text for the UI language is appended (Urdu Junagarhi / English Saheeh, D-09).
   - **Arabic Quran text is never sent to TTS**: system Arabic TTS is unreliable for Quranic text.
-  - `customActions`: Play from here · Bookmark · Copy · Show translation · Tafsir summary (P2) · Select range.
+  - `customActions`: Play from here · Bookmark · Copy · Show translation · Tafsir summary (F-RD-13, v1.0-stretch) · Select range.
   - `onClick` = open the action sheet.
   - Traversal follows reading order (`isTraversalGroup` on the overlay, `traversalIndex` = order on the page).
 - **Page node.** "Page {label} of 549, Para {n}, {surah}". The pager exposes scroll actions, so TalkBack can turn pages with a two-finger swipe.
@@ -1382,6 +1383,7 @@ Numbering of R-xx belongs to [Decisions & risks](12-decisions-risks.md). The lis
 | Risk | Likelihood / impact | Mitigation |
 |---|---|---|
 | G1 refused or no reply, so the QUL layout can't ship publicly | Medium / High | Same pack schema for the clean-room layout (D-06). Engine unaffected. A 15-line DK (MIT) pack can ship first. |
+| The QUL-derived pack leaks into a BETA or PUBLIC build | Low / High | The pack lives only in `src/personal/assets`. `verifyContentEligibility` checks `eligible_tiers` against `CONTENT_TIER`, and `apkanalyzer` asserts that no `src/personal` asset is in the public AAB (doc 04 §11.3). `PackEligibilityTest` (§14.2). |
 | DK IndoPak v0.1 glyph or mark bugs in rare words (r04 §4) | Medium / Medium | Full-book proof (G5), font patching in the pipeline (OFL), alternate font pack (T3) |
 | cv01 behaves differently on real API 24–27 devices (source-verified only; g04 §2.7) | Low / Medium | P0 device test; the precomputed plain variant switches with no new data (T1) |
 | Width drift between offline HarfBuzz and the device's Minikin (hinting, rounding) | Low / Medium | Calibration check (T2) → plain or runtime fitting; nightly full-book capture |
@@ -1410,13 +1412,14 @@ Numbering of R-xx belongs to [Decisions & risks](12-decisions-risks.md). The lis
 
 ### 19.2 Assumptions other docs must match
 
-1. **Mushaf ids:** `1 taj16, 2 hafizi15, 3 taj13, 4 madani15`, used in `user.db` keys (D-10b) and in `ReaderKey`.
-2. **Pack format:** `mushaf.<code>.<script>` packs are self-contained SQLite files defined by Room `MushafPackDb`, built from its exported schema (doc 08). The bundled default is `assets/packs/mushaf-taj16-dk-v1.db`. The signed `index.json` can supersede or revoke it (docs 03, 08, 11).
-3. **Word ids:** `word.id` = canonical DK token id 1..83,669, equal to `quran_content.db` `word.id`. Word timing packs (doc 06) and hifz data (doc 07) key on it, with QUL keys mapped by the 72:16 rule.
-4. **`PlaybackStateHub` (doc 06)** exposes `ayah`, `ayahStartMs`, `ayahEndMs`, `positionMs`, `speed`, `isPlaying` and (v1.x) `wordId`. The reader owns auto page-turn with the 8 s rule.
-5. **Navigation:** `ReaderKey(mushafId, ReaderTarget)` with Resume / Page(label) / Ayah / Para / Manzil / Ruku (doc 04). Every page number the user sees is a **label** (index + 1).
-6. **`PageSettled` events** drive the last-read pointer (F-BM-01) in docs 04 and 07. The reader does not write `user.db` directly.
+1. **Mushaf identity (doc 04 owns):** `MushafId` enum with code + numeric id: `INDOPAK_16_TAJ("indopak16_taj", 1)`, `INDOPAK_15_HAFIZI("indopak15_hafizi", 2)`, `INDOPAK_13_TAJ("indopak13_taj", 3)`, `MADANI_15("madani15", 4)`. `user.db` stores the code; packs store both (§3.1).
+2. **Pack format (this doc owns the DDL, §3.3):** `mushaf.<code>.<script>` packs (e.g. `mushaf.indopak16_taj.dk`) are self-contained SQLite files built from Room `MushafPackDb`'s exported schema. Doc 08 writes exactly these table and column names (`pack_info`, `mushaf`, `page` incl. `page_hash`, `line`, `word`, `ayah_display_override`, `word_override`, `ayah_page`, `surah_header`, `margin_marker`, `furniture_run`, `ornament_item`, `calibration`) and the §4.3 algorithm. The default pack is bundled **per tier** (`src/personal/assets/packs/mushaf_layout/`, `src/public/assets/packs/mushaf_layout/`; never `src/main`) and installed by `PackManager.ensureBundledInstalled()` (doc 04 §7.1, §11). Corrections ship in app updates; the signed index and notices can only revoke or annotate (D-30). `word_override` is a build-time errata record only, so doc 04 §14.2 must drop "reaches users within hours with no app release".
+3. **Word keys:** pack `word.word_index` = canonical DK token id 1..83,669 = `quran_content.db` `word.word_index`. `ayah_marker` (Kufan `display_number`) lives in the content DB (doc 04 §7.2). Word timing packs (doc 06) and hifz data (doc 07) key on `word_index`, with QUL keys mapped by the 72:16 rule. Doc 04 §5 should add `WordId`.
+4. **`PlaybackStateHub` (doc 04 type, doc 06 behaviour):** `state: StateFlow<PlaybackState>` exposes `status`/`isPlaying`, `segment` (with `rep`/`repOf`), `highlight: HighlightTarget?`, `highlightAvailable`, `ayahStartMs`, `ayahEndMs`, `positionMs` (sampled at emission), `rangePass`, `speed` and `seq`. **Doc 06 must re-emit after every seek or position discontinuity, even inside the same ayah**, and adopt §8.6's proportional turn in its §9.3. The reader owns auto page-turn with the 8 s rule.
+5. **Navigation (doc 04 owns):** `ReaderKey(mushaf, page, focus, mode, autoplay)`; callers map Resume / Page(label) / Ayah / Para / Manzil / Ruku as in §11.1. Every page number the user sees is a **label** (index + 1). `MushafRepository` gains `ayahSpan`, `geometry` and `headerPage` (§3.4).
+6. **`PageSettled` events** drive the last-read pointer (F-BM-01) through `LastReadTracker` after a **4 s** dwell (docs 01, 04, 07). The reader does not write `user.db` directly.
 7. **Copy/share/TTS** use the Tanzil text (D-08), never the pack's glyph strings.
-8. **Pipeline (doc 08)** shapes with the shipped glyf TTF and emits both placement variants, furniture runs, ornament items, `calibration` rows, the full-book PDF and per-page 1080 px PNGs.
-9. **Quality (doc 10):** owns the Roborazzi convention plugin (NATIVE graphics, SDK ≥ 26, no `fonts/` resource folder), the KVM emulator runner, and the Macrobenchmark/Baseline Profile modules named in §13–§14.
-10. **UX (doc 02):** owns the chrome, the action sheet, the "Return to current ayah" chip and the settings screens. This doc defines the reader settings keys: `followAudio`, `highlightStyle`, `marginNotes`, `lineRules`, `nightTextBrightness`, `pageTransition`, `reader.zoom.<code>`.
+8. **Pipeline (doc 08)** shapes with the shipped glyf TTF and emits both placement variants, furniture runs, ornament items, `calibration` rows, per-page `page_hash` (§3.5) + `proof-manifest.json`, the full-book PDF and per-page 1080 px PNGs. `certified_pages.json` (doc 11 §5.4) lists the certified hashes.
+9. **Quality (doc 10):** owns the Roborazzi convention plugin (NATIVE graphics, SDK ≥ 26, no `fonts/` resource folder), the KVM emulator runner, the Macrobenchmark/Baseline Profile modules, the reference devices and QB budgets (§13), and the ≈ 60-page golden set. Its `GoldenPageSelector` must include this doc's required subset (§14.3), including labels 5, 8 and 160 and the first `scale < 1` page. Doc 10's references to `mushaf.taj16.sqlite` become `mushaf.indopak16_taj.dk`.
+10. **UX (doc 02):** owns the chrome, the action sheet, the "Follow recitation" chip and the settings screens. This doc defines the reader settings keys: `followAudio`, `highlightStyle`, `marginNotes`, `lineRules`, `nightTextBrightness`, `pageTransition` (v1.1), and the per-mushaf zoom in `pref_kv('mushaf_view', 'zoom.<code>.<orientation>')`.
+11. **Remote notices (doc 04 §14.3):** the `feature` target needs an optional `device` field for the T6 render-fallback switch (§15.2).

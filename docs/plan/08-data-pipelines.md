@@ -473,11 +473,11 @@ Python `criterion_common/normalize.py` is the reference; Kotlin `TextNormalizer`
 |---|---|
 | Pack id | `mushaf.<code>.<script>` per doc 04 §5.2, e.g. `mushaf.indopak16_taj.dk` (`MushafId.INDOPAK_16_TAJ`, numeric id 1). Later: `mushaf.indopak15_hafizi.dk` (2), `mushaf.indopak13_taj.dk` (3), `mushaf.madani15.<script>` (4) |
 | File | `mushaf.indopak16_taj.dk@<ver>.db` in `app/src/{personal,public}/assets/packs/mushaf_layout/` (§2). Installed by `PackManager` to `files/packs/mushaf_layout/<id>/<ver>/pack.db` (doc 04 §7.1) |
-| Tables written | `pack_info`, `mushaf`, `page`, `line`, `word` (integer x-fractions in `frac_unit` = 100,000; `x0`/`x1` kashida variant, `x0_plain`/`x1_plain`, `kashida` 0..3, `ink_top`/`ink_bottom`), `ayah_page`, `surah_header`, `margin_marker`, `furniture_run`, `ornament_item`, `calibration`, plus `ayah_display_override` and the provenance-only `word_override` once doc 05's exported schema carries them |
-| **Not** in the pack | `ayah_marker`. It lives once in `quran_content.db` (doc 04 §7.2, writer ruling). The pack's `word` rows give the marker tokens' positions. Para, ruku, manzil, sajda and quarter metadata also stay in the content DB. The pack copies only the values drawing needs (`page.para_id`, `page.manzil_id`, `margin_marker.n1..n3`), and V-M20 asserts that both agree |
-| `pack_info` keys | Doc 05 §3.3 keys: `pack_id`, `pack_version`, `schema_version`, `min_content_version`, `mushaf_id`, `script`, `font_file`, `font_sha256`, `font_source`, `pipeline_git_sha`, `sources_lock_sha256`, `uharfbuzz_version`, `built_at`, `build_eligibility`, `proof_certificate_id`, `licence_json`, `attribution_json`, `fatiha_style`, `furniture_digits`. Pipeline additions: `licence_status` (5-value), `basis`, `eligibility_json` (`{personal, beta, public, monetized}`), the §5.4 tunables (`G_MIN`, `G_MAX`, `G_NAT`, `KMAX_STEP`, `KMAX_WORDS`, `SCALE_FLOOR`, `PAGE_EM_BAND`), `build_id`, and `text_layer_hash` (whole-book hash of the §5.6 page hashes) |
+| Tables written | `pack_info`, `mushaf`, `page` (incl. `page_hash`, §5.6), `line`, `word` (keyed by `word_index` = content-DB `word.word_index`; integer x-fractions in `frac_unit` = 100,000; `x0`/`x1` kashida variant, `x0_plain`/`x1_plain`, `kashida` 0..3, `ink_top`/`ink_bottom`), `ayah_page`, `surah_header`, `margin_marker`, `furniture_run`, `ornament_item`, `calibration`, `ayah_display_override` and `word_override` (a build-time errata record, §3.3) |
+| **Not** in the pack | `ayah_marker`. It lives once in `quran_content.db` (doc 04 §7.2, doc 05 §3.3). The pack's `word` rows give the marker tokens' positions. Para, ruku, manzil, sajda and quarter metadata also stay in the content DB. The pack copies only the values drawing needs (`page.para_id`, `page.manzil_id`, `margin_marker.n1..n3`), and V-M20 asserts that both agree |
+| `pack_info` keys | Exactly doc 05 §3.3:<br>• doc 04 common keys: `id`, `type`, `version`, `schema_version`, `title`, `licence`, `attribution`, `source_url`, `source_sha256`, `min_content_version`, `built_at`;<br>• layout keys: `mushaf_id`, `mushaf_code`, `script`, `build_id`, `font_file`, `font_sha256`, `font_source`, `pipeline_git_sha`, `sources_lock_sha256`, `uharfbuzz_version`, `furniture_digits`, the §5.4 tunables (`g_min` … `page_em_band`), `proof_certificate_id`, `fatiha_style`;<br>• D-29 eligibility keys: `licence_status` (5-value), `basis`, `eligible_tiers`, `commercial_ok`, `foss_ok`.<br>A QUL-derived pack is `PERSONAL_ONLY` with `eligible_tiers = PERSONAL` until G1 clears |
 | `word.text` | The DK token text **after layout-level build-time overrides** (doc 05 §4.2). For Taj-16, the 1:1–1:7 end tokens become a bare ۝, so the Fatiha shows seven empty circles. `ayah_display_override` rows (1:1..1:7 → show no number) record that decision for the reader and a11y. The shaped widths are those of the overridden form |
-| Errata | Hafiz errata (`errata/taj16.csv`) and text decisions are applied **at build time** only. A text fix always ships as a new pack version **inside an app update**. The remote channel can only disable or annotate a page via `notices.json` (D-30, §8.3) |
+| Errata | Hafiz errata (`data/curated/errata/indopak16_taj.csv`) and text decisions are applied to `word` **at build time**, before placement and before `page_hash`. Each applied row is recorded in `word_override` (`word_index`, `text`, optional `x0`/`x1`/`kashida`, `reason`, `approved_by`). The app never applies overrides at runtime. A text fix always ships as a new pack version **inside an app update**. The remote channel can only disable or annotate a page via `notices.json` (D-30, §8.3) |
 
 Size: about 3–3.5 MB raw, about 1 MB deflated in the APK (doc 05 §3.1).
 
@@ -516,7 +516,7 @@ grid[1] = remap_sarlauh_p1(grid[1])                # QUL L1/L2/L3–7 → slots 
 assert sarlauh_shape(grid[2])                      # slots 1–9 OPENING_PANEL, 10 SARLAUH_TITLE, 11 BASMALA, 12–16 AYAH
 for line in AYAH lines:
     a, b = dk_index(Q[line.first_word_id]), dk_index_last(Q[line.last_word_id])   # 72:16:1 → DK t1..t2
-    line.first_word_id, line.last_word_id = a, b    # DK word_index = doc 05 word.id
+    line.first_word_index, line.last_word_index = a, b    # DK word_index (doc 05 line columns)
 assert contiguous_in_order(all AYAH ranges, 1, 83_669)          # each token exactly once
 assert first_last_skeleton_match(lines, except={(493, 13)})     # 59:13 spelling line (g01 §2.4)
 ```
@@ -568,11 +568,11 @@ Alternatives considered:
 Enums and columns follow doc 05 §3.3. `margin_marker.kind` values are 0 RUKU, 1 PARA_START, 2 MANZIL_START, 3 QUARTER, 4 SAJDA and 5 SAJDA_SHAFII. `page.template` is 0 REGULAR or 1 SARLAUH. `page.outer_side` is 0 RIGHT or 1 LEFT.
 
 ```python
-loc = {word_id: (page_index, slot)}                   # from line ranges
+loc = {word_index: (page_index, slot)}                # from line ranges
 for r in rukus:     add(RUKU, loc[end_token(r.end_ayah_id)], ayah_id=r.end_ayah_id,
                         n1=r.ruku_in_surah, n2=r.ayah_count, n3=r.ruku_in_para)                # 558 (Fatiha n3 NULL)
 for q in quarters:  anchor = word(q.ayah_id, q.after_word_pos) if q.after_word_pos else end_token(q.ayah_id)
-                    add(QUARTER, loc[anchor], anchor_word_id=anchor, ref_id=q.quarter)          # 90
+                    add(QUARTER, loc[anchor], anchor_word_index=anchor, ref_id=q.quarter)       # 90
 for s in sajdas:    add(SAJDA if s.kind == 'hanafi' else SAJDA_SHAFII,
                         loc[end_token(s.ayah_id)], ref_id=s.number)                             # 15 (14 + 22:77)
 for m in manzils[1:]: add(MANZIL_START, loc[header_or_first(m.start_ayah_id)], ref_id=m.id)    # 6 (Manzils 2..7)
@@ -601,39 +601,31 @@ Waqf margin notes (e.g. «وقف لازم» beside p.358 L5) have no dataset and
 
 ### 5.6 Page hashes, proof renders and device captures (`hashes.py`, `proof.py`)
 
-**Two hashes per page.** G5 certifies the **text layer**, not the ornament layer (lead ruling). Ornaments can therefore still be integrated or adjusted without voiding the certificate, but they must be final by the end of S5 so that hafiz round 2 sees the shipping look.
+**`page_hash` (doc 05 §3.5).** G5 certifies the **text layer**, not the ornament layer (lead ruling). `hashes.py` computes `page_hash` exactly as doc 05 §3.5 defines it and writes it into `page.page_hash` and `proof-manifest.json`. The hash covers:
+- the page row (minus `page_hash`), its line rows and its word rows (`word_index`, `ayah_id`, `text`, `slot`, `x0`, `x1`, `kashida`, `x0_plain`, `x1_plain`);
+- its `margin_marker` rows and its `furniture_run` rows;
+- the `ayah_display_override` and `word_override` rows touching the page;
+- `font_sha256` and the `mushaf` geometry row.
 
-```text
-text_hash(p) = sha256(canonical_json({
-    font_sha256,
-    lines: [(slot, type, header_variant, centered, surah_id, first_word_id, last_word_id, scale) for 16 slots],
-    words: [(id, text, slot, x0, x1, kashida, x0_plain, x1_plain) for words on p],      # word positions + glyph runs
-    markers: [(kind, anchor_slot, anchor_word_id, ayah_id, n1, n2, n3, ref_id) for markers on p],   # semantics only
-    furniture_text: [(role, text) for runs on p],                                       # header/footer/surah-title strings
-    surah_headers: [(surah_id, variant, title_text, right_text, left_text) for headers on p],
-    display_overrides: [(ayah_id, show_number) for overrides touching p],
-    content: [(word_index, ayah_id, display_number, is_kufan_end, disputed_end)          # content-DB ayah_marker rows on p
-              for markers of words on p] }))
-ornament_hash(p) = sha256(canonical_json(ornament_item rows, furniture_run geometry (x0, x1, y, size, rotation), y_center_slot))
-```
+`ornament_item` and the designer's SVG art are **excluded**. Ornaments can therefore be finalised without voiding the certificate, but the final art must be integrated by the end of S5 (2027-01-04), so that hafiz round 2 sees the shipping look.
 
-The canonical JSON uses sorted keys, no whitespace, integers as-is and REALs formatted `%.6f`. `text_hash` is what the hafiz certifies and what `certified_pages.json` lists (§14). `ornament_hash` is informational: a change to it triggers a visual spot-check, not G5 re-review.
+Canonical JSON uses sorted keys, no whitespace, integers as-is, and REALs formatted `%.6f`. `hashes.py` also writes an informational `ornament_hash` per page into `proof-manifest.json`. A change to it triggers a visual spot-check, not G5 re-review. `pack_info` carries no whole-book hash: `certified_pages.json` (§14) is the list the release gate checks.
 
 **Proof renders (`proof.py`).**
-- **Vector SVG per page.** Glyph outlines come from fontTools `SVGPathPen`, at the same positions and features as the pack, using the same ornament SVGs. Each page carries the furniture, the margin markers, a **page label + `build_id` + `text_hash[:8]` watermark**, and slot numbers 1–16 in the gutter.
+- **Vector SVG per page.** Glyph outlines come from fontTools `SVGPathPen`, at the same positions and features as the pack, using the same ornament SVGs. Each page carries the furniture, the margin markers, a **page label + `build_id` + `page_hash[:8]` watermark**, and slot numbers 1–16 in the gutter.
 - `--debug` adds word boxes and kashida step colours for engineers.
 - `cairosvg` renders each page to PDF. `pypdf` merges them into 30 files `build/proofing/indopak16_taj/<build_id>/para-NN.pdf`. A PNG at 1080 px wide is also written for each page (screenshot baselines for doc 10). Every proofing output, PDFs and PNGs alike, stays out of the repo and out of the APK.
-- `proof-manifest.json` holds `{page_index, page_label, text_hash, ornament_hash, pdf_sha256}` × 548, plus the font sha256.
-- `--changed-since <build_id>` renders only the pages whose `text_hash` changed, as `delta-<build>.pdf`. It also emits the **per-pack-version page-diff report** `page-diff-<old>-<new>.md`, listing changed pages with their reason (text, position, marker, furniture text, ornament only).
+- `proof-manifest.json` holds `{page_index, page_label, page_hash, ornament_hash, pdf_sha256}` × 548, plus the font sha256.
+- `--changed-since <build_id>` renders only the pages whose `page_hash` changed, as `delta-<build>.pdf`. It also emits the **per-pack-version page-diff report** `page-diff-<old>-<new>.md`, listing changed pages with their reason (text, position, marker, furniture text, ornament only).
 - Templates: `signoff.csv` and `certificate-template.pdf`. The certificate records the layout, `build_id`, page count, reviewer name and qualification, a statement mirroring Punjab Act 2011 s.5(3), and signature/date. Legal wording is per doc 11 §5.4.
 
 **Device captures for hafiz round 2.** Round 2 and the G5 certificate cover device-rendered pages, not only the pipeline PDF (doc 09 ruling).
 - `crit mushaf device-captures` takes the Roborazzi or instrumented captures of all 548 pages from doc 10's harness, at 1080 px on the reference device.
-- It checks that each capture's embedded `text_hash` (drawn as a debug-build watermark) equals the pipeline's.
+- It checks that each capture's `page_hash[:8]` stamp (doc 05 `FullBookCaptureTest`) equals the pipeline's.
 - It bundles the captures per Para for the reviewer.
 - Acceptance 4 (§16) bounds the pixel difference between PDF and device.
 
-A font change (new `font_sha256`) changes every `text_hash`. It therefore forces a certificate addendum: re-review of a 30-page sample (the first page of every Para) plus every page whose word positions changed.
+A font change (new `font_sha256`) changes every `page_hash`. It therefore forces a certificate addendum: re-review of a 30-page sample (the first page of every Para) plus every page whose word positions changed.
 
 ### 5.7 Fallback E: clean-room tooling (`rebreak.py`)
 
@@ -806,83 +798,207 @@ If a rebuild changes this list, CI fails until `reciters.yaml` is updated with a
 
 ---
 
-## 8. Stage 5: catalogue, pack index and signing (`tools/catalogue`)
+## 8. Stage 5: catalogue, pack index, notices, eligibility manifest and signing (`tools/catalogue`)
 
-### 8.1 `catalogue.json` payload (reciters; semantics owned by doc 06)
+Every signed JSON shares a **header** (writer ruling). The header has these fields:
+- `schema`;
+- `kid`: the signing key id, used as a hint. The app still tries both pinned keys;
+- `sequence`: monotonic per file and channel, for anti-rollback;
+- `generatedAt` and `expiresAt`: ISO-8601 UTC. `generatedAt` is the commit time of the pipeline sha, not the wall clock.
 
-```json
-{ "schema": 1, "sequence": 7, "generated": "2026-12-01", "expires": "2027-03-01",
-  "recitations": [{
-    "id": "alafasy.murattal.gapless", "reciter": {"id": "alafasy", "en": "Mishary Rashid Alafasy", "ar": "مشاري راشد العفاسي", "ur": "مشاری راشد العفاسی"},
-    "style": "MURATTAL", "riwayah": "hafs", "language": "ar", "layout": "GAPLESS_SURAH",
-    "bitrate_kbps": 128, "is_vbr": false, "basmala": "EMBEDDED",
-    "sources": [{"host": "mp3quran", "template": "<folder_url>{sss}.mp3"}],
-    "timing": {"pack_id": "timing.alafasy.murattal.gapless", "version": 3, "sha256": "…", "url": "https://<CDN_HOST>/v1/timing/…"},
-    "highlight_disabled_surahs": [], "surah_bytes": [/*114 measured Content-Length*/],
-    "attribution": "Recitation: Mishary Rashid Alafasy · Audio: mp3quran.net",
-    "licence_status": "PERMITTED_BY_HOST", "eligibility": {"personal": true, "public": true, "monetized": false},
-    "enabled": true }]}
-```
+Field names are the owner doc's camelCase. `crit validate` checks every file against the JSON Schemas copied into `tools/catalogue/schemas/` (V-X01), so kotlinx.serialization on the device never silently drops a field.
 
-`highlight_disabled_surahs` in the signed catalogue **overrides** the timing pack's `surah_status`. This makes the kill-switch remote, with no pack rebuild. `licence_status` values (doc 06 owns the enum): `PERMITTED`, `PERMITTED_BY_HOST`, `PENDING`, `PERSONAL_ONLY`.
+### 8.1 `catalogue.json` (reciters; schema owned by doc 06 §3.2)
 
-### 8.2 `index.json` payload (packs)
+The pipeline emits exactly doc 06 §3.2's shape (`AudioCatalogue`), plus the header fields. Abridged:
 
 ```json
-{ "schema": 1, "sequence": 12, "generated": "2026-12-01", "expires": "2027-03-01", "min_app_version": 1,
-  "packs": [{
-    "id": "tr.ur.junagarhi.qe", "type": "translation", "lang": "ur", "dir": "rtl", "title": "محمد جوناگڑھی",
-    "upstream_version": "1.1.3", "pack_version": 2, "schema_version": 1, "min_content_version": 1,
-    "url": "https://<CDN_HOST>/v1/packs/tr.ur.junagarhi.qe/2/tr.ur.junagarhi.qe-2.sqlite.zip",
-    "bytes": 2109171, "sha256": "…", "unzipped_bytes": 6160000, "unzipped_sha256": "…",
-    "licence": "QuranEnc republish terms", "attribution": {"en": "…QuranEnc.com v1.1.3", "ur": "…"},
-    "eligibility": {"personal": true, "public": true, "monetized": true},
-    "enabled": true, "revoked_versions": [] }],
-  "advisories": [{"id": "ADV-1", "mushaf": "taj16", "page_index": 312, "severity": "text", "message_en": "…", "message_ur": "…", "fixed_in_content_version": 4}]
-}
+{ "schema": 1, "kid": "c26a", "sequence": 7, "catalogueVersion": 7,
+  "generatedAt": "2026-12-22T00:00:00Z", "expiresAt": "2027-03-22T00:00:00Z", "minAppVersionCode": 0,
+  "hosts": { "mp3q": "https://cdn.mp3quran.net/audio", "ea": "https://everyayah.com/data",
+             "in": "https://cdn.islamic.network/quran", "r2": "${CDN_BASE_URL}/v1/audio" },
+  "defaults": { "PUBLIC": "alafasy.murattal.mp3q123", "BETA": "alafasy.murattal.mp3q123", "PERSONAL": "alafasy.murattal.mp3q123" },
+  "reciters": [ { "id": "alafasy", "names": { "en": "Mishary Rashid Alafasy", "ar": "مشاري راشد العفاسي", "ur": "مشاری راشد العفاسی" }, "sortKey": 10 } ],
+  "recitations": [ {
+    "id": "alafasy.murattal.mp3q123", "reciterId": "alafasy", "style": "MURATTAL", "riwayah": "hafs",
+    "language": "ar", "layout": "GAPLESS_SURAH",
+    "qualities": [ { "tier": "STANDARD", "bitrateKbps": 128, "sampleRateHz": 44100, "isVbr": false,
+        "mirrors": [ { "id": "mp3quran", "template": "{host:mp3q}/mishary-alafasy/r1/{sss}.mp3", "role": "PRIMARY", "byteIdentical": true } ],
+        "surahBytes": ["…114 measured Content-Length…"], "surahDurationMs": ["…114…"], "totalBytes": 1720000000 } ],
+    "basmala": "EMBEDDED_INTRO",
+    "timing": { "packId": "timing.alafasy.murattal.mp3q123", "minVersion": 1, "source": "mp3quran ayat_timing read=123" },
+    "highlightDisabledSurahs": [],
+    "fallbackRecitationId": "alafasy.murattal.ea",
+    "licenceStatus": "HOST_GRANT", "basis": "host_grant: mp3quran.net statement archived 2026-10-19",
+    "buildEligibility": ["PERSONAL", "BETA", "PUBLIC"], "commercialUse": "UNKNOWN",
+    "attribution": { "en": "Recitation: Mishary Rashid Alafasy · Audio: mp3quran.net", "ur": "…" },
+    "sourceUrl": "https://www.mp3quran.net/eng/privacy", "enabled": true, "killAction": "DISABLE" } ] }
 ```
 
-`advisories` carries the text-error kill-switch and notice (D-22, F-PL-05). The mushaf pack types (`mushaf.taj13` etc.), timing packs and `geo.cities15000` use the same entry shape.
+- **`highlightDisabledSurahs`** is generated from the timing pack's `audio_file.highlight_ok = 0` rows (doc 06 §5.3). In the signed catalogue it **overrides** the pack, so a surah's highlight can be turned off remotely with no pack rebuild. Remote kill-switch edits are allowed to add surahs, never to remove ones the pack disabled (V-T11).
+- **`licenceStatus`** takes the doc 12 D-29 values `PERMITTED`, `HOST_GRANT`, `PENDING`, `PERSONAL_ONLY` and `REVOKED`. `basis` is free text saying why. `REVOKED` entries are emitted with `enabled: false` and `killAction: DISABLE_AND_PURGE`, so installed copies are purged (doc 06 §3.4).
+- **`buildEligibility`** is derived by `tiers.py` (§8.6), never hand-written:
+  - `PERMITTED`/`HOST_GRANT` → PERSONAL + BETA + PUBLIC;
+  - `PENDING` → PERSONAL + BETA;
+  - `PERSONAL_ONLY` → PERSONAL;
+  - `REVOKED` → none.
+- **`catalogueVersion` = `sequence`**. Doc 06 §3.1 accepts a copy only if `catalogueVersion` is greater than the current one. Both fields are emitted until doc 06 adopts `sequence`.
+- **Per channel.** The pipeline emits one catalogue per channel. `v1/catalogue.json` (PUBLIC) lists only PUBLIC-eligible recitations. `v1/beta/catalogue.json` adds the BETA ones (PENDING gapped sets). The PERSONAL catalogue is **bundled only**, together with `personal-overlay.json`, and is never uploaded (doc 04 §11.2).
 
-### 8.3 Signed envelope (all remote JSON)
+### 8.2 `index.json` (packs; schema owned by doc 04 §7.6) — remote copy v1.1
+
+The pipeline emits exactly doc 04 §7.6's JSON Schema, plus the header fields. Abridged entry:
 
 ```json
-{ "v": 1, "alg": "Ed25519", "kid": "c26a", "payload": "<base64 of the exact UTF-8 payload bytes>", "sig": "<base64 64-byte signature over the payload bytes>" }
+{ "schema": 1, "kid": "c26a", "sequence": 12, "generatedAt": "2027-03-01T00:00:00Z", "expiresAt": "2027-06-01T00:00:00Z",
+  "minAppVersionCode": 1010099,
+  "packs": [ {
+    "id": "ur.jalandhari.tanzil", "type": "translation", "version": 1, "schemaVersion": 1, "lang": "ur", "dir": "rtl",
+    "title": { "en": "Fateh Muhammad Jalandhari", "ur": "فتح محمد جالندھری" },
+    "url": "${CDN_BASE_URL}/v1/packs/translation/ur.jalandhari.tanzil/1/ur.jalandhari.tanzil-1.zip",
+    "compression": "zip", "bytes": 731004, "sha256": "…", "unpackedBytes": 2201088, "unpackedSha256": "…",
+    "minContentVersion": 1,
+    "licence": { "name": "Tanzil translation terms (non-commercial)", "commercialUse": false, "redistribution": true },
+    "licenceStatus": "PERMITTED", "basis": "open_licence: Tanzil translation terms",
+    "attribution": { "en": "Translation by Fateh Muhammad Jalandhari, via Tanzil.net", "ur": "…" },
+    "eligibility": { "personal": true, "beta": true, "public": true, "monetized": false },
+    "autoUpdate": false, "disabled": false } ] }
 ```
 
-- One object, uploaded atomically. Bytes are signed directly, with no JSON canonicalisation.
-- The app (doc 04) verifies `sig` with the key named by `kid` from its compiled-in key set, then parses `payload`.
-- It rejects `sequence ≤` the last accepted value (anti-rollback). After `expires` it keeps the last good copy but stops trusting new kill-switch *removals*.
-- A human-readable `*.payload.json` is uploaded alongside for debugging; the app ignores it.
-- Bundled snapshots in assets are the same envelopes.
+- `licenceStatus`, `basis` and `eligibility.beta` are the D-29 additions. Doc 04's schema must list them (residual for doc 04). Until then they ride in as extra properties, which doc 04's `ignoreUnknownKeys` parse tolerates.
+- Entries of every pack type use this one shape: `translation`, `tafsir`, `mushaf_layout`, `timing`, `font`, `azkar`, `cities`.
+- Text-error notices are **not** carried here. The earlier `advisories` array moved to `notices.json` (§8.3).
+- v1.0 ships no downloadable pack (doc 09: pack system = B8 / v1.1). In v1.0, `crit index build` produces only the bundled `remote-seed/index.json` + `.sig` used by the shared verifier tests. Publishing `v1/index.json` starts in v1.1 (E-03-S10).
 
-**Keys** (`crit keys`):
-- `crit keys generate --kid c26a` creates two Ed25519 keypairs, **primary** (`c26a`) and **backup** (`c26b`).
-- Private keys are PKCS#8 PEM encrypted with a passphrase, stored at `~/.criterion/keys/` on the owner's machine, with copies in the owner's password manager and an offline paper/QR backup. **They never go into the repo, CI secrets or any cloud bucket.**
-- Public keys (raw 32 bytes, base64) are committed to `data/keys/*.pub` and compiled into the app; both are trusted.
-- Rotation: sign with `c26b` and ship an app update that adds `c27a` and drops the compromised key.
-- `crit sign` refuses to sign a payload that fails `crit validate` or whose `sequence` is not greater than the live one.
-- App-side verifier: doc 04 decides. On API ≥ 33 the platform `Signature("Ed25519")` exists. Below that a vetted library is needed (recommendation: Tink `Ed25519Verify`, Apache-2.0, verified in P0).
+### 8.3 `notices.json` (F-PL-11 signed notices; schema owned by doc 04 §14.3) — v1.0 floor
 
-### 8.4 Profiles and eligibility gate
+`notices.json` carries text-error banners, takedown and kill-switch notices, and min-version nudges. It is the delivery path for the text-error SLA:
+- triage ≤ 24 h;
+- signed notice or kill-switch ≤ 48 h;
+- corrected build submitted ≤ 72 h;
+- reporter acknowledged ≤ 72 h.
 
-The build profile is `personal` | `public` | `public_monetized`. It is a Gradle property set by doc 10/11's flavor and track matrix.
+The fix itself always ships as an app update: the content DB and the layout pack are bundled, and notices never change Quran text or layout (D-30).
+
+**Source.** One YAML file per notice in `data/notices/`, written by the owner (or by `crit notices new --page 412 --mushaf indopak16_taj` from a template):
+
+```yaml
+id: n-2027-02-10-01
+target: {type: page, mushaf: indopak16_taj, page: 412}     # page | surahHighlight | pack | recitation | feature | minVersion
+action: warn                                                # warn | disable
+message: {en: "A possible text issue on this page is under review.", ur: "…"}
+until: 2027-03-31T00:00:00Z
+evidence: errata/taj16.csv#R-0007                           # internal; stripped from the output
+```
+
+**Build (`build_notices.py`).**
+1. Drop notices whose `until` has passed.
+2. Emit doc 04 §14.3's `{schema, sequence, generatedAt, notices[]}` plus `kid` and `expiresAt`.
+3. Set `expiresAt` = min(now + 30 days, the latest `until`), so a stale file stops being trusted.
+
+**Validation (V-X09).** The build is checked before signing:
+- every `target` resolves: page 1..548 for the named mushaf code; a known recitation id, plus surah 1..114 for `surahHighlight`; a known pack id; a feature id from doc 04's flag list;
+- `message.en` and `message.ur` are both present for `warn`;
+- `sequence` is greater than the live value;
+- no notice tries to carry text or layout data, i.e. no unknown keys.
+
+**Owner runbook ("publish a text-error notice", target ≤ 15 min, §14):**
+1. Write the notice: `crit notices new …`, then edit the YAML.
+2. `just notice`, which runs `crit notices build`, `crit validate notices` and `crit sign notices`.
+3. `crit publish --channel public --go`, then the same for `--channel beta`. `notices.json` is channel-independent, so it is uploaded once to `v1/notices.json`; the second publish is a no-op for it.
+4. `crit verify-live notices`, then a screenshot on a device to confirm the Home card and the reader chip (UI per doc 02).
+
+### 8.4 Detached signatures and keys (`sign.py`, `crit keys`)
+
+**Format (doc 04 §7.6).**
+- Each signed file `X.json` is published as-is, as plain UTF-8 JSON: the exact bytes that were validated.
+- Beside it sits `X.json.sig`, containing `base64(Ed25519_sign(sk, bytes(X.json)))`: 64 raw signature bytes, base64-encoded, with no newline.
+- There is no envelope, no JSON canonicalisation and no payload re-encoding.
+- `kid`, `sequence` and `expiresAt` live **inside** `X.json`.
 
 ```python
-def gate(profile, bundled_items, listed_items):
-    for it in bundled_items + listed_items:
-        r = registry[it.id]
-        assert r.eligibility[profile_key(profile)], f"{it.id} not eligible for {profile}"
-        if profile != "personal" and r.permission_ref:
-            assert permissions[r.permission_ref].status in {"granted", "archived"}   # G1/G2
-        if profile == "public_monetized": assert r.licence_commercial_ok             # D-17
-        assert r.attribution.en and r.attribution.ur and r.licence
+def sign(path, key):                                # owner machine only
+    data = open(path, "rb").read()
+    doc = json.loads(data); validate_schema(doc); assert doc["kid"] == key.kid
+    assert doc["sequence"] > live_sequence(path)    # never re-sign an older or equal sequence
+    sig = key.sign(data); assert verify_any(data, sig, data/keys/*.pub)
+    open(path + ".sig", "w").write(base64.b64encode(sig).decode())
 ```
 
-- Separate remote envelopes exist per profile: `v1/personal/…`, `v1/public/…`. A public build can never even see a personal-only pack URL.
-- Personal-only audio (Shamshad Ali Khan Urdu voice, Husary Muallim, Qari Sadaqat Ali) appears **only** in the personal catalogue (D-12).
+**Upload order and caching.** `X.json` and `X.json.sig` are uploaded back to back with `Cache-Control: public, max-age=60`. During the few seconds between the two PUTs, a client can fetch a new body with an old signature, or the reverse. Verification then fails, and the app keeps its last verified copy until the next refresh (doc 04 §7.6 `SignedFileFetcher`). The race is therefore harmless, and the short TTL bounds it.
 
----
+**Bundled snapshots.** The bundled snapshots in `assets/catalogue/` and `assets/remote-seed/` are the same `X.json` + `X.json.sig` pairs.
+
+**Test vectors.** `tools/catalogue/test_vectors/` holds `{json bytes, sig}` pairs for the doc 04/10 verifier tests:
+- valid pairs, signed with both the primary and the backup key;
+- a 1-byte-tampered body;
+- a truncated signature;
+- a wrong key;
+- a rolled-back `sequence`.
+
+The app's verifier is the vendored TweetNaCl verify port in `:core:remote` (doc 04 §7.6). It is tested against RFC 8032 §7.1 and Wycheproof vectors plus these pairs. There is **no Tink dependency** on the device.
+
+**Keys (`crit keys`).**
+- `crit keys generate --kid c26a` creates two Ed25519 keypairs: **primary** (`c26a`) and **backup** (`c26b`).
+- Private keys are PKCS#8 PEM encrypted with a passphrase. They are stored at `~/.criterion/keys/` on the owner's machine, with copies in the owner's password manager and an offline paper/QR backup. **They never go into the repo, CI secrets or any cloud bucket.**
+- Public keys (raw 32 bytes) are committed to `data/keys/*.pub`. They are passed to the app as the hex `criterion.trustedKeys` Gradle property (`BuildConfig.TRUSTED_KEYS`, doc 04 §11.1), and both are trusted.
+- Rotation: sign with `c26b`, then ship an app update that adds a new standby key (`c27a`) and drops the compromised one.
+- `crit sign` refuses to sign a file that fails `crit validate`, or whose `sequence` is not greater than the live one.
+
+### 8.5 `bundled.json` (per-tier eligibility manifest; schema owned by doc 04 §11.2)
+
+`crit install-assets --tier <T>` writes `app/src/{personal,public}/assets/content/bundled.json`. It lists **every** file it copied into that source set's `assets/packs/` and `assets/catalogue/`:
+
+```json
+{ "schema": 1, "tier": "BETA", "generatedAt": "…", "pipelineGitSha": "…",
+  "items": [
+    { "id": "mushaf.indopak16_taj.dk", "type": "mushaf_layout", "version": 3,
+      "path": "packs/mushaf_layout/mushaf.indopak16_taj.dk@3.db", "sha256": "…",
+      "licenceStatus": "PERMITTED", "basis": "written_permission PERM-01 (G1)",
+      "eligibility": { "personal": true, "beta": true, "public": true, "monetized": false },
+      "requiredGates": ["G1", "G5"], "certifiedPages": "548/548" },
+    { "id": "ur.junagarhi.qe", "type": "translation", "version": 1, "path": "…", "sha256": "…",
+      "licenceStatus": "PERMITTED", "basis": "QuranEnc republish terms",
+      "eligibility": { "personal": true, "beta": true, "public": true, "monetized": true } } ] }
+```
+
+Doc 04's `verifyContentEligibility<Variant>` Gradle task reads this file before `merge<Variant>Assets`. It recomputes each file's sha256 and fails on any unlisted file in `assets/packs`. The pipeline runs the **same** eligibility function (§8.6) when it writes the file, so CI and the device agree.
+
+### 8.6 Content tiers and the eligibility gate (`tiers.py`)
+
+The tiers follow D-29 and doc 04 §11.1:
+
+| Tier | Built from | Remote channel |
+|---|---|---|
+| `PERSONAL` | `tier=personal` flavour (`fossPersonalRelease`, owner's phone) | none: bundled only, **never uploaded to R2** |
+| `BETA` | `tier=public` flavour, default (closed test) | `v1/beta/…` |
+| `PUBLIC` | `tier=public` flavour with `-Pcriterion.release=production`, which requires G1 + G5 evidence | `v1/…` |
+
+`MONETIZED` is a separate flag (`-Pcriterion.monetized=true`, v1.5+, play only). The pipeline CLI takes the same names: `--tier PERSONAL|BETA|PUBLIC [--monetized]`. The withdrawn profile names map as `personal` → PERSONAL, `public` → PUBLIC (BETA is the new closed-test tier), and `public_monetized` → PUBLIC + `--monetized`.
+
+```python
+def eligible(r, tier, monetized):                 # ONE function: install-assets, catalogue, index, publish, CI
+    if r.licenceStatus == "REVOKED": return False
+    if tier not in r.eligibleTiers: return False   # eligibleTiers = registry eligibility flags as a set
+    if r.licenceStatus == "PERSONAL_ONLY" and tier != "PERSONAL": return False
+    if r.licenceStatus == "PENDING" and tier == "PUBLIC": return False        # PENDING allowed in PERSONAL + BETA (D-29)
+    if r.type == "mushaf_layout" and tier in ("BETA", "PUBLIC"):
+        if not (permissions["qul_res_11"].status == "granted" or r.basis.startswith("clean-room")): return False
+    if r.type == "mushaf_layout" and tier == "PUBLIC":
+        if not certified_pages_cover(r): return False                          # G5 (§14)
+    if tier == "PUBLIC" and r.permission_ref:
+        if permissions[r.permission_ref].status not in {"granted", "archived"}: return False
+    if monetized and not r.commercialOk: return False                          # D-17
+    return bool(r.attribution.en and r.attribution.ur and r.licence)
+
+def gate(tier, monetized, bundled, listed):
+    bad = [it.id for it in bundled + listed if not eligible(registry[it.id], tier, monetized)]
+    assert not bad, f"not eligible for {tier}{'+MONETIZED' if monetized else ''}: {bad}"
+```
+
+- **BETA** (closed testers are third parties) may carry PENDING audio, such as the gapped verse-by-verse sets. It may **not** carry `PERSONAL_ONLY` items, and it may not carry any mushaf layout data unless that data is G1-cleared or clean-room. Builds show the "proofreading in progress" banner until G5 (doc 04).
+- **PERSONAL-only audio** appears **only** in the bundled PERSONAL catalogue and in `personal-overlay.json`, which holds original-host URLs: the Shamshad Ali Khan Urdu voice, Husary Muallim and Qari Sadaqat Ali (D-12). It is never in any R2 object.
+- **Public builds never reference** quranicaudio, QF/QDC, Tarteel audio hosts or archive.org rips (D-28). V-X06 checks every mirror host against an allowlist.
 
 ## 9. Stage 6: geo DB and Hijri feed
 

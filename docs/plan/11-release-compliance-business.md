@@ -1122,7 +1122,7 @@ Clean-room (D-18) keeps all options open: there is no GPL code inside, and Apach
 | `foss` flavor | Distributed: IzzyOnDroid first (accepts our signed APK), then F-Droid main repo (builds from source; reproducible builds keep our signature) | Not distributed (it stays as a build-hygiene flavor, D-15) |
 | F-Droid anti-features | Expect **NonFreeAssets** (Tanzil "verbatim only" text, QuranEnc "no modification" translations) and possibly **NonFreeNet** (third-party audio hosts). This is acceptable and disclosed (r09 §2.9) | — |
 | Developer verification | Register the foss key (§1.3) | — |
-| Content | Content is **not** under the code licence. Each file keeps its own licence (`LICENSES/`, provenance log). Our curated metadata tables are published under **CC BY 4.0**. QUL-derived layout data, personal/beta catalogues and raw exports are **never** committed to the public repo; CI fetches them from private storage | All private |
+| Content | Content is **not** under the code licence. Each file keeps its own licence (`LICENSES/`, provenance log). Our curated metadata tables are published under **CC BY 4.0**. QUL-derived (G1-pending) packs, personal-only content and raw exports are **never committed to git or Git LFS in any repo**, public or private. They live in `~/criterion-data` / `data/private/` (gitignored) and are copied into the gitignored `app/src/personal/assets/packs/` by a Gradle task at build time ([Data pipelines](08-data-pipelines.md)). Only public-eligible generated assets may go in via Git LFS: the Tanzil-based content DB, clean-room or G1-cleared packs and public timing packs | Same rule: never in git; all repos private |
 | Play listing | Add "Open source (GPL-3.0)" to the privacy section of the listing and website | — |
 
 ### 10.3 `TRADEMARKS.md` (outline)
@@ -1136,7 +1136,7 @@ Clean-room (D-18) keeps all options open: there is no GPL code inside, and Apach
 ### 10.4 Going public (if GPL)
 
 1. Create a **fresh public repo from a squashed snapshot**. Do not make the private repo public, because its history contains research teardowns of the reference app, restricted data paths and personal-build catalogue details.
-2. Exclude `docs/research/` and all restricted data.
+2. Exclude `docs/research/` and all restricted data. Restricted data is never in git in the first place (§10.2), so nothing has to be scrubbed from LFS.
 3. Run gitleaks or another secret scan, add SPDX headers, add `NOTICE` entries for Apache/MIT ports (quran-ios QuranKit, LinePageGeometryEngine, FSRS-Kotlin; D-18), and add the AboutLibraries config.
 4. Add `CONTRIBUTING.md` (DCO 1.1 `Signed-off-by:`, enforced by a DCO check action), `SECURITY.md` and issue templates (including "Text error").
 5. Mirror the `store/` metadata in the F-Droid fastlane layout.

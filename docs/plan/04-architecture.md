@@ -1388,17 +1388,20 @@ checkExpiry(doc): if now > doc.expiresAt → keep the doc for installed items an
 /data/data/com.chughtai.criterion[.personal][.debug]/
   databases/quran_content.db            RO, re-copied on content bump      (backup: exclude)
   databases/user.db                     RW, TRUNCATE journal               (backup: INCLUDE)
+  databases/downloads.db                download queue + verified audio index (doc 06)  (exclude)
   files/datastore/settings.json         typed DataStore                    (backup: INCLUDE)
+  files/datastore/playback_resume.json  listening pointer (doc 06)         (exclude)
   files/packs/<type>/<id>/<ver>/pack.db (+ font.ttf for font packs)        (exclude)
   files/packs/.staging/                 install scratch, wiped on start    (exclude)
-  files/remote/*.json|*.sig|*.etag      verified signed docs               (exclude)
-  files/adhan/<soundId>.mp3             adhan sounds (P2, bundled→copied)  (exclude)
+  files/remote/<channel>/*.json|*.sig|*.etag, files/remote/feeds/…  verified signed docs  (exclude)
   files/logs/app-0.log, app-1.log       256 KB ring                        (exclude)
   cache/media3/                         SimpleCache LRU                    (exclude, OS-clearable)
   cache/share/                          ayah images, diagnostics zip (FileProvider)
 <getExternalFilesDirs(null)[volumeIndex]>/audio/<recitationId>/  (+ .nomedia)  layout: doc 06
-assets/ content/quran_content.db · packs/<type>/<id>@<ver>.db · fonts/*.ttf · catalogue/catalogue.json
-        · remote-seed/index.json(+.sig) · content/bundled.json (eligibility manifest, §11)
+src/main/assets/      content/quran_content.db · fonts/*.ttf · licenses/*.txt · audio/timing/*.db.gz (public timing packs)
+src/<tier>/assets/    packs/<type>/<id>@<ver>.db · audio/catalogue.json(+.sig) · remote-seed/index.json(+.sig)
+                      · content/bundled.json (eligibility manifest, §11) · (personal only) audio/personal-overlay.json
+res/raw/              adhan, takbeer and Sehri clips (doc 07 §2.5; from v1.1)
 ```
 
 `res/xml/data_extraction_rules.xml` (API 31+). The same includes go in `backup_rules.xml` for API ≤ 30:
@@ -1426,7 +1429,7 @@ Including only these paths implicitly excludes everything else: content DB, pack
 
 - **Navigation 3 1.2.0.** NiA's `NavigationState` + `Navigator` pattern gives one sub-stack per top-level destination. `NavDisplay` uses `rememberSaveableStateHolderNavEntryDecorator()` + `rememberViewModelStoreNavEntryDecorator()` (both verified in the spike).
 - **Tablets.** `adaptive-navigation3` list-detail scenes for Index → Reader and Bookmarks (P3 two-page spread is a Reader concern, [05](05-mushaf-rendering-engine.md)).
-- **Sheets and dialogs** (ayah action sheet, reciter quick-pick, repeat dialog, sleep timer) are **screen-local state, not NavKeys**. They use `BackHandler`, so predictive back works.
+- **Sheets and dialogs** (ayah action sheet, reciter quick-pick, repeat dialog, sleep timer, notice sheet) are **screen-local state, not NavKeys**. They use `BackHandler`, so predictive back works. The one exception is the Play sheet / scope picker (`PlaySheetKey`), a bottom-sheet scene reachable from many screens and from external play links ([02](02-ux-ui-spec.md) §4.7.1).
 - **Top level.** The set, labels and order are owned by [02](02-ux-ui-spec.md). The architecture supports any subset of `{HomeKey, IndexKey, ListenKey, PrayerKey (P2), MoreKey}`.
 
 ### 8.2 NavKey list (`:core:navigation`, all `@Serializable`, so they survive process death)
@@ -1434,7 +1437,8 @@ Including only these paths implicitly excludes everything else: content DB, pack
 ```kotlin
 // Top-level
 @Serializable data object HomeKey : NavKey                                         // F-IX-08/09
-@Serializable data class IndexKey(val tab: IndexTab = IndexTab.SURAH) : NavKey     // F-IX-01..06 (SURAH|PARA|MANZIL|RUKU|SAJDA)
+@Serializable data class IndexKey(val tab: IndexTab = IndexTab.SURAH) : NavKey     // F-IX-01..06
+enum class IndexTab { SURAH, PARA, MANZIL, RUKU, PAGE, SAJDA, BOOKMARKS }          // order and labels: doc 02 §4.3
 @Serializable data object ListenKey : NavKey                                       // reciter-first browse (F-AU-01/02)
 @Serializable data object MoreKey : NavKey
 // Reading
@@ -1443,12 +1447,13 @@ Including only these paths implicitly excludes everything else: content DB, pack
     val page: PageIndex? = null,            // null = resolve from focus or last read
     val focus: VerseKey? = null,            // highlight/scroll target
     val mode: ReaderMode = ReaderMode.MUSHAF,
-    val autoplay: Boolean = false,          // honoured only for in-app/own-PendingIntent origins
+    val autoplay: Boolean = false,          // honoured only for in-app/own-PendingIntent origins (§8.3)
 ) : NavKey                                                                         // F-RD-01..09
 @Serializable data class GoToKey(val initial: String = "") : NavKey                // F-IX-05
 @Serializable data class SearchKey(val query: String = "") : NavKey                // F-SR-01..03
 // Audio
 @Serializable data object PlayerKey : NavKey                                       // full player
+@Serializable data class PlaySheetKey(val draft: PlayRequest) : NavKey            // bottom-sheet scene: scope/reciter/repeat (doc 02 §4.7.1)
 @Serializable data class ReciterPickerKey(val forScope: PlayScope? = null) : NavKey
 @Serializable data object DownloadsKey : NavKey                                    // F-AU-08 storage manager
 // Library
@@ -1457,11 +1462,13 @@ Including only these paths implicitly excludes everything else: content DB, pack
 @Serializable data object NotesKey : NavKey                                        // P2 F-BM-03
 @Serializable data object KhatamListKey : NavKey                                   // P2 F-BM-04
 @Serializable data class KhatamKey(val id: Long) : NavKey
+@Serializable data object KhatamCreateKey : NavKey                                 // create plan (doc 02 §4.11)
 @Serializable data object StatsKey : NavKey                                        // P2 F-BM-05
 // Platform
 @Serializable data object OnboardingKey : NavKey                                   // F-PL-01
 @Serializable data class SettingsKey(val section: SettingsSection? = null) : NavKey // F-PL-02
-@Serializable data object PacksKey : NavKey                                        // F-PL-06 content packs
+@Serializable data object PacksKey : NavKey                                        // F-PL-06 storage (v1.0) + packs (v1.1)
+@Serializable data object TranslationsKey : NavKey                                 // v1.1 F-TR-02/03 (doc 02 §4.24)
 @Serializable data object CreditsKey : NavKey                                      // P2 F-PL-04 (incl. AboutLibraries)
 @Serializable data class ReportErrorKey(val key: VerseKey?, val mushaf: MushafId?, val page: PageIndex?) : NavKey // P2 F-PL-05
 @Serializable data object DiagnosticsKey : NavKey
@@ -1478,22 +1485,29 @@ Including only these paths implicitly excludes everything else: content DB, pack
 // P3 placeholders (not compiled until needed): HifzKey, GroupKhatamKey(id), SyncAccountKey
 ```
 
+**Reader targets.** Doc 05's `ReaderTarget` concept maps onto `ReaderKey`, which is the only reader key:
+- *Resume*: every field null. The reader opens `last_read` for the current mushaf.
+- *Page(label)*: `page = MushafSpec.indexOf(label)`. Label ↔ index conversion happens only there.
+- *Ayah / Para / Manzil / Ruku*: the caller resolves the target to a `focus` VerseKey through `IndexRepository` (Para → its start key, and so on). The reader then finds the page with `MushafRepository.pageOf`.
+
 Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Navigator)` (and so on). `:app` concatenates them in one `entryProvider { }`.
 
 ### 8.3 Deep links
 
-`DeepLinkParser` (pure, unit-tested) maps a `Uri` to a back stack (`List<NavKey>`) with `HomeKey` at the root. Before G3 the scheme is the brand-neutral `criterion://`. HTTPS App Links on the CDN domain (`/l/...`, same paths) follow in v1.x, together with `assetlinks.json` hosted on R2.
+`DeepLinkParser` (pure, unit-tested) maps a `Uri` to `DeepLinkResult(backStack: List<NavKey>, play: PlayRequest?)`, with `HomeKey` at the root of the back stack. `ReaderKey` carries no scope or recitation, so a `play` link returns its `PlayRequest` separately. `MainActivity` hands that request to `PendingPlayRequest`, a one-shot holder in `:core:navigation`, and pushes `ReaderKey(focus = first ayah of the scope, autoplay = true)`. Once visible, the reader calls `PlaybackController.play(pending ?: PlayRequest(PlayScope.FromHere(focus)))`. Before G3 the scheme is the brand-neutral `criterion://`. HTTPS App Links on the CDN domain (`/l/...`, same paths) follow in v1.x, together with `assetlinks.json` hosted on R2. Other docs use these URIs, not their own (for example doc 07's `criterion://reader?page=` becomes `criterion://page/{mushafCode}/{label}`).
 
 | URI | Back stack | Used by |
 |---|---|---|
 | `criterion://page/{mushafCode}/{label}` | Home → Reader(mushaf, indexOf(label)) | share "page 50", widgets |
 | `criterion://ayah/{surah}/{ayah}` | Home → Reader(focus) | share text footer, notes |
 | `criterion://surah/{n}` · `/para/{n}` · `/manzil/{n}` · `/ruku/{id}` | Home → Index(tab) → Reader(start page) | reminders, widgets |
-| `criterion://play?scope=surah:18` (`para:23`, `manzil:7`, `range:2:285-2:286`, `passage:manzil-dua`)`&rec={id}` | Home → Reader(focus, autoplay) | Kahf/Mulk reminder "Play" action (F-CP-09) |
+| `criterion://resume` | Home → Reader() (resume last read) | F-PL-12 "Continue reading" shortcut, widget |
+| `criterion://play?scope=surah:18` (`para:23`, `manzil:7`, `ruku:{id}`, `page:{mushafCode}/{label}`, `range:2:285-2:286`, `ayah:2:255`, `from:18:1`, `passage:manzil-dua`, `quran`, `resume`)`&rec={recitationId}` | Own origin: Home → Reader(focus, autoplay) + `PendingPlayRequest`. External origin: Home → Reader(focus) paused + `PlaySheetKey(request)` prefilled | Kahf/Mulk reminder "Play" action (F-CP-09); F-PL-12 "Play favourite qari" (`scope=resume`: the `PlaybackResume` plan with the favourite reciter) |
 | `criterion://khatam/{id}` | Home → KhatamList → Khatam(id) | khatam reminder |
-| `criterion://prayer` · `/qibla` · `/tasbeeh` · `/hijri` | Home → X | widgets, adhan notification |
+| `criterion://prayer` · `/hijri` · `/ramadan` · `/qibla` (v1.1) · `/adhan-health` (v1.1) · `/tasbeeh` · `/azkar/{category}` (v1.1) | Home → X | widgets, adhan notification, F-PL-12 shortcuts |
+| `criterion://search?q={text}` · `criterion://settings/{section}` | Home → Search(query) / Settings(section) | adb, shortcuts, support replies |
 
-**Autoplay safety (Android 17, D-13).** `autoplay=true` is honoured only when the intent is our own explicit `PendingIntent.getActivity(... FLAG_IMMUTABLE)`, marked with an internal extra. External `VIEW` intents open the reader **paused**, with the Play button focused. Notification "Play" actions open the activity, so playback starts from a visible activity. We never use broadcast trampolines.
+**Autoplay safety (Android 17, D-13).** `autoplay=true` is honoured only when the intent is our own explicit `PendingIntent.getActivity(... FLAG_IMMUTABLE)` or our own launcher shortcut, marked with an internal extra. External `VIEW` intents open the reader **paused**, with the Play sheet prefilled from the parsed request. Notification "Play" actions open the activity, so playback starts from a visible activity. Reminders and widgets start playback only through this activity deep link; we never use broadcast trampolines, and adhan never uses the recitation session.
 
 ---
 
@@ -1505,13 +1519,13 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
 | | `ContentModule` (`:core:content`, internal) | `QuranContentDb`, DAOs, `PackDbOpener`, `ContentDataSource` |
 | | `DatabaseModule` (`:core:database`) | `UserDb` (TRUNCATE journal, migrations), DAOs, `DataStore<UserSettings>` |
 | | `RemoteModule` (`:core:remote`) | the one `OkHttpClient` (shared by Media3 and downloads; UA `Criterion/<versionName>`; `Cache(cacheDir/http, 10 MB)` for JSON), `Json`, `SignedFileFetcher`, `Ed25519Verifier`, `DownloadManager` |
-| | `DataModule` (`:core:data`, `@Binds`) | `ContentRepository`, `MushafRepository`, `IndexRepository`, `TranslationRepository`, `SearchRepository`, `BookmarkRepository`, `NoteRepository`, `ReadingProgressRepository`, `KhatamRepository`, `TasbeehRepository`, `PackManager`, `SettingsRepository`, `BackupManager`, `AudioCatalogRepository`, `ContentPolicy`, `DiagnosticsLog` |
-| | `AudioModule` (`:core:audio`) | `SimpleCache` (singleton; `LeastRecentlyUsedCacheEvictor(cacheMb)`), `PlaybackStateHub`, `PlaybackController` |
-| | `PrayerModule` (`:core:prayer`, P2) | `PrayerTimesRepository`, `LocationProvider`, `HijriCalendar`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler`, `NotificationChannels` |
-| | `FlavorModule` (`:app/src/{play,foss}`) | `InAppReview` (play: Play review API, v1.x; foss: no-op), `SupportPurchases` (v1.5 play only; foss: absent) |
-| | `BuildInfoModule` (`:app`) | `BuildInfo(distribution, tier, monetized, versionCode, cdnBaseUrl, trustedKeys)` from `BuildConfig` |
+| | `DataModule` (`:core:data`, `@Binds`) | `ContentRepository`, `MushafRepository`, `IndexRepository`, `TranslationRepository`, `SearchRepository`, `BookmarkRepository`, `NoteRepository`, `ReadingProgressRepository`, `KhatamRepository`, `TasbeehRepository`, `AzkarRepository`, `PackManager`, `SettingsRepository`, `BackupManager`, `AudioCatalogRepository`, `ContentPolicy`, `DiagnosticsLog` |
+| | `AudioModule` (`:core:audio`) | `SimpleCache` (singleton; `LeastRecentlyUsedCacheEvictor(cacheMb)`), `PlaybackStateHub` → `PlaybackStateHubImpl` (`@Singleton`), `PlaybackController` (its `state` is the hub's `state`), `DataStore<PlaybackResume>` |
+| | `PrayerModule` (`:core:prayer`, P2) | `PrayerTimesRepository`, `LocationProvider`, `HijriCalendarProvider`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler`, `NotificationChannels` |
+| | `FlavorModule` (`:app/src/{play,foss}`) | `InAppReview` (play: Play review API, F-PL-10, v1.0-stretch/v1.1; foss: no-op), `CrashReporter` (v1.1 ACRA → crash Worker, both flavors, opt-in), `SupportPurchases` (v1.5 play only; foss: absent) |
+| | `BuildInfoModule` (`:app`) | `BuildInfo(distribution, contentTier: ContentTier, monetized, channel, versionCode, cdnBaseUrl, trustedKeys)` from `BuildConfig` |
 | `ViewModelComponent` | `@HiltViewModel` (assisted with the NavKey) | — |
-| `ServiceComponent` | `@AndroidEntryPoint PlaybackService`, `AdhanPlaybackService`, `AudioDownloadJobService` | field injection |
+| `ServiceComponent` | `@AndroidEntryPoint QuranPlaybackService`, `AdhanPlaybackService`, `AudioDownloadJobService` | field injection |
 | Receivers | `@AndroidEntryPoint AdhanAlarmReceiver`, `SystemEventsReceiver`, `ReminderReceiver` | — |
 | Workers | `@HiltWorker` + `HiltWorkerFactory` via `CriterionApp : Configuration.Provider`. The default `WorkManagerInitializer` is removed (spike-verified) | `DownloadWorker`, `RemoteRefreshWorker`, `DailyMaintenanceWorker` |
 | Glance (P2) | `EntryPointAccessors.fromApplication(ctx, WidgetEntryPoint::class.java)` | repositories for widgets |
@@ -1526,18 +1540,20 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
 
 | Job | Mechanism | Trigger | Constraints / FGS type | Phase |
 |---|---|---|---|---|
-| Recitation playback | `PlaybackService : MediaLibraryService` (Media3) | User action only | FGS `mediaPlayback` | P1 |
-| Audio and pack downloads, API 34+ | `AudioDownloadJobService` (UIDT: `setUserInitiated(true)`, `setEstimatedNetworkBytes`, `setNotification`), scheduled **while the UI is visible** | User taps Download | `NETWORK_TYPE_UNMETERED` if Wi-Fi-only, else ANY; no FGS | P1 |
-| Audio and pack downloads, API ≤ 33 | `DownloadWorker` (WorkManager long-running, `setForeground(ForegroundInfo(…, FOREGROUND_SERVICE_TYPE_DATA_SYNC))`), unique work `dl-<taskId>` | User taps Download | Network constraint as above; FGS `dataSync` (6 h/24 h cap is irrelevant on ≤ 33) | P1 |
+| Recitation playback | `QuranPlaybackService : MediaLibraryService` (Media3) | User action only | FGS `mediaPlayback` | P1 |
+| Audio and pack downloads, P1 (every API) | `DownloadWorker` (WorkManager long-running, `setForeground(ForegroundInfo(…, FOREGROUND_SERVICE_TYPE_DATA_SYNC))`), unique work `dl-<taskId>`, `ExistingWorkPolicy.KEEP` | User taps Download | Network constraint as below; FGS `dataSync` | P1 |
+| Audio and pack downloads, API 34+ from S5 | `AudioDownloadJobService` (UIDT, job ID 4201: `setUserInitiated(true)`, `setEstimatedNetworkBytes`, `setNotification`), scheduled **while the UI is visible**; not rescheduled while pending or draining (doc 06 §13.5). API ≤ 33 keeps `DownloadWorker` | User taps Download | `NETWORK_TYPE_UNMETERED` if Wi-Fi-only, else ANY; no FGS | S5 (P2), before the first BETA build |
 | Signed-file refresh (index, catalogue, notices, hijri-pk) | `RemoteRefreshWorker` periodic 24 h (flex 6 h), plus on app foreground if older than 24 h | Periodic, plus `ProcessLifecycleOwner` ON_START | `CONNECTED`, battery not low; ETag makes it about 1 KB when nothing changed | P1 (hijri feed P2) |
 | Auto-update of packs (`autoUpdate`) and timing packs | `RemoteRefreshWorker` enqueues `DownloadRequest.Pack` | After the index changes | Wi-Fi only. On API 34+ it waits for the next app-visible moment, because UIDT must be scheduled while visible; on ≤ 33 it runs immediately | P1 |
-| Daily maintenance (reschedule alarms safety net, refresh ayah-of-the-day widget, purge soft-deleted rows > 30 d, trim `adhan_log` to 200, wipe `.staging` and `.part` older than 7 d) | `DailyMaintenanceWorker`, periodic 24 h near 00:30 local | Periodic | none | P1 (alarm part P2) |
-| Adhan and prayer notifications | `AlarmManager.setAlarmClock()` (audible) / `setExactAndAllowWhileIdle()` (silent, pre-reminders), with inexact `setAndAllowWhileIdle()` fallback when exact is denied → `AdhanAlarmReceiver` | Computed schedule (today + tomorrow) | — | P2 |
-| Full adhan audio | `AdhanPlaybackService`, started from the exact-alarm receiver; `AudioAttributes.USAGE_ALARM`; checks ringer mode and interruption filter itself (D-16) | Alarm | FGS `mediaPlayback` | P2 |
-| Short adhan | Notification channel sound `adhan_short_<soundId>` | Alarm | — | P2 |
-| Quran reminders (Kahf Friday, Mulk night, daily ayah, khatam) | `AlarmManager.setWindow()` inexact → `ReminderReceiver` posts a notification with an Open/Play `PendingIntent.getActivity` (never autoplay) | `ReminderScheduler` | at most 3 per day (F-CP-09) | P2 |
-| Re-arm after system events | `SystemEventsReceiver`: `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED`, `AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED` → `AlarmScheduler.rescheduleAll(reason)` + `ReminderScheduler` | Broadcast | Enabled only while any alarm or reminder is configured (`setComponentEnabledSetting`); never starts an FGS from boot | P2 |
-| Widgets | Glance `updateAll()` on data change (last read, prayer roll-over via the alarm receiver) and from the daily worker | Event | — | P2 |
+| Daily maintenance (reschedule alarms safety net, refresh ayah-of-the-day widget, purge soft-deleted rows > 30 d, trim `adhan_log` to 200, wipe `.staging` and `.part` older than 7 d) | `DailyMaintenanceWorker`, periodic 24 h near 00:30 local | Periodic | none | P1 (alarm part with the first alarm feature, v1.1) |
+| Adhan and prayer notifications | `AlarmManager.setAlarmClock()` (audible) / `setExactAndAllowWhileIdle()` (silent, pre-reminders), with inexact `setAndAllowWhileIdle()` fallback when exact is denied → `AdhanAlarmReceiver` | Computed schedule (today + tomorrow) | — | v1.1 (v1.0 only if the freelancer lever pulls adhan in) |
+| Full adhan audio | `AdhanPlaybackService`, started from the exact-alarm receiver; `AudioAttributes.USAGE_ALARM`; checks ringer mode and interruption filter itself (D-16); never uses the recitation session | Alarm | FGS `mediaPlayback` | v1.1 |
+| Short adhan | Notification channel sound `adhan_short_<soundId>` | Alarm | — | v1.1 |
+| Quran reminders (Kahf Friday, Mulk night, daily ayah, khatam) | `AlarmManager.setWindow()` inexact → `ReminderReceiver` posts a notification with an Open/Play `PendingIntent.getActivity` (never autoplay from a broadcast) | `ReminderScheduler` | at most 3 per day, quiet hours 22:30–05:00 (F-CP-09) | v1.1 |
+| Re-arm after system events | `SystemEventsReceiver`: `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED`, `AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED` → `AlarmScheduler.rescheduleAll(reason)` + `ReminderScheduler` | Broadcast | Enabled only while any alarm or reminder is configured (`setComponentEnabledSetting`); never starts an FGS from boot | v1.1 |
+| Widgets | Glance `updateAll()` on data change (last read, prayer roll-over via the alarm receiver) and from the daily worker | Event | — | v1.1 (F-CP-08) |
+
+**v1.0 prayer times are display-only** (F-CP-01, F-CP-04, F-CP-07 timetable): they are computed on demand and need no alarm, receiver or permission. The alarm rows above, their receivers and the alarm permissions in §10.2 are declared only from the first release that ships an alarm feature (adhan, Sehri alarm or reminders): v1.1 by default, v1.0 only if the 2026-11-30 freelancer lever pulls adhan in.
 
 **Notification channels**
 - Media3 default channel for playback;
@@ -1560,15 +1576,15 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <!-- Foreground services -->
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/> <!-- recitation + full adhan -->
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>      <!-- API ≤33 download worker only -->
-  <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS"/>           <!-- UIDT downloads, API 34+ -->
-  <!-- Alarms (P2) -->
-  <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>              <!-- user-granted; explainer + inexact fallback -->
-  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>            <!-- re-arm alarms; receiver disabled when unused -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/> <!-- recitation (+ full adhan from v1.1) -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>      <!-- download worker (every API in P1; API ≤33 from S5) -->
+  <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS"/>           <!-- UIDT downloads, API 34+, from S5 -->
+  <!-- Alarms: FROM v1.1 ONLY (first release with adhan / Sehri alarm / reminders); not in the v1.0 manifest -->
+  <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>              <!-- v1.1; user-granted; explainer + inexact fallback -->
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>            <!-- v1.1; re-arm alarms; receiver disabled when unused -->
   <uses-permission android:name="android.permission.WAKE_LOCK"/>                         <!-- Media3 wake mode, WorkManager (merged) -->
   <uses-permission android:name="android.permission.VIBRATE"/>                           <!-- tasbeeh target pattern, silent-adhan vibration -->
-  <!-- Location (P2): one-shot, coarse only -->
+  <!-- Location (v1.0, prayer times): one-shot, coarse only -->
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
   <!-- Defensive removals (never request; strip if a dependency merges them) -->
   <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove"/>
@@ -1592,13 +1608,17 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
       <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/><data android:scheme="criterion"/></intent-filter>
     </activity>
-    <!-- :core:audio --> 
-    <service android:name="com.chughtai.criterion.core.audio.PlaybackService" android:exported="true"
+    <!-- :core:audio -->
+    <service android:name="com.chughtai.criterion.core.audio.QuranPlaybackService" android:exported="true"
         android:foregroundServiceType="mediaPlayback">
       <intent-filter><action android:name="androidx.media3.session.MediaLibraryService"/>
                      <action android:name="android.media.browse.MediaBrowserService"/></intent-filter>
     </service>
-    <!-- :core:remote -->
+    <!-- Bluetooth/headset "play" after process death → onPlaybackResumption (doc 06 §12) -->
+    <receiver android:name="androidx.media3.session.MediaButtonReceiver" android:exported="true">
+      <intent-filter><action android:name="android.intent.action.MEDIA_BUTTON"/></intent-filter>
+    </receiver>
+    <!-- :core:remote (UIDT job service from S5) -->
     <service android:name="com.chughtai.criterion.core.remote.AudioDownloadJobService" android:exported="false"
         android:permission="android.permission.BIND_JOB_SERVICE"/>
     <service android:name="androidx.work.impl.foreground.SystemForegroundService"
@@ -1607,7 +1627,7 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
         android:exported="false" tools:node="merge">
       <meta-data android:name="androidx.work.WorkManagerInitializer" android:value="androidx.startup" tools:node="remove"/>
     </provider>
-    <!-- :core:prayer (P2) -->
+    <!-- :core:prayer: alarm components FROM v1.1 ONLY (absent from the v1.0 manifest) -->
     <service android:name="com.chughtai.criterion.core.prayer.AdhanPlaybackService" android:exported="false"
         android:foregroundServiceType="mediaPlayback"/>
     <receiver android:name="com.chughtai.criterion.core.prayer.AdhanAlarmReceiver" android:exported="false"/>
@@ -1630,17 +1650,21 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
         android:exported="false" android:grantUriPermissions="true">
       <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths"/>
     </provider>
-    <!-- Glance receivers (P2): ContinueReadingWidgetReceiver, NextPrayerWidgetReceiver, AyahOfDayWidgetReceiver (exported=true, APPWIDGET_UPDATE) -->
+    <!-- Glance receivers (v1.1, F-CP-08): ContinueReadingWidgetReceiver, NextPrayerWidgetReceiver, AyahOfDayWidgetReceiver (exported=true, APPWIDGET_UPDATE) -->
+    <!-- Launcher shortcuts (F-PL-12, v1.1): <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts"/> on MainActivity -->
   </application>
 </manifest>
 ```
 
 `SystemEventsReceiver` is exported because system broadcasts must reach it. Its handler only calls the idempotent `rescheduleAll`, so a spoofed broadcast is harmless.
 
+**Release staging.** The v1.0 manifest is the one above without `SCHEDULE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED`, `AdhanPlaybackService`, the three `:core:prayer` receivers and the widget receivers. They are added from the first release that ships an alarm feature (v1.1 by default). CI's `verifyMergedManifest` (doc 10) compares the merged manifest of each release against the expected list for that release.
+
 **Permissions added later, behind their features:**
 
 | Permission | When | Notes |
 |---|---|---|
+| `SCHEDULE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED` (+ `AdhanPlaybackService`, alarm receivers) | v1.1: first release with adhan, Sehri alarm or reminders | v1.0 prayer times are display-only |
 | `com.android.vending.BILLING` | v1.5, play flavor only (F-PL-08) | — |
 | `RECORD_AUDIO` | P3 hifz "record yourself" (F-CP-12), P4 AI recitation | Runtime permission, requested on first use |
 | (none) | Android Auto (F-AU-11) | Needs `automotive_app_desc.xml` meta-data only |
@@ -1660,7 +1684,7 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
 | `READ_PHONE_STATE`, `CAMERA`, contacts, `SYSTEM_ALERT_WINDOW` | Never needed |
 | `FOREGROUND_SERVICE_SPECIAL_USE`, `_SYSTEM_EXEMPTED`, `_LOCATION` | Never needed |
 
-**Play Console declarations** ([11](11-release-compliance-business.md)): FGS `mediaPlayback` (recitation and adhan) and `dataSync` (API ≤ 33 downloads) with videos; exact alarm (user-granted); Data safety "No data collected" (location is processed on-device only).
+**Play Console declarations** ([11](11-release-compliance-business.md)): FGS `mediaPlayback` (recitation; adhan from v1.1) and `dataSync` (downloads) with videos; exact alarm (user-granted, from v1.1); Data safety "No data collected" (location is processed on-device only). The v1.1 opt-in crash reports must be reflected in Data safety for that release (doc 11).
 
 ---
 

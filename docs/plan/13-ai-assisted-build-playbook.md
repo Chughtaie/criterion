@@ -136,7 +136,7 @@ WorkManager 2.12.0 · Glance 1.2.0 · OkHttp 5.5.0 · kotlinx.serialization 1.11
 adhan2 0.0.7. NO Ktor. AGP > 9.4 does not sync in stable Android Studio (Rabbit 1) — do not try.
 
 ## Module conventions (doc 04 is authoritative)
-- `:app` → `:feature:*` → `:core:*`. Features NEVER depend on features (the `criterion.root` check fails the build).
+- `:app` → `:feature:*` → `:core:*`. Features NEVER depend on features (`criterion.root`'s `checkModuleBoundaries` fails the build; rules in doc 04 §3.4).
 - All `NavKey`s live in `:core:navigation`. Cross-feature navigation = NavKeys only.
 - `:core:model` and `:core:domain` are pure Kotlin (`criterion.jvm.library`), no Android, no DI annotations.
   Interfaces (repositories, `PlaybackController`, `PlaybackStateHub`, `HijriCalendar`) live in `:core:domain`;
@@ -935,6 +935,8 @@ CONSTRAINTS:
   (±1.5 s) is v1.1 (E-09-S06).
 - Output `timing.<recitationId>.sqlite` in doc 06 §5.1's exact layout. Timing packs are plain SQLite read
   through androidx.sqlite (no Room identity table) — the one exception to "every pack from a Room schema".
+  v1.0 bundles the highlight timings in the APK (doc 06/09); downloadable timing packs arrive with the
+  v1.1 pack system.
 ACCEPTANCE: Invariants per surah: monotonic, contiguous, ayah count = surah ayah count, last_end ≤
 duration + 100 ms; known-defect fixtures from g03 detected; pack manifest entries with licence status.
 VERIFICATION: V1; agent spot-plays 3 surahs per reciter on emulator with highlight on (after AP-15).
@@ -943,7 +945,8 @@ VERIFICATION: V1; agent spot-plays 3 surahs per reciter on emulator with highlig
 ### AP-15 — Follow-along highlight & auto page-turn
 
 ```text
-CONTEXT: Spec: doc 06 (PlaybackStateHub contract, PlayerMessages, binary search), doc 05 (highlight layer,
+CONTEXT: Spec: doc 04 §6 (PlaybackStateHub / PlaybackState shape), doc 06 (hub contract, PlayerMessages,
+binary search), doc 05 (highlight layer,
 auto page-turn rules), F-RD-05. AP-13, AP-14 merged.
 GOAL: The ayah being recited is highlighted and the pager follows.
 CONSTRAINTS:
@@ -1143,16 +1146,28 @@ VERIFICATION: V3 + V4; run /licence-audit (MA-4) and attach the result.
 
 ```text
 CONTEXT: Spec: doc 11 (store listing, Data safety, permission declarations, launch plan), doc 10
-(release workflow, version codes, budgets), D-17, D-19, D-20, D-22. Gates G1–G6 status from doc 12.
-GOAL: A signed, policy-compliant release candidate AAB and everything Play Console needs.
+(release workflow, version codes, budgets), D-17, D-19, D-20, D-22, D-29. Gates G1–G6 status from doc 12
+(G1 2026-11-19; G3 2026-12-14; G2 2027-01-04; G6 2027-01-11; G4 + G5 2027-01-18; Go/No-Go 2027-01-25).
+Run in two passes: (1) the closed-test build (BETA) — store listing draft EN/UR, content rating, Data
+safety and privacy-policy URL must be complete BEFORE the first closed-test release (S4/S5); closed test
+opens 2027-01-11 at the latest (2026-12-28 if G1 is granted early and the build is ready); (2) the
+production RC (PUBLIC) for Go/No-Go on 2027-01-25 and staged rollout from 2027-02-01.
+GOAL: Signed, policy-compliant playPublicRelease AABs (BETA, then PUBLIC) and everything Play Console needs.
 CONSTRAINTS:
 - Release workflow on tag v*: AAB signed with the upload key from GitHub secrets (Play App Signing),
   R8 mapping archived, AboutLibraries generated. The agent never sees or prints key material.
-- Public-tier content eligibility check passes (no personal/PENDING content; no non-commercial content
-  if any monetized flag is set). Brand strings come from G3 outcome; nothing from the reference app.
+- verifyContentEligibilityPlayPublicRelease passes. BETA: only G1-cleared or clean-room layout data;
+  PENDING audio allowed, PERSONAL_ONLY/REVOKED not. PUBLIC (-Pcriterion.release=production): G1 + G5
+  evidence (certified_pages.json page hashes match the bundled pack's text layer), no PENDING,
+  PERSONAL_ONLY or REVOKED content; no non-commercial content if MONETIZED (false in v1.0). Brand strings
+  come from the G3 outcome; nothing from the reference app.
+- versionCode = MAJOR·10⁶ + MINOR·10⁴ + PATCH·100 + n (n = rc number; final = 99). Staged rollout
+  10% → 50% → 100%; halt on crash rate > 0.5% or ANR rate > 0.2% (doc 10).
 - Produce: Data safety answers draft, FGS declaration text + demo-video shot lists (mediaPlayback,
-  dataSync), SCHEDULE_EXACT_ALARM justification, permission list vs merged manifest, store-listing
-  drafts EN + ur-PK, screenshot storyboard captures from the emulator (no reference-app assets).
+  dataSync), SCHEDULE_EXACT_ALARM justification only if adhan was pulled into v1.0, permission list vs
+  merged manifest, store-listing drafts EN + ur-PK that claim only v1.0 features (no adhan, Qibla, azkar
+  or widget claims until the v1.1 listing update), screenshot storyboard captures from the emulator (no
+  reference-app assets).
 ACCEPTANCE: Release workflow green on a release-candidate tag; MA-5 Play policy review has no blockers;
 MA-4 licence audit has no blockers; budgets in doc 10 met (report numbers); gate table up to date.
 VERIFICATION: V5 + doc 11 launch checklist. The owner uploads to Play Console.
@@ -1163,25 +1178,30 @@ VERIFICATION: V5 + doc 11 launch checklist. The owner uploads to Play Console.
 ```text
 CONTEXT: D-22 / gate G5: a qualified hafiz/qari proofreads every page of each shipped layout and signs a
 certificate (Punjab Act 2011 s.5(3) practice: compare against the standard copy and certify "that the text
-and references do not contain any error"). Spec: doc 03 (certificate template, governance), doc 08 (proof
-renders, page-diff report), doc 10 (content QA).
-GOAL: Generate the proofreading packet for mushaf pack <taj16 version / sha256>.
-CONSTRAINTS: Build it by script from pipeline outputs only (no Quran text typed by the agent). Output to
-build/proofing/taj16-<ver>/packet/ (not committed; owner shares it).
+and references do not contain any error"). Spec: doc 03 (certificate template, governance), doc 08 §5.6
+(proof renders, proof-manifest.json, signoff.csv + certificate-template.pdf, `--changed-since` deltas),
+doc 10 (content QA). Schedule (doc 09): hafiz contracted by 2026-11-16; round 1 2026-12-01 → 12-21;
+round 2 2027-01-05 → 01-15 on DEVICE-RENDERED captures of all 548 pages; G5 decision 2027-01-18.
+GOAL: Generate the proofreading packet for mushaf pack <taj16 build_id / sha256>.
+CONSTRAINTS: Build it by script from pipeline outputs and app captures only (no Quran text typed by the
+agent). Output to out/proof/taj16/<build_id>/packet/ (git-ignored; owner shares it).
 DELIVERABLES:
 1. Cover letter (EN + Urdu draft for the owner to edit): scope, timeline, honorarium placeholder,
    how to mark errors.
-2. Page PDFs (all 548 pages, print-like size, page label + QUL index in the proof margin), grouped by Para.
+2. Page PDFs (all 548 pages, print-like size, page label + build_id + page_hash in the proof margin),
+   grouped by Para (para-NN.pdf). Round 2 adds the device-rendered captures of every page (Roborazzi/
+   emulator at a fixed qualifier), so the certificate covers what the app actually draws.
 3. Focus list (separate pages): 59:13:1 and 27:21 spellings (QUL vs DK — reviewer decides against the Taj
    print); Fatiha (7 empty circles incl. basmala, «۵» + «لا» marks); QUL index 529 basmala/header order;
    sarlauh pages; all 118 «۵» disputed-end marks; 14 sajda + 22:77 label; ruku margin triples (all 558);
    90 Para quarters (flag the unverified ones); 7 manzil labels; 114 surah header strings; Para names.
 4. Errata sheet (printable table + CSV): page label, line, word position, observed, expected, category
    (missing/extra word, harakat, ayah-end sign, marker, header/furniture, other), severity.
-5. Certificate template bound to layout id + pack version + sha256, reviewer name, qualification
-   (Hafiz/Qari/Moulvi Fazil), date, signature.
-6. Re-proof mode: when a later pack changes, a diff-only packet (pages from the page-diff report) + the
-   focus list + 20 random unchanged pages.
+5. Certificate template bound to layout id + pack version + sha256 + `certified_pages.json` (per-page
+   word-position and glyph-run hashes of the TEXT layer; ornaments are not bound), reviewer name,
+   qualification (Hafiz/Qari/Moulvi Fazil), date, signature.
+6. Re-proof mode: when a later pack changes, a diff-only packet (pages from `--changed-since`,
+   delta-<build>.pdf) + the focus list + 20 random unchanged pages.
 AFTER REVIEW: Agent converts the returned errata CSV into pipeline transform tickets (doc 09 stories),
 never into direct text edits; each fix re-enters the next packet.
 ```
@@ -1198,8 +1218,10 @@ send in Arabic); mp3quran courtesy notice via its contact form + archive of its 
 The owner pastes: tracker rows (sent date, status) and any replies.
 GOAL: Draft the next follow-ups and update the tracker; the OWNER sends them.
 RULES: Never send anything yourself. Follow-up cadence: +7 days polite nudge; +14 days nudge + alternate
-channel (GitHub issue comment / contact form / phone number listed in doc 03); G1 at 30 days → write the
-owner a decision memo (continue waiting vs start the clean-room Taj-16 layout per D-06).
+channel (GitHub issue comment / contact form / phone number listed in doc 03); G1 at 30 days (decision
+2026-11-19) → write the owner a decision memo (continue waiting vs start the clean-room Taj-16 layout per
+D-06 on 2026-11-20, run by a second-person operator who has never opened QUL/Waqar/QuranApp 16-line data —
+not the owner). G2 catalogue freeze 2027-01-04.
 DELIVERABLES per recipient: a ≤ 120-word follow-up (same subject line, quote the original date, restate
 the exact ask: scope, free app, possible optional donations later, attribution wording, offline caching /
 CDN mirroring where relevant, 48-hour takedown promise), the next follow-up date, and tracker diff.
@@ -1245,7 +1267,7 @@ Define the others the same way: `arch-boundary-reviewer`, `rtl-a11y-reviewer`, `
 
 ### 8.2 MA-1 — Research spike
 
-Use it for: targetSdk 37 migration (H1 2027), adopting M3 Expressive 1.5 when it is stable, the HijrahDate-on-API-24 question (if AP-21 stops), the sherpa-onnx recitation spike (P3), and QF User API sync (P3).
+Use it for: targetSdk 37 migration (H1 2027), adopting M3 Expressive 1.5 when it is stable, the HijrahDate-on-API-24/25 question (if AP-06 or AP-21 stops), the sherpa-onnx recitation spike (P3), and QF User API sync (P3).
 
 ```mermaid
 flowchart LR
@@ -1281,7 +1303,7 @@ The orchestrator merges the findings into a single list. Blockers are fixed befo
 ### 8.4 MA-3 — Golden regression triage
 
 **Trigger:** `verifyRoborazzi*` fails on more than 3 images, or a mushaf-pack version changes.
-1. **Collect.** List the failing goldens and the commits since the last green `main`. When the pack changed, also collect the pipeline's page-diff report.
+1. **Collect.** List the failing goldens and the commits since the last green `main`. When the pack changed, also collect the pipeline's `--changed-since` page list and `delta-<build>.pdf` (doc 08 §5.6).
 2. **Group.** Bucket by component: page template, furniture, markers, text layer, highlight, chrome, theme.
 3. **Fan out**, one triager per bucket. Each opens the `*_compare.png` images and classifies each diff as intended, regression or environment. For each, it names the likely cause (file or commit) and assigns a confidence.
 4. **Bisect** (orchestrator, only for regressions). Run `git bisect run ./gradlew :core:mushaf-render:verifyRoborazziDebug` over the suspect range.
@@ -1292,7 +1314,7 @@ The orchestrator merges the findings into a single list. Blockers are fixed befo
 | Agent | Input | Output |
 |---|---|---|
 | Code provenance | repo source, NOTICE, file headers | missing Apache/MIT port headers; any file mentioning GPL repos as a source |
-| Content eligibility | `index.json`, `catalogue.json`, `data/pins.lock`, assets listing, doc 03 matrix | an item × tier matrix. Every shipped item for the target tier must be eligible; non-commercial items must be absent from any monetized build (D-17) |
+| Content eligibility | `index.json`, `catalogue.json`, `bundled.json` per tier source set, `data/pins.lock`, `data/legal/permissions.yml`, assets listing, doc 03 matrix | an item × tier (PERSONAL / BETA / PUBLIC [+MONETIZED]) matrix with licenceStatus + basis. Every shipped item for the target tier must be eligible; non-commercial items must be absent from any monetized build (D-17) |
 | Fonts & assets | `*.ttf/otf` name tables (fontTools), ornament provenance | licence strings: OFL for DK and Noto Nastaliq; no KFGQPC modifications; no QuranWBW/quran.com fonts |
 | Libraries | AboutLibraries report vs `libs.versions.toml` | unknown or copyleft libraries flagged |
 | Attribution | credits screen strings vs doc 03 required strings | missing or incorrect credits (Tanzil CC BY 3.0, QuranEnc, Noor International Center, GeoNames CC BY 4.0, DontKillMyApp CC-BY, QUL/DigitalKhatt) |
@@ -1320,7 +1342,7 @@ The output feeds AP-25's focus list.
 
 ### 8.8 MA-7 — Parallel implementation (sparingly)
 
-Two sessions in separate worktrees work on disjoint modules. The orchestrator (the owner) merges the first PR and rebases the second. Good pairings are AP-04 with AP-03, AP-14 with AP-13, AP-17 with AP-18, and AP-21 with AP-22. Never run two renderer or two audio stories at once.
+Two sessions in separate worktrees work on disjoint modules. The orchestrator (the owner) merges the first PR and rebases the second. Good pairings are AP-04 with AP-03, AP-14 with AP-13, AP-17 with AP-18, and AP-20 (part A) with AP-23. Never run two renderer or two audio stories at once.
 
 ---
 
@@ -1435,24 +1457,28 @@ Compare this branch's diff (git diff main...HEAD) with docs/plan/. Do not change
 
 ## 12. Phase alignment (what to run when)
 
-| Phase (D-25) | Prompts | Owner-only work in parallel |
+Doc 09 §6 owns the sprint-by-sprint list and doc 12 records the gates; this table only places the prompts. Dates follow the final gate and v1.0-scope rulings.
+
+| Phase (D-25) · sprints | Prompts | Owner-only work and gates in parallel |
 |---|---|---|
-| **P0** 2026-10-20 → 11-02 | AP-01, AP-02, AP-03, AP-04, AP-05 (start), AP-06 | QUL export. **All G1/G2 emails sent.** AP-26 weekly. Physical test phones. Brief the designer on ornaments (doc 05 spec). |
-| **P1** 2026-11-03 → 12-21 | AP-05 (finish), AP-07 → AP-19 in doc 09 order (renderer and audio first, per risk ordering) | G1 decision on 2026-11-19 (AP-26 memo). Find a hafiz. First AP-25 packet once AP-08 is stable. **Daily use from Dec 21.** |
-| **P2** 2026-12-22 → ~2027-02-01 | AP-20 → AP-24. MA-4 and MA-5 before the closed test (which starts ≤ 2027-01-11) and before production | G3 trademark, G4 licence, G5 certificate, G6 legal advice. Play Console (Organization / D-U-N-S). Store assets. |
+| **P0** 2026-10-20 → 11-02 · S0 | AP-01, AP-02, AP-03, AP-04 (start), AP-05 (font + start), AP-06 | QUL export to `~/criterion-data/`. **G1 emails + GitHub issue 10-20, G2 emails 10-21 (all out by 10-23)**; first follow-up 11-02; AP-26 weekly. Domain bought in week 1. Test phones (API 24/25 + API 26/27) by 10-28. D-U-N-S request. Designer brief (doc 05 ornament spec). |
+| **P1** 2026-11-03 → 12-21 · S1–S4 | AP-04/AP-05 (finish), then AP-07 → AP-17 and AP-19 in doc 09 order (renderer and audio first, per risk ordering) | **G1 decision 11-19** (AP-26 memo; clean-room fallback from 11-20 with a second-person operator). Hafiz contracted by 11-16. Play account type decided 11-23. **S2 checkpoint 11-30:** overrun ratio = actual/planned for S0–S2; if ≥ 1.3, or G1 failed and clean-room is not on track, Ramadan 1448 becomes a closed-test/beta release and public v1.0 moves to 2027-03-22; the freelancer lever (which could pull adhan into v1.0) is decided the same day. Lawyer engaged by 11-30. Hafiz round 1 12-01 → 12-21. **G3 brand 12-14.** **Daily use from 12-21 (M4)**; user.db v1 frozen 12-21. |
+| **P2** 2026-12-22 → 2027-02-01 · S5–S7 | S5: AP-18, AP-16 (UIDT + signed files + notices), AP-08 final ornaments (by end of S5), AP-24 pass 1 (listing, Data safety, privacy policy before the first closed-test release). S6: AP-19 (onboarding, a11y), AP-23, AP-20 part A, AP-21 v1.0 part (Hijri + Ramadan core). S7: stabilisation + AP-24 pass 2 only. MA-4 and MA-5 before the first closed-test release and before production. | **G2 catalogue freeze 01-04.** Closed test opens **01-11** at the latest (12-28 if G1 was granted early and the build is ready). Hafiz round 2 01-05 → 01-15 on device captures. **G6 01-11. G4 + G5 01-18.** Code-complete 01-22. **RC + Go/No-Go 01-25.** Staged rollout from **02-01** (100% by 02-05), then the Ramadan hotfix-only freeze until Eid (~03-10). |
+| **v1.1** 2027-03-22 | AP-20 part B (adhan, unless pulled into v1.0), AP-21 v1.1 parts (Qibla, azkar, Ramadan extras), AP-22, and the Tier B pull-ins (pack system + translator choice, notes, JSON export, streaks, share image, auto-scroll, page curl, interleave) via §6.1 | v1.1 store-listing update for the new features; opt-in crash reports (F-PL-09). |
 | **P3/P4** 2027 | MA-1 spikes (targetSdk 37, M3 Expressive, sherpa-onnx, QF sync). New layouts reuse AP-05/AP-08/AP-25 for each layout. | Permission and certificate per new layout (D-04). |
 
-The **first ten working days** run as doc 09's day-by-day checklist, with this playbook's AP-01 → AP-06 as the agent sessions inside it.
+The **first ten working days** run as doc 09's day-by-day checklist (§7), with this playbook's AP-01 → AP-06 as the agent sessions inside it.
 
 ---
 
 ## 13. Open issues raised by this doc
 
-1. **Variant-task naming in CI (affects docs 10 and 04).** Library modules have no flavors, so `testFossDebugUnitTest` / `verifyRoborazziFossDebug`, as written in r07's CI sketch, run **only `:app`'s tests**.
-   - This playbook makes `criterion.root` register the aggregate tasks `quickCheck` and `prCheck`, which include `testDebugUnitTest` and `verifyRoborazziDebug` for the libraries.
-   - Doc 10's YAML must use them, or list both task sets.
-2. **D-07 Para-page formula.** The register says Para n (1–28) starts at page_index 18n−16, which gives index 2 for Para 1. g01 §2.8 states the invariant for n = 2…28 (Para 1 starts at index 1, the sarlauh). AP-05 follows g01. Doc 12 should correct the register wording.
-3. **Hijri API (D-15 vs r07).** r07 recommended ICU `IslamicCalendar` (`ISLAMIC_UMALQURA`, native from API 24). The register picks `java.time.HijrahDate` via desugaring. No report verified that HijrahDate (Umm al-Qura data) works under `desugar_jdk_libs` 2.1.5 on API 24–25. AP-21 makes this a stop-and-report check, and the fallback would need an ADR.
-4. **Committing the generated content DB.** Whether `quran_content.db` is committed (e.g. via Git LFS) or built in CI before `assemble` is doc 08's call. `CLAUDE.md` stays neutral ("regenerate via the pipeline"), and the CI order in AP-03 must match doc 08.
-5. **The spike still contains Ktor** (spike TOML lines 30 and 79–82). AP-01 removes it per D-02. Doc 04's catalog must not reintroduce it.
-6. **Story-ID format.** Branch names and prompts use doc 09's story IDs verbatim. If doc 09 uses a format with characters that are awkward in branch names, slugify it (e.g. `E-05.3` → `e05-3`).
+1. **Variant-task naming in CI (affects docs 10 and 04).** Library modules have no flavors, so `testFossDebugUnitTest` / `verifyRoborazziFossDebug`, as written in r07's CI sketch, run **only `:app`'s tests**, and with doc 04's two flavor dimensions the app tasks are `…FossPersonal…` / `…PlayPublic…` (`playPersonal*` is disabled).
+   - Ruling applied here: `criterion.root` registers `quickCheck` and `prCheck` (§2.1), which include the libraries' `testDebugUnitTest` and `verifyRoborazziDebug` plus the app's `FossPersonal`/`PlayPublic` tasks, and the required status is `ci/check`.
+   - Doc 10's `android.yml` must call `prCheck` and use the two-dimension task names; doc 04 §16.2 must list `quickCheck`/`prCheck` under `criterion.root`. Doc 10's guard names (`verifyToolchain`, `verifyModuleGraph`) and doc 04's (`verifyKotlinGradlePlugin`, `checkModuleBoundaries`) must converge; this doc uses doc 04's.
+2. **D-07 Para-page formula.** The register said Para n (1–28) starts at page_index 18n−16, which gives index 2 for Para 1. Ruling (g01 §2.8): Para 1 starts at index 1 (the sarlauh), and 18n−16 holds only for n = 2…28; P29 = 508, P30 = 528. AP-05 follows this; doc 12's register wording is being corrected.
+3. **Hijri API (D-15/D-27 vs r07).** r07 recommended ICU `IslamicCalendar` (`ISLAMIC_UMALQURA`, native from API 24); the register picks `java.time.HijrahDate` via desugaring, behind an interface. r08 §1.6 verified that the desugaring support table lists `HijrahChronology`/`HijrahDate` as "Fully implemented", but no report has run it on an API 24–25 device, and the Umm al-Qura validity range (~1300–1600 AH) is unverified. AP-06 runs the device check in P0 and AP-21 repeats it as a stop-and-report check; switching to the ICU implementation behind the same interface is the owner's call under D-27's revisit trigger. Doc 04 calls the interface `HijriCalendar` and doc 12 calls it `HijriCalendarProvider`; this doc uses doc 04's name.
+4. **Committing the generated content DB.** Resolved by doc 08 §2: generated assets (`*.db`, `*.sqlite`, `*.ttf` under module asset dirs) are committed through Git LFS so Android Studio builds need no Python, and `tools.yml` rebuilds them and checks reproducibility. AP-03 checks out with `lfs: true`; AP-04 adds the `.gitattributes` rules.
+5. **The spike still contains Ktor** (spike TOML lines 30 and 79–82). AP-01 removes it per D-02/D-26. Doc 04's catalog must not reintroduce it.
+6. **Story-ID format.** Doc 09's story IDs are `E-xx-Syy`. Commits and prompts use them verbatim; branch names lower-case them and drop the first hyphen (`E-05-S03` → `e05-s03-<slug>`).
+7. **Private input store and proof paths.** This doc follows doc 08 §2 and docs 03/09: private inputs live in `~/criterion-data/` outside the repo (not a gitignored `data/private/`), and proofs go to `out/proof/taj16/<build_id>/`. Doc 08's asset-destination table still names `core/mushaf/…` and `src/main/assets` for the QUL-derived pack; the tier ruling (QUL-derived data only in `app/src/personal/assets/packs/` until G1) and doc 04's module names win.
