@@ -257,7 +257,7 @@ Every specialist doc estimates its own area. This plan's estimates are lower bec
 |---|---|---|---|---|---|
 | UI screens & components (doc 02 §14) | P1 ≈ 48 id, P2 ≈ 25 id. **Doc 02 states this is ≈ 2.6× this plan's UI allocation**, and splits it by release against these epic columns | Player UI (also in doc 06 #9, ≈ 2.7 id) | ≈ 18 id (P1 + C UI stories in E-01-S06, E-05, E-06, E-07, E-08-S05/S06, E-09-S03, E-10-S03/S04, E-11, E-12-S02, E-13, E-14) | ≈ 0.4 | Compose screens and states are the most agent-friendly work (doc 13). Highest risk of under-estimate |
 | Renderer (doc 05 §17) | P0 1.5 + P1 ≈ 13.5 = **15 id** | Goldens (also doc 10, ≈ 2 id) | E-04 8.25 + E-03-S12 0.75 = **9.0** | ≈ 0.7 | Careful, human-reviewed work; estimated close to specialist |
-| Audio, catalogue, downloads (doc 06 §17) | P1 ≈ 150 h = **25 id** (172 h ≈ 28.7 id total) | Player UI (under UI); `:core:remote` overlap with doc 04 A7 | E-08 + E-09 (excl. S02) + E-10 committed = **14.25** | ≈ 0.6 | Spike first (S1); timing pipeline is shared with E-03 |
+| Audio, catalogue, downloads (doc 06 §17) | P1 ≈ 150 h = **25 id** (172 h ≈ 28.7 id total). Doc 06 itself suggests ≈ 120 h (20 id) after overlaps, or an explicit 0.75× factor | Player UI (under UI); `:core:remote` overlap with doc 04 A7 | E-08 + E-09 (excl. S02) + E-10 committed = **14.25** (≈ 86 h; ≈ 91 h with E-09-S02) | ≈ 0.6 (≈ 0.7 against doc 06's 120 h) | Spike first (S1); timing pipeline is shared with E-03 |
 | Pipelines (doc 08 §15) | ≈ 104 h = **17.3 id** (P0+P1 ≈ 92 h = 15.3 id) | Catalogue/timing builders (counted under audio) | E-03 P0+P1+C excl. S12 9.5 + E-09-S02 1.25 = **10.75** | ≈ 0.7 (P0+P1) | Python stages are well specified; agents write them, the owner checks the asserts |
 | Architecture & platform (doc 04 §17, A1–A11) | ≈ **17 id** (A7 `:core:remote` alone 4 d; A8 PackManager 2.5 d) | A7 overlaps doc 06 #10–11 and E-23 | E-01 eng 4.5 + E-10-S07 1.0 + E-23-S02 0.75 + E-02-S04 0.75 = **7.0** | ≈ 0.5 (after overlap) | Skeleton and DI are boilerplate; the signed fetcher and pack registry are not |
 | QA / CI (doc 10 §15) | P0 25 h + P1 71 h = **16 id** | Per-story DoD tests are already inside each story estimate | E-02 P0+P1+C = **2.5** | n/a | Most test work sits inside the stories; the risk is that it is under-counted there |
@@ -306,7 +306,7 @@ The **floor** is never cut. It is every P1 Must (including F-RD-06 pinch zoom an
 | B11 | Streaks & stats | E-18-S02 | 0.75 |
 | B12 | Morning/evening azkar (needs Urdu content) | E-16-S06 | 1.75 |
 | B13 | Group-khatam WhatsApp sheet | E-17-S05 | 0.5 |
-| B14 | Speech-onset snapping | E-09-S06 | 0.75 |
+| B14 | Speech-onset snapping. **If it is not pulled in, Abdul Basit Mujawwad (read 51) ships in v1.0 with highlighting OFF** (`highlight_disabled_surahs` = all; audio still plays) | E-09-S06 | 0.75 |
 | B15 | Vertical auto-scroll | E-05-S08 | 1.25 |
 | B16 | Page-curl animation | E-05-S09 | 1.25 |
 | B17 | Arabic + Urdu interleave (personal/beta build) | E-08-S10 | 1.0 |
@@ -518,33 +518,38 @@ Each day ends with a commit or a log entry. "Spike" outputs go to `spikes/` or `
 ```mermaid
 flowchart LR
   A[QUL export + DK pin<br/>Day 1-6] --> B[Layout join + metadata<br/>E-03-S04/S05 S1]
-  B --> C[Justification precompute<br/>E-03-S06 S1]
-  C --> D[Renderer text + furniture<br/>E-04-S03/S04 S1-S2]
-  D --> E[Proof PDF 548 pp<br/>E-03-S07 11-30]
+  B --> C[Justification precompute + pack<br/>E-03-S06/S12 S1]
+  C --> E[Pipeline proof PDF 548 pp<br/>E-03-S07 11-30]
   E --> F[Hafiz round 1<br/>12-01 to 12-21]
-  F --> G[Fixes E-20-S02<br/>S5]
-  G --> H[Hafiz round 2 on device renders<br/>01-05 to 01-15]
+  F --> G[Fixes E-20-S02 + final ornaments E-04-S09<br/>S5, by 01-04]
+  C --> D[Renderer text + furniture<br/>E-04-S03/S04 S1-S2]
+  D --> H
+  G --> H[Hafiz round 2 on device captures<br/>01-05 to 01-15]
   H --> I[G5 certificate 01-18]
   I --> J[Go/No-Go 01-25]
-  K[Closed test from 01-11, 14 days] --> J
-  L[G1 permission 11-19] --> J
-  M[G3 brand 12-14] --> N[Icon + listing S6-S7] --> J
-  O[Play account / D-U-N-S] --> K
+  R[Launch rule 11-30] --> J
+  L[G1 permission 11-19] --> K
+  O[Play account decision 11-23] --> K
+  S[Listing + Data safety + privacy URL<br/>S5 days 1-3] --> K
+  K[Closed test from 12-28 or 01-11, 14 days] --> J
+  M[G3 brand 12-14] --> N[Icon + listing S5-S7] --> J
   J --> P[Review + staged rollout 01-26 to 02-05]
   P --> Q[Ramadan approx 02-08]
 ```
 
 **Path and slack:**
-- **Primary chain (zero slack):** QUL data → pipeline → renderer → proof PDF (11-30) → hafiz R1 → fixes → hafiz R2 → G5 (01-18) → Go/No-Go (01-25) → rollout (02-01 to 02-05).
-- **Proof PDF timing.** A one-week slip in the proof PDF eats the whole margin before Ramadan. Protect E-03-S04..S07 and E-04-S03/S04 above everything else in S1–S2.
-- **Font fixes after R1.** If R1 finds systematic font or glyph errors (DK IndoPak is v0.1, r04), switch R2 to the affected pages + a 10% sample, and file the fixes upstream.
+- **Primary chain:** QUL data → pipeline → justification + pack → proof PDF (11-30) → hafiz R1 → fixes + final ornaments (by 01-04) → hafiz R2 on device captures → G5 (01-18) → Go/No-Go (01-25) → rollout (02-01 to 02-05). There is **≤ 1 week of slack between G5 and Go/No-Go**; every other link has zero slack.
+- **The proof PDF is pipeline-rendered** (doc 08), so R1 does not wait for the device renderer. The renderer (E-04-S03/S04) is a near-critical chain that must be ready for the R2 device captures on 01-05.
+- **Proof PDF timing.** A one-week slip in the proof PDF eats the whole margin before Ramadan. Protect E-03-S04..S07 and E-03-S12 above everything else in S1–S2.
+- **Font fixes after R1.** If R1 finds systematic font or glyph errors (DK IndoPak is v0.1, r04), switch R2 to the affected pages plus a 10% sample, and file the fixes upstream.
 - **Parallel near-critical chains:**
-  - G1 (11-19; on failure the clean-room work becomes critical).
-  - Play account → closed test start ≤ 01-11. A personal account needs 14 days before production access (r09), so a late account start directly delays M7. Decision rule: if the Organization account is not verified by **12-14**, create a personal account that day.
-  - G3 (12-14) → icon + store graphics (designer, ~3 weeks) → listing (S7).
+  - G1 (11-19; on failure the clean-room work becomes critical and the launch rule most likely fires).
+  - **Play account → closed test.** Decision rule: on **11-23**, if the entity and D-U-N-S are not both in hand, create a personal account that day (doc 11).
+    - On a personal account, only the **12-28 opening** (needs G1 granted) leaves room for 14 days of testing, the production-access review and the first production review before Ramadan.
+    - The first closed-track upload needs its own review: it goes up by 12-24 for a 12-28 opening, otherwise by 01-07.
+  - **Store listing, content rating, Data safety and privacy URL**: Play needs them before the first closed-test release (verify in the Console). They are scheduled in S5 days 1–3, using the G3 name and an interim icon.
+  - G3 (12-14) → icon + store graphics (designer; final icon due 01-04) → final listing (S7).
 - **Not on the critical path:** companion features (by design), audio permissions (the D-12 host-grant shortlist works without them), G4.
-
----
 
 ## 9. Risk-driven ordering rationale
 
@@ -552,14 +557,14 @@ flowchart LR
 |---|---|---|
 | `cv01` kashida / CFF2 on API 24–27 fails on real hardware (g04: verified only from source and in Robolectric) | Decides between the precomputed-kashida renderer and Fallback 1, which changes E-03-S06 and E-04 | S0 Day 7–9 (E-01-S05, E-04-S01) |
 | BundledSQLiteDriver/FTS5 or Room 3 misbehaves on an old device | Both DBs depend on it; fallback is Room 2.8.5 + FTS4 (D-02) | S0 Day 7 |
-| QUL permission (G1) refused or silent | 30-day clock; the fallback needs a contractor + 2–3 calendar weeks | Emails on Day 1; follow-ups 11-03, 11-12 |
+| QUL permission (G1) refused or silent | 30-day clock; the fallback needs a second-person contractor operator and ≈ 7 weeks elapsed | Emails on Day 1; follow-ups 11-02, 11-12; operator shortlist from 11-12 |
 | Data defects (p.529, 59:13, index-1 remap, quarters) | Every downstream artefact (renderer goldens, proof PDF) inherits them | S1 pipeline with frozen asserts and whitelist |
 | Audio clipping and timing accuracy; CDN re-uploads (g03: mp3quran re-uploaded reads 123/30/51 on 2026-09-27) | The highlight differentiator depends on it; the ETag guard must exist before data is trusted | S1 audio spike + timing pipeline before PlanExpander (S3) |
 | Proofreading lead time (G5) | Longest human task on the critical path | Hafiz contracted by 11-16; PDF on 11-30 |
-| Play account verification / D-U-N-S / 14-day closed test | External clocks the owner cannot speed up | Started Day 3; decision rule on 12-14 |
+| Play account verification / D-U-N-S / 14-day closed test / first-review latency | External clocks the owner cannot speed up; a personal account needs the 12-28 opening | Started Day 3; account decision 11-23; listing + Data safety in S5 days 1–3; first closed-track upload by 12-24 or 01-07 |
 | Brand (G3) | Icon, listing and domain all depend on it | Decision 12-14 |
-| Adhan OEM reliability | High-risk, not needed for the Quran core | Deliberately Tier B (v1.1) unless it clears the 01-18 rule |
-| Capacity overrun | Full scope ≈ 1.25× capacity | Ladder pre-applied; checkpoints in §4.2 |
+| Adhan OEM reliability | High-risk, not needed for the Quran core | Deliberately Tier B (v1.1); v1.0 prayer times are display-only unless lever 3 pulls adhan in and it clears the 01-18 rule |
+| Capacity overrun | Full scope ≈ 1.3× capacity at plan estimates; specialist estimates ≈ 1.8–2× the POR (§4.3) | L1–L4 and L9 pre-cut; r measured at 11-16; **launch rule at 11-30** (§4.2) |
 
 ---
 
@@ -568,19 +573,24 @@ flowchart LR
 | Dependency | Owner / party | Start | Needed by | Lead time (known / assumed) | Fallback |
 |---|---|---|---|---|---|
 | QUL account + resource 11/565 export | Owner | 10-20 | 10-26 | Same day | — |
-| G1 reply (Tarteel/QUL, DK author; optional QuranWBW) | Owner → Tarteel | 10-20 | 11-19 | ≤ 30 days (gate) | Clean-room (§5.3) |
+| **Test devices**: used API 24/25 phone + Transsion 3 GB (Android 12–14, Ref-low); API 26/27 borrowed (E-01-S07) | Owner | 10-20 | 10-28 (Day 7) | 2–5 days (local used market) | Day 7 runs on an API 26/27 device or emulator; the API 24/25 kashida check moves to S1 day 1, and E-03-S06 waits on it |
+| G1 reply (Tarteel/QUL, DK author; optional QuranWBW) | Owner → Tarteel | 10-20 (deadline 10-23) | 11-19 | ≤ 30 days (gate); follow-ups 11-02, 11-12 | Clean-room (§5.3) |
+| **Clean-room operator** (contractor, second person; never saw QUL/Waqar/QuranApp 16-line data; reads Indo-Pak script) | Owner | Shortlist from 11-12 | Contract 11-20, start ≤ 11-30 | 1–2 weeks to recruit | None. Public launch after Eid |
 | G2 replies (Alafasy Berhad, QF, King Fahd Complex) | Owner | 10-21 | 01-04 | Unknown; the Complex site is geo-blocked outside PK (g03) | D-12 host-grant shortlist; Ghamdi default |
 | King Fahd Complex ZIPs (5 reciters) | Owner (from PK) | S1 | v1.x self-hosting | Download time only | Mirrors as listed in D-12 |
-| Hafiz/qari proofreader | Owner | Shortlist 10-30; contract 11-16 | R1 12-01, R2 01-05 | R1 ≈ 30–40 h of reading (≈ 3–4 min/page, our estimate), R2 ≈ 8–10 h | Second hafiz on standby; without a certificate there is no public launch |
-| Freelance designer (ornaments, icon, feature graphic) | Owner | Brief 10-30; hire 11-09 | R1 12-04, final 12-31, icon 01-08 | ~3 weeks per batch (assumed) | Ship placeholder geometric ornaments (original, not traced); the icon blocks the listing |
+| Hafiz/qari proofreader | Owner | Shortlist 10-30; contract 11-16 | R1 12-01, R2 01-05 | R1 ≈ 30–40 h of reading (≈ 3–4 min/page, our estimate); R2 ≈ 12–16 h (changed pages in full + all 548 pages' headers, markers and margin furniture) | Second hafiz on standby; without a certificate there is no public launch |
+| Freelance designer (ornaments, icon, feature graphic) | Owner | Brief 10-30; hire 11-09 | R1 12-04, final ornaments 12-31, **icon 01-04** (interim icon for a 12-28 listing) | ~3 weeks per batch (assumed) | If final art misses 01-04, R2 and the certificate proceed on placeholder art (original, not traced), which then ships in v1.0. Final art waits for v1.1 (G5 binds to the text layer, so no re-certification is needed unless text geometry changes) |
 | Taj 16-line prints (×2) | Owner | 10-21 | 11-16 (53 quarter hand-checks; clean-room if needed) | ~1 week delivery (assumed) | Owner's own copy for checks |
-| Pakistani lawyer (G6) | Owner | Shortlist 10-30; engage ≤ 11-30 | 01-11 | 4–6 weeks (assumed) | Closed test until advice arrives |
+| Pakistani lawyer (G6) | Owner | Shortlist 10-30; engage by 11-16 (latest 11-30) | 01-11 | 4–6 weeks (assumed) | Closed test until advice arrives |
 | Trademark self-search (G3) | Owner | 11-17 | 12-14 | 1–2 days of searching | Next candidate name |
-| Entity + D-U-N-S + Play Organization account | Owner | 10-22 | 12-14 (decision rule) | Unknown; D-U-N-S is free (r09) | Personal account by 12-14 → mandatory 12 testers × 14 days |
-| Play identity verification / app review | Google | Account creation | Closed test 01-11; production 01-26 | Days to weeks [unverified] | Submit early; never shorten the closed test |
-| Closed testers (15–20) | Owner (family, masjid, WhatsApp group) | 12-01 | Opted in by 01-11 | 1 month of recruiting | Over-recruit to 20 for dropouts |
-| FGS declaration videos (mediaPlayback, dataSync) | Owner | S5 | Console setup before 01-11 | 1 h recording | — |
-| Domain + privacy-policy hosting + R2 | Owner | After G3 (12-14) | S5 | Hours | Policy page on GitHub Pages under the brand |
+| **Neutral company/CDN domain** (not the brand) + Cloudflare Email Routing `support@`/`privacy@` (E-23-S03) | Owner | Day 3 (10-22) | 11-23 (org verification) and S5 (R2 custom domain; `CDN_BASE_URL` is compiled into every build) | Hours | — |
+| Brand domain (redirect only) | Owner | After G3 (12-14) | S5 (listing, privacy-policy link) | Hours | Policy page on the neutral domain |
+| Entity + D-U-N-S + Play Organization account | Owner | 10-22 | **Decision 11-23** (doc 11) | Unknown; D-U-N-S is free (r09) but needs the registered entity; org verification needs a website | Personal account created on 11-23 → 12 testers × 14 days; a pre-Ramadan launch then needs the 12-28 opening |
+| Play identity verification / app review | Google | Account creation | First closed-track release 12-24 (12-28 path) or ≤ 01-07; production 01-26 | Days to weeks [unverified] | Submit early; never shorten the closed test |
+| Closed testers (15–20) | Owner (family, masjid, WhatsApp group) | 12-01 | Opted in by 12-28 or 01-11 | 1 month of recruiting | Over-recruit to 20 for dropouts |
+| FGS declaration videos (mediaPlayback, dataSync) | Owner | S5 days 1–3 | Before the first closed-track release | 1 h recording | — |
+| **Urdu copy reviewer** (native speaker + scholar; UI strings and ur-PK listing) | Owner | Engage by 12-07 (S3) | Review window 12-28 → 01-06 | 1–2 weeks | Closed testers get the EN UI until the review is done |
+| **Freelance Android developer** (lever 3) | Owner | Shortlist by 11-16 | Decide 11-30; contract by 12-07; first PR by 12-14 | 1–3 weeks | Tier B stays v1.1 |
 | Muezzin adhan recordings (B5) | Owner | Commission by 01-15 | v1.1 | 2–4 weeks (assumed) | 1–2 CC0 fallbacks (D-16) |
 | Urdu azkar translation (~150 duas) or HadeethEnc permission (B12) | Owner + scholar | S1 request | v1.1 | 4–8 weeks (assumed) | Arabic + English only until ready |
 | Translation permissions (Maududi, Taqi Usmani, Qadri, Israr, Clear Quran, QuranWBW, tafsir publishers) | Owner | S1 | v1.x packs | Weeks to months (r05) | Not needed for v1.0 (D-09 bundled set) |
@@ -595,33 +605,33 @@ flowchart LR
 
 | Epic | Spec | Features covered | P0 | P1 | C | F | A | S | B | X | ADM | **Total** |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| E-01 Toolchain & project skeleton | 04 | F-RD-01 | 3 | 0.75 | — | — | — | — | — | — | — | **3.75** |
-| E-02 CI & quality gates | 10 | F-RD-01 | 0.75 | 0.5 | 0.5 | 1.5 | — | — | — | — | — | **3.25** |
-| E-03 Content pipeline & content DB (tools/) | 08 | F-RD-01, F-IX-01..06, F-SR-01..03, F-TR-01, F-TR-02, F-PL-06 | 2.5 | 6 | 1 | — | — | — | 1.25 | 2.5 | — | **13.25** |
-| E-04 Mushaf renderer (:core:mushaf-render) | 05 | F-RD-01, F-IX-04, F-IX-06, F-RD-04, F-RD-05, F-RD-03 | 1.5 | 5.25 | 1.25 | 0.75 | — | — | — | — | — | **8.75** |
+| E-01 Toolchain & project skeleton | 04 | F-RD-01 | 3.75 | 0.75 | — | — | — | — | — | — | 0.25 | **4.75** |
+| E-02 CI & quality gates | 10 | F-RD-01 | 0.75 | 1 | 0.75 | 1.75 | — | — | — | — | — | **4.25** |
+| E-03 Content pipeline & content DB (tools/) | 08 | F-RD-01, F-IX-01..06, F-SR-01..03, F-TR-01, F-TR-02, F-PL-06 | 2.5 | 6.75 | 1 | — | — | — | 1.25 | 4 | — | **15.5** |
+| E-04 Mushaf renderer (:core:mushaf-render) | 05 | F-RD-01, F-IX-04, F-IX-06, F-RD-04, F-RD-05, F-RD-03 | 1.5 | 5.25 | 0.75 | 0.75 | — | — | — | 0.5 | — | **8.75** |
 | E-05 Reader UX | 02 | F-RD-01, F-RD-02, F-RD-04, F-RD-05, F-RD-07, F-RD-06, F-RD-13, F-RD-09, F-RD-12 | — | 3 | 0.5 | — | — | 0.5 | 2.5 | — | — | **6.5** |
-| E-06 Indexes & navigation | 02 | F-IX-01, F-IX-02, F-IX-03, F-IX-05, F-IX-08, F-IX-09, F-IX-04, F-IX-06, F-IX-07 | — | 2.25 | 0.75 | — | — | 0.5 | — | — | — | **3.5** |
-| E-07 Bookmarks, last-read & user data | 04 | F-BM-01, F-BM-02, F-BM-06, F-BM-03 | — | 1.75 | 0.5 | — | — | — | 1.5 | — | — | **3.75** |
-| E-08 Audio engine (playback) | 06 | F-AU-03, F-AU-07, F-AU-02, F-AU-06, F-AU-09, F-AU-05, F-AU-04, F-AU-10 | — | 6 | 1.75 | — | — | — | 1 | — | — | **8.75** |
+| E-06 Indexes & navigation | 02 | F-IX-01, F-IX-02, F-IX-03, F-IX-05, F-IX-08, F-IX-09, F-IX-04, F-IX-06, F-IX-07 | — | 2.25 | — | — | — | 1.25 | — | — | — | **3.5** |
+| E-07 Bookmarks, last-read & user data | 04 | F-BM-01, F-BM-02, F-BM-06, F-BM-03 | — | 2 | 0.25 | — | — | — | 1.5 | — | — | **3.75** |
+| E-08 Audio engine (playback) | 06 | F-AU-03, F-AU-07, F-AU-02, F-AU-06, F-AU-09, F-AU-05, F-AU-04, F-AU-10 | — | 5.5 | 1.5 | — | — | 0.75 | 1 | — | — | **8.75** |
 | E-09 Reciter catalogue & timing packs | 06 | F-AU-01, F-AU-03 | — | 2.25 | 0.5 | 0.25 | — | — | 0.75 | — | — | **3.75** |
-| E-10 Downloads, storage & packs | 06 | F-AU-08, F-PL-06 | — | 2.5 | 0.5 | 1.5 | — | — | 0.75 | — | — | **5.25** |
-| E-11 Translation view & packs | 03 | F-RD-08, F-TR-01, F-TR-02, F-TR-03 | — | 1.25 | — | — | — | — | 1.25 | — | — | **2.5** |
+| E-10 Downloads, storage & packs | 06 | F-AU-08, F-PL-06 | — | 3.5 | 0.5 | 1.5 | — | — | 0.75 | — | — | **6.25** |
+| E-11 Translation view & packs | 03 | F-RD-08, F-TR-01, F-TR-02, F-TR-03 | — | 1 | 0.25 | — | — | — | 1.25 | — | — | **2.5** |
 | E-12 Search | 04 | F-SR-01, F-SR-02, F-SR-03 | — | — | 1.75 | — | — | — | — | — | — | **1.75** |
-| E-13 Onboarding, settings, Urdu UI & accessibility | 02 | F-PL-03, F-PL-01, F-PL-02, F-PL-07 | — | 1.5 | 1.75 | — | — | — | — | — | — | **3.25** |
-| E-14 Design system & ornaments (freelance designer) | 02 | — (enabler) | — | 1.5 | — | 0.25 | — | — | — | — | 0.5 | **2.25** |
+| E-13 Onboarding, settings, Urdu UI, accessibility & platform touches | 02 | F-PL-03, F-PL-01, F-PL-02, F-PL-07, F-PL-10, F-PL-12 | — | 0.75 | 3 | — | — | — | 0.5 | — | — | **4.25** |
+| E-14 Design system & ornaments (freelance designer) | 02 | — (enabler) | — | 0.75 | 0.75 | 0.25 | — | — | — | — | 0.5 | **2.25** |
 | E-15 Prayer times, notifications & adhan | 07 | F-CP-01, F-CP-02 | — | — | — | — | 3 | — | 4.25 | — | — | **7.25** |
 | E-16 Hijri, tasbeeh, Ramadan, Manzil dua, azkar, Qibla | 07 | F-CP-04, F-CP-05, F-CP-07, F-CP-06, F-CP-03 | — | — | — | — | 1.75 | 1 | 3.5 | — | — | **6.25** |
 | E-17 Widgets, reminders & share | 07 | F-CP-08, F-CP-09, F-CP-10, F-CP-11 | — | — | — | — | — | — | 4 | — | — | **4** |
 | E-18 Khatam planner & habits | 07 | F-BM-04, F-BM-05 | — | — | — | — | 1.75 | — | 0.75 | — | — | **2.5** |
-| E-19 Credits, compliance & governance | 11 | F-PL-04, F-PL-05 | — | — | — | 1.75 | — | — | — | — | 0.25 | **2** |
+| E-19 Credits, compliance & governance | 11 | F-PL-04, F-PL-05, F-PL-11 | — | — | — | 2.25 | — | — | — | — | 0.25 | **2.5** |
 | E-20 Proofreading (hafiz engagement, G5) | 11 | F-RD-01 | — | — | — | 1 | — | — | — | — | 0.25 | **1.25** |
 | E-21 Permission outreach & legal (G1, G2, G3, G4, G6) | 03 | — (enabler) | — | — | — | — | — | — | — | — | 2 | **2** |
-| E-22 Play account, store listing & release | 11 | — (enabler) | — | — | — | 2.5 | — | — | — | — | 0.5 | **3** |
-| E-23 Hosting & signed static files (R2) | 04 | — (enabler) | — | — | — | 1.5 | — | — | — | — | — | **1.5** |
+| E-22 Play account, store listing & release | 11 | — (enabler) | — | — | — | 2.75 | — | — | — | — | 0.5 | **3.25** |
+| E-23 Hosting, domain & signed static files (R2) | 04 | F-PL-11 (data side) | — | — | — | 1.5 | — | — | — | — | 0.25 | **1.75** |
 | E-24 Hardening & release readiness | 10 | — (enabler) | — | 1 | — | 1.5 | — | — | — | — | — | **2.5** |
-| **Total** | | | **7.75** | **35.5** | **10.75** | **12.5** | **6.5** | **2** | **21.5** | **2.5** | **3.5** | **102.5** |
+| **Total** | | | **8.5** | **35.75** | **11.5** | **13.5** | **6.5** | **3.5** | **22** | **4.5** | **4** | **109.75** |
 
-The 102.5 id total includes 2.5 id of conditional work (X). Without it, the full scope is 100.0 id; the POR (P0 + P1 + C + F + A + ADM) is 76.5 id.
+The 109.75 id total includes 4.5 id of conditional work (X). Without it, the full scope is 105.25 id. The POR (P0 + P1 + C + F + A + ADM) is **79.75 id**.
 
 ### 11.2 Epic detail
 

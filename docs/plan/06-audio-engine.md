@@ -52,7 +52,7 @@ flowchart LR
   end
   AC[PlaybackController\ninterface :core:domain\nimpl :core:audio] -->|MediaController\nplan: media id| SVC
   subgraph SVC["QuranPlaybackService : MediaLibraryService (:core:audio)"]
-    CB[QuranSessionCallback] --> PE[PlanExpander\npure Kotlin, :core:audio]
+    CB[QuranSessionCallback] --> PE[PlanExpander\npure Kotlin, :core:domain]
     PE --> MAP[MediaItemMapper]
     MAP --> FP[QuranForwardingPlayer]
     FP --> EXO[ExoPlayer]
@@ -76,8 +76,8 @@ flowchart LR
 | Module | Contents (this doc) |
 |---|---|
 | `:core:model` (pure Kotlin) | Doc 04 §5 identity and request types used verbatim: `VerseKey`, `SurahId`, `ParaId`, `ManzilId`, `RukuId`, `MushafId`, `PageIndex`, `AyahRange`, `RecitationId`, `PlayScope`, `Until`, `RepeatSpec`, `PauseRule`, `PlayRequest`. Owned here and placed in `:core:model` (doc 04 §6.1): catalogue model (§3.3: `AudioLayout`, `RecitationStyle`, `BasmalaStrategy`, `LicenceStatus`, `ContentTier`, `QualityTier`, `Reciter`, `Recitation`), `SleepTimer`, `SleepTimerState`, `AudioError` (§11) |
-| `:core:domain` (pure Kotlin) | Interfaces: `PlaybackController`, `PlaybackStateHub`, `PlaybackState`, `PlaybackEvent`, `HighlightTarget`, `Segment`, `AudioCatalogRepository`, `DownloadManager` (doc 04 §6), `QuranStructure`, `TimingIndex`; the scope resolver `ResolvePlayScope` (doc 04 §5.4 = §7.2 here) |
-| `:core:audio` | `QuranPlaybackService`, `PlaybackControllerImpl`, `PlaybackStateHubImpl`, **`PlanExpander`** (pure Kotlin, no `android.*` imports, plain JVM unit tests), player factory, `QuranForwardingPlayer`, `MediaItemMapper`, data sources, `AyahTracker`, repeat/pause/sleep controllers, `ResumeStore`, `TimingRepository`, `TimingGuard`, `AudioCatalogRepositoryImpl` |
+| `:core:domain` (pure Kotlin) | Interfaces: `PlaybackController`, `PlaybackStateHub`, `PlaybackState`, `PlaybackEvent`, `HighlightTarget`, `Segment`, `AudioCatalogRepository`, `DownloadManager` (doc 04 §6), `QuranStructure`, `TimingIndex`; the scope resolver `ResolvePlayScope` (doc 04 §5.4 = §7.2 here); **`PlanExpander`** (pure Kotlin, no `android.*` imports, plain JVM unit tests) |
+| `:core:audio` | `QuranPlaybackService`, `PlaybackControllerImpl`, `PlaybackStateHubImpl`, player factory, `QuranForwardingPlayer`, `MediaItemMapper`, data sources, `AyahTracker`, repeat/pause/sleep controllers, `ResumeStore`, `TimingRepository`, `TimingGuard`, `AudioCatalogRepositoryImpl` |
 | `:core:remote` (splits into `:core:network` + `:core:download` at doc 04's ~4k LOC trigger) | `DownloadManagerImpl`, `DownloadEngine`, `HttpDownloader`, `ZipInstaller`, `ChecksumVerifier`, `AudioFileStore`, `StorageLocationManager`, `AudioDownloadJobService` (UIDT, API 34+), `DownloadWorker` (WorkManager), `downloads.db`; `SignedFileFetcher` (doc 04) for the catalogue |
 | `:core:designsystem` | Localised `AudioError` strings and player styling |
 | `:feature:audio` | Mini player, full player sheet, reciter picker, downloads/storage-manager screens (UI per doc 02) |
@@ -511,7 +511,7 @@ Where requests come from:
 
 ## 7. PlanExpander
 
-`PlanExpander` lives in `:core:audio` (doc 04's module table) but is written as pure Kotlin with no `android.*` or Media3 imports, so its tests are plain JVM unit tests. It is deterministic: the same catalogue, timing versions and request always give the same items. It takes synchronous lookups only. The service first calls `timingRepository.prefetch(recId, surahsOf(ranges))`, then expands.
+`PlanExpander` lives in `:core:domain` (doc 04's module table) and is pure Kotlin with no `android.*` or Media3 imports, so its tests are plain JVM unit tests. It is deterministic: the same catalogue, timing versions and request always give the same items. It takes synchronous lookups only. The service first calls `timingRepository.prefetch(recId, surahsOf(ranges))`, then expands.
 
 ```kotlin
 interface QuranStructure {      // :core:domain; impl in :core:data = doc 04 QuranMeta + rukus/pages from quran_content.db and the layout pack, loaded once
@@ -1599,7 +1599,7 @@ sequenceDiagram
 
 ## 16. Testing (doc 10 integrates these into CI)
 
-### 16.1 PlanExpander unit tests (plain JVM unit tests in `:core:audio`; `ResolvePlayScope` cases also in `:core:domain`)
+### 16.1 PlanExpander unit tests (plain JVM unit tests in `:core:domain`, alongside the `ResolvePlayScope` cases)
 
 Fixtures:
 - `QuranStructure` built from the test content DB (`:core:testing`);

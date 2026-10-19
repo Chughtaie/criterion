@@ -613,8 +613,9 @@ CONSTRAINTS:
   :feature:home when AP-10 creates it in P1).
 - Debug: StrictMode thread+VM policies (penaltyLog), LeakCanary 2.14 debugImplementation.
 ACCEPTANCE:
-1. `./gradlew prCheck` passes (fossPersonal and playPublic assemble; all module tests run — prove library
-   tests ran). `assemblePlayPersonalDebug` does not exist.
+1. `./gradlew prCheck` passes (playPublic assembles; personal-variant lint/unit tests run on code only; all module
+   tests run — prove library tests ran). `assemblePlayPersonalDebug` does not exist. `./gradlew personalCheck`
+   (owner machine only, needs `~/criterion-data`) assembles `fossPersonalRelease`.
 2. On a throwaway commit, two throwaway :feature:* modules where one depends on the other fail
    `checkModuleBoundaries` with a clear message; the commit is then dropped.
 3. `:core:model:test` runs as a plain JVM test task.
@@ -634,8 +635,8 @@ Doc 10 owns android.yml / nightly.yml / release.yml; doc 08 owns tools.yml (pipe
 GOAL: `.github/workflows/android.yml` for PRs + pushes to main that enforces the gates from day 1.
 CONSTRAINTS:
 - Job `check` (required status `ci/check`): checkout with `lfs: true` (generated assets are LFS-committed,
-  doc 08 §2); `./gradlew verifyKotlinGradlePlugin prCheck --continue`; `:app:assembleFossPersonalRelease
-  :app:bundlePlayPublicRelease` (unsigned); `zipalign -c -P 16` on the release APK (16 KB pages); the
+  doc 08 §2); `./gradlew verifyKotlinGradlePlugin prCheck --continue`; `:app:bundlePlayPublicRelease` (unsigned; CI never
+  builds a personal release because personal packs are never in git — doc 10 §12.2); `zipalign -c -P 16` on the release APK (16 KB pages); the
   `quran_text_guard`, clean-room and no-QF-host scans; `verifyContentEligibilityPlayPublicRelease`
   (stubs that pass until packs exist, but wired). Use doc 10's task names where it defines one.
 - Gradle cache read-only on PRs; Maven Central 429 resilience (retry settings as used in g04).

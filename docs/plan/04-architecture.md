@@ -1,6 +1,6 @@
 # 04 — System & App Architecture
 
-**Purpose.** This document is the technical blueprint for the Criterion Android app (codename; public brand at gate G3). It covers the system context, module graph, layering and UDF conventions, the pure-Kotlin domain model, the repository and service interfaces, every on-device data store (with full DDL for `quran_content.db` and `user.db`), the signed pack manifest, navigation, DI, background work, the manifest permission set, build variants and content-eligibility enforcement, security, performance, update flows, diagnostics and the version catalogue. An engineer or AI agent should be able to create the P0 skeleton from this doc and the spike (`spikes/toolchain-spike/`) without redoing research. Doc 04 is the **owner** of module names, interface names, the content-DB schema and the user-DB schema. The mushaf-pack schema belongs to [05](05-mushaf-rendering-engine.md), and the audio catalogue and timing schema to [06](06-audio-engine.md). This doc only states the contracts it relies on.
+**Purpose.** This document is the technical blueprint for the Criterion Android app (codename; public brand at gate G3). It covers the system context, module graph, layering and UDF conventions, the pure-Kotlin domain model, the repository and service interfaces, every on-device data store (with full DDL for `quran_content.db` and `user.db`), the signed pack manifest, navigation, DI, background work, the manifest permission set, build variants and content-eligibility enforcement, security, performance, update flows, diagnostics and the version catalogue. An engineer or AI agent should be able to create the P0 skeleton from this doc and the spike (`spikes/toolchain-spike/`) without redoing research. Doc 04 is the **owner** of module names, interface names, the content-DB schema and the user-DB schema. The mushaf-pack schema belongs to [05](05-mushaf-rendering-engine.md), and the audio catalogue and timing schema to [06](06-audio-engine.md). This doc only states the contracts it relies on. Doc 04 also publishes the shared types every other doc uses verbatim (§5, §6.1: identity types, `MushafId`, `PlayScope`, `PlayRequest`, `PlaybackState`), the NavKeys and deep-link grammar (§8), the build variants and eligibility rule (§11), the signing format (§7.6), the `notices.json` schema (§14.3) and the azkar pack schema (§7.3).
 
 **Status: Draft v2 — 2026-10-19 (review fixes applied; implements the lead's FINAL SHARED-TYPES and VARIANTS rulings)**
 
@@ -132,14 +132,14 @@ flowchart TB
 
 | Module | Plugin(s) | Responsibility | Public API (exported) | May depend on | Phase |
 |---|---|---|---|---|---|
-| `:core:model` | `criterion.jvm.library` + serialization | Value types, including the audio types `PlayScope`, `PlayRequest`, `PlaybackState`, `HighlightTarget` and `AudioError` (§5.4, §6.1); the static Quran structure (`QuranMeta`, ported from QuranKit); the error model; the text normalizer | Everything in §5 and §4.3 | kotlinx-serialization, kotlinx-datetime | P0 |
+| `:core:model` | `criterion.jvm.library` + serialization | Value types; the pure `ContentPolicy` rule (§11.2) shared with the eligibility Gradle plugin; the audio types `PlayScope`, `PlayRequest`, `PlaybackState`, `HighlightTarget` and `AudioError` (§5.4, §6.1); the static Quran structure (`QuranMeta`, ported from QuranKit); the error model; the text normalizer | Everything in §5 and §4.3 | kotlinx-serialization, kotlinx-datetime | P0 |
 | `:core:domain` | `criterion.jvm.library` | Repository and service interfaces (§6), including `PlaybackStateHub` and `PlaybackController`; use cases (`ResolvePlayScope`, `PlanExpander` and `QuranStructure` (doc 06 §7), `ComputeKhatamPlan`, `ResolveGoTo`, `NextPrayer`); `AppDispatchers`, `AppScope`; injected `kotlin.time.Clock` | Interfaces, use-case classes (plain constructors) | model, coroutines-core | P0 |
 | `:core:content` | `criterion.android.library` + `criterion.room3` | `QuranContentDb` (asset copy), Room pack DB classes (`TranslationPackDb`, `TafsirPackDb`, `MushafPackDb`, `AzkarPackDb`, `CitiesDb`), DAOs; `TimingPackReader` (plain `androidx.sqlite`, no Room; §7.3) | **Internal.** Exposes only the `ContentDataSource` façade and `PackDbOpener` to `:core:data` | model | P0 (content), P1 (packs) |
 | `:core:database` | android.library + room3 + serialization | `UserDb` (user.db), DAOs, migrations, exported schemas; typed `DataStore<UserSettings>` | Internal. Exposes the `UserDataSource` and `SettingsDataSource` façades | model | P0 |
 | `:core:remote` | android.library + hilt + serialization + room3 | Shared `OkHttpClient`; `SignedFileFetcher` (ETag, Ed25519, sha256); `Ed25519Verifier`; `HttpDownloader` (Range, `.part`, atomic rename, ZIP); `DownloadManagerImpl` with its device-local queue `downloads.db` (DDL in [06](06-audio-engine.md) §13.3); `DownloadWorker` (P1, every API) and UIDT `AudioDownloadJobService` (API 34+, from S5, job ID 4201); `RemoteRefreshWorker` | `OkHttpClient` binding; download and fetch façades | domain, model | P1 |
 | `:core:data` | android.library + hilt | All repository implementations except audio and prayer; `PackManagerImpl`; `ContentFilter` (applies the pure `ContentPolicy` of §11.2 with `BuildInfo`); `BackupSerializer` (JSON); `DailyMaintenanceWorker` | Hilt `@Binds` only | domain, model, content, database, remote | P0 |
 | `:core:audio` | android.library + hilt | `QuranPlaybackService : MediaLibraryService`, `MediaItemMapper` (expanded plan → MediaItems; `PlanExpander` itself is pure, in `:core:domain`), `ResolvingDataSource` chain, `PlaybackStateHubImpl` (implements the `:core:domain` `PlaybackStateHub`), `PlaybackControllerImpl` (MediaController wrapper), sleep timer, `DataStore<PlaybackResume>` | `PlaybackStateHub` and `PlaybackController` bindings | domain, model, remote | P1 |
-| `:core:prayer` | android.library + hilt | adhan2 wrapper, `HijriCalendarImpl` (java.time `HijrahDate` + offset + Maghrib rollover + PK feed; ICU `IslamicCalendar` fallback after a device check, D-27), Qibla sensor fusion, `LocationProviderImpl` (LocationManagerCompat + cities DB via `CitiesRepository`), `AlarmSchedulerImpl`, `AdhanAlarmReceiver`, `SystemEventsReceiver`, `AdhanPlaybackService`, `ReminderScheduler`, notification channels | Bindings for `PrayerTimesRepository`, `LocationProvider`, `HijriCalendar`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler` | domain, model | P2 |
+| `:core:prayer` | android.library + hilt | adhan2 wrapper, `HijrahHijriCalendarProvider` (java.time `HijrahDate` + offset + Maghrib rollover + PK feed; ICU `IslamicCalendar` fallback after a device check, D-27), Qibla sensor fusion, `LocationProviderImpl` (LocationManagerCompat + cities DB via `CitiesRepository`), `AlarmSchedulerImpl`, `AdhanAlarmReceiver`, `SystemEventsReceiver`, `AdhanPlaybackService`, `ReminderScheduler`, notification channels | Bindings for `PrayerTimesRepository`, `LocationProvider`, `HijriCalendarProvider`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler` | domain, model | P2 |
 | `:core:designsystem` | `criterion.android.library.compose` | Theme (light/sepia/night/AMOLED, F-RD-03), typography (Noto Nastaliq Urdu UI, D-21), icons (vector drawables, no `material-icons-extended`), components, model-bound rows (`SurahRow`, `ParaRow`, `DownloadButton`), `AppError` → string mapping | Composables, `CriterionTheme` | model | P0 |
 | `:core:navigation` | android.library.compose + serialization | Every `@Serializable` NavKey (§8), `NavigationState`, `Navigator`, `DeepLinkParser` | Keys and navigator | model | P0 |
 | `:core:mushaf-render` | android.library.compose | Canvas renderer, hit-testing, highlight layer ([05](05-mushaf-rendering-engine.md)) | `MushafPage(...)` composable, `HitTester` | model, designsystem | P1 |
@@ -176,7 +176,7 @@ flowchart TB
 | `:feature:khatam` (doc 07) | `:feature:bookmarks` (split) |
 | `:core:hifz` (doc 07, P3) | `:core:domain` (`HifzPlanner`) + `:feature:hifz` |
 | `:core:mushaf`, `:core:mushaf-ui` (doc 05) | `:core:mushaf-render`. `MushafRepositoryImpl` is in `:core:data` |
-| `HijriService` (doc 07), `HijriCalendarProvider` (doc 12 D-27 wording) | `HijriCalendar` (`:core:domain`; impl `HijriCalendarImpl`) |
+| `HijriService`, `HijriCalendar` (earlier drafts) | `HijriCalendarProvider` (`:core:domain`, D-27; impl `HijrahHijriCalendarProvider`) |
 | `PageModel` (earlier doc 05 draft) | `PageLayout` (fields owned by doc 05) |
 | `WordIndex` (earlier doc 04 draft) | `WordId` |
 
@@ -648,6 +648,8 @@ interface AudioCatalogRepository {                                    // schema:
     fun favourite(): Flow<RecitationId>
     suspend fun timing(id: RecitationId, surah: SurahId): AyahTimings?  // null ⇒ no highlight for that surah
     suspend fun highlightEnabled(id: RecitationId, surah: SurahId): Boolean
+    suspend fun refresh(force: Boolean = false): AppResult<Boolean>   // via SignedFileFetcher (doc 06 §3.1)
+    fun fallbackFor(rec: Recitation): Recitation?                     // e.g. kill-switched timing → fallback reciter prompt
 }
 
 interface PlaybackController {                                        // impl :core:audio (MediaController wrapper)
@@ -656,6 +658,7 @@ interface PlaybackController {                                        // impl :c
     fun pause(); fun resume(); fun stop()
     fun seekTo(key: VerseKey); fun nextAyah(); fun previousAyah()
     fun setSpeed(speed: Float); fun setRepeat(spec: RepeatSpec)
+    fun setTranslationVoice(voice: RecitationId?)                     // F-AU-10 interleave; null = off
     fun setSleepTimer(timer: SleepTimer?)                             // minutes or end of ayah/surah/para/plan
     fun playerForUi(): Flow<Any?>                                     // androidx.media3.common.Player, typed Any in domain
 }
@@ -725,13 +728,20 @@ interface DownloadManager {                                           // impl :c
     suspend fun deleteAudio(id: RecitationId, surahs: Set<SurahId>? = null /*null = all*/)
     suspend fun cleanPartials(): Long
     fun storageVolumes(): List<StorageVolume>                         // getExternalFilesDirs choices
+    suspend fun pause(id: DownloadId); suspend fun resume(id: DownloadId)            // per request (doc 06 §13.6)
+    fun recitationStatus(id: RecitationId): Flow<RecitationDownloadStatus>          // per surah: NONE/PARTIAL/QUEUED/RUNNING(p)/DONE
+    suspend fun deleteAllExcept(ids: Set<RecitationId>)
+    fun estimate(request: DownloadRequest.Audio): SizeEstimate                      // catalogue surahBytes minus downloaded
+    suspend fun selectVolume(uuid: String?, moveExisting: Boolean)                  // doc 06 §13.8
 }
 sealed interface DownloadRequest {
     data class Audio(val recitation: RecitationId, val unit: AudioUnit, val wifiOnly: Boolean) : DownloadRequest
     data class Pack(val packId: String, val version: Int, val wifiOnly: Boolean) : DownloadRequest
 }
 sealed interface AudioUnit { data class Surahs(val s: Set<SurahId>) : AudioUnit; data class Para(val p: ParaId) : AudioUnit
-                             data class Manzil(val m: ManzilId) : AudioUnit; data object Full : AudioUnit }
+                             data class Manzil(val m: ManzilId) : AudioUnit; data object Full : AudioUnit
+                             data class Range(val range: AyahRange) : AudioUnit              // gapped ayah ranges
+                             data class Passage(val ranges: List<AyahRange>) : AudioUnit }   // e.g. popular passages pack
 
 interface PackManager {                                               // impl :core:data
     fun index(): Flow<PackIndexState>                                 // verified index (remote ∪ bundled), filtered
@@ -759,11 +769,14 @@ interface LocationProvider {                                          // P2; coa
     suspend fun searchCities(query: String, limit: Int = 20): List<City>      // offline GeoNames cities15000
     suspend fun nearestCity(p: GeoPoint): City?
 }
-interface HijriCalendar {                                             // D-27: HijrahDate (desugared) default, ICU IslamicCalendar fallback
+interface HijriCalendarProvider {                                     // D-27: HijrahDate (desugared) default, ICU IslamicCalendar fallback
     fun today(): Flow<HijriDate>; suspend fun convert(date: LocalDate, afterMaghrib: Boolean): HijriDate
 }
 interface QiblaSensor { fun readings(): Flow<QiblaReading> /* bearing, heading, accuracy */ }
-interface AlarmScheduler { suspend fun rescheduleAll(reason: RescheduleReason); fun exactAlarmsAllowed(): Boolean; fun health(): Flow<AdhanHealth> }
+interface AlarmScheduler {                                            // v1.1 (first alarm release)
+    suspend fun rescheduleAll(reason: RescheduleReason); fun exactAlarmsAllowed(): Boolean; fun health(): Flow<AdhanHealth>
+    suspend fun scheduleTest(delay: Duration = 60.seconds, mode: AdhanMode)   // health check "test in 1 minute", same path as real alarms
+}
 interface ReminderScheduler { suspend fun rescheduleReminders() }    // ≤3/day; tap-to-play (F-CP-09)
 interface BackupManager { suspend fun export(out: OutputStreamProvider): AppResult<Int>; suspend fun import(input: InputStreamProvider, mode: MergeMode): AppResult<ImportReport> }
 interface DiagnosticsLog { fun log(tag: String, msg: String); suspend fun bundle(): AppResult<FileRef> }
@@ -1033,7 +1046,7 @@ Room packs are opened with `Room.databaseBuilder<T>(ctx, absolutePath)`. A name 
 | Timing | `timing` | **Doc 06 §5.1 owns the DDL**: `pack_info`, `audio_file`, `ayah_timing`. Plain SQLite (see above); one pack per gapless recitation, id `timing.<recitation-suffix>` (doc 06) | The 12 public timing packs in `assets/audio/timing/` (about 1–4 MB in total; highlight works offline from first launch). Updates via the index (v1.1) |
 | Font | `font` | `pack_info` + font file beside it (`font.ttf`) | DK IndoPak glyf TTF ships in `assets/fonts/` (not a pack) |
 | Azkar | `azkar` | **Doc 04** (content and review in doc 07 §9, rights in doc 03): `pack_info`; `dhikr_category(id INTEGER PK, slug TEXT NOT NULL, name_en TEXT NOT NULL, name_ur TEXT NOT NULL, sort INTEGER NOT NULL)`; `dhikr(id INTEGER PK, category_id INTEGER NOT NULL, sort INTEGER NOT NULL, arabic TEXT NOT NULL, repeat INTEGER NOT NULL, reference TEXT NOT NULL, quran_ranges TEXT, audio TEXT NOT NULL /*NONE|QURAN|CLIP*/, clip TEXT, source_dataset TEXT NOT NULL, licence TEXT NOT NULL, reviewed_by TEXT, reviewed_on TEXT)` + index `(category_id, sort)`; `dhikr_translation(dhikr_id INTEGER NOT NULL, lang TEXT NOT NULL /*en, ur, ur-Latn*/, text TEXT NOT NULL, transliteration TEXT, source TEXT NOT NULL, licence TEXT NOT NULL, PRIMARY KEY(dhikr_id, lang))`. Quranic items reference ayahs by `quran_ranges` ("2:255;112:1-4") and render from the content DB | `azkar.core` from v1.1 (F-CP-06). The Manzil dua is a content-DB `passage`, not an azkar row |
-| Cities | `cities` | **Columns per doc 07 §3**: `city`, `city_alias`, `country`, `admin1` + FTS5 unicode61 on names (GeoNames cities15000, CC BY 4.0) | yes (P2, about 1.5 MB compressed) |
+| Cities | `cities` | **Columns per doc 07 §3**: `city`, `city_alias`, `country`, `admin1` (GeoNames cities15000, CC BY 4.0). Search is a prefix range scan on the `city_alias` primary key; an FTS5 table is optional and not required | yes (v1.0 prayer times, about 1.5 MB compressed) |
 
 Normalization for translation search: `TextNormalizer.urdu()` for `ur` and `TextNormalizer.english()` for `en` and Latin-script packs. There is no stemmer in v1 (FTS tokenizer settings are part of Room's schema validation, so one translation entity class serves every language).
 
@@ -1525,7 +1538,7 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
 | | `RemoteModule` (`:core:remote`) | the one `OkHttpClient` (shared by Media3 and downloads; UA `Criterion/<versionName>`; `Cache(cacheDir/http, 10 MB)` for JSON), `Json`, `SignedFileFetcher`, `Ed25519Verifier`, `DownloadManager` |
 | | `DataModule` (`:core:data`, `@Binds`) | `ContentRepository`, `MushafRepository`, `IndexRepository`, `TranslationRepository`, `SearchRepository`, `BookmarkRepository`, `NoteRepository`, `ReadingProgressRepository`, `KhatamRepository`, `TasbeehRepository`, `AzkarRepository`, `PackManager`, `SettingsRepository`, `BackupManager`, `AudioCatalogRepository`, `ContentFilter`, `DiagnosticsLog` |
 | | `AudioModule` (`:core:audio`) | `SimpleCache` (singleton; `LeastRecentlyUsedCacheEvictor(cacheMb)`), `PlaybackStateHub` → `PlaybackStateHubImpl` (`@Singleton`), `PlaybackController` (its `state` is the hub's `state`), `DataStore<PlaybackResume>` |
-| | `PrayerModule` (`:core:prayer`, P2) | `PrayerTimesRepository`, `LocationProvider`, `HijriCalendar`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler`, `NotificationChannels` |
+| | `PrayerModule` (`:core:prayer`, P2) | `PrayerTimesRepository`, `LocationProvider`, `HijriCalendarProvider`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler`, `NotificationChannels` |
 | | `FlavorModule` (`:app/src/{play,foss}`) | `InAppReview` (play: Play review API, F-PL-10, v1.0-stretch/v1.1; foss: no-op), `CrashReporter` (v1.1 ACRA → crash Worker, both flavors, opt-in), `SupportPurchases` (v1.5 play only; foss: absent) |
 | | `BuildInfoModule` (`:app`) | `BuildInfo(distribution, contentTier: ContentTier, monetized, channel, versionCode, cdnBaseUrl, trustedKeys)` from `BuildConfig` |
 | `ViewModelComponent` | `@HiltViewModel` (assisted with the NavKey) | — |
@@ -1545,7 +1558,7 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
 | Job | Mechanism | Trigger | Constraints / FGS type | Phase |
 |---|---|---|---|---|
 | Recitation playback | `QuranPlaybackService : MediaLibraryService` (Media3) | User action only | FGS `mediaPlayback` | P1 |
-| Audio and pack downloads, P1 (every API) | `DownloadWorker` (WorkManager long-running, `setForeground(ForegroundInfo(…, FOREGROUND_SERVICE_TYPE_DATA_SYNC))`), unique work `dl-<taskId>`, `ExistingWorkPolicy.KEEP` | User taps Download | Network constraint as below; FGS `dataSync` | P1 |
+| Audio and pack downloads, P1 (every API) | `DownloadWorker` (WorkManager long-running, `setForeground(ForegroundInfo(…, FOREGROUND_SERVICE_TYPE_DATA_SYNC))`). Pack downloads use unique work `dl-<taskId>`. **Exception:** audio uses one unique drain worker `audio-downloads` (`ExistingWorkPolicy.KEEP`) that drains the `downloads.db` queue, with units de-duplicated across requests (doc 06 §13) | User taps Download | Network constraint as below; FGS `dataSync` | P1 |
 | Audio and pack downloads, API 34+ from S5 | `AudioDownloadJobService` (UIDT, job ID 4201: `setUserInitiated(true)`, `setEstimatedNetworkBytes`, `setNotification`), scheduled **while the UI is visible**; not rescheduled while pending or draining (doc 06 §13.5). API ≤ 33 keeps `DownloadWorker` | User taps Download | `NETWORK_TYPE_UNMETERED` if Wi-Fi-only, else ANY; no FGS | S5 (P2), before the first BETA build |
 | Signed-file refresh (index, catalogue, notices, hijri-pk) | `RemoteRefreshWorker` periodic 24 h (flex 6 h), plus on app foreground if older than 24 h | Periodic, plus `ProcessLifecycleOwner` ON_START | `CONNECTED`, battery not low; ETag makes it about 1 KB when nothing changed | P1 (hijri feed P2) |
 | Auto-update of packs (`autoUpdate`) and timing packs | `RemoteRefreshWorker` enqueues `DownloadRequest.Pack` | After the index changes | Wi-Fi only. On API 34+ it waits for the next app-visible moment, because UIDT must be scheduled while visible; on ≤ 33 it runs immediately | P1 |
@@ -1562,12 +1575,8 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
 **Notification channels**
 - Media3 default channel for playback;
 - `downloads` (LOW);
-- `adhan_full` (HIGH, no sound);
-- `adhan_short_<soundId>` (HIGH, sound; recreated when the sound changes);
-- `prayer_silent` (DEFAULT);
-- `pre_prayer` (DEFAULT);
-- `quran_reminders` (DEFAULT);
-- `sehri_alarm` (HIGH, `setAlarmClock()`, **no full-screen intent in v1**, D-16).
+- from v1.1 (first alarm release): `adhan_full` (HIGH, no sound); `adhan_short_<soundId>` (HIGH, sound; recreated when the sound changes); `prayer_silent` (DEFAULT); `pre_prayer` (DEFAULT); `quran_reminders` (DEFAULT); `sehri_alarm` (HIGH, `setAlarmClock()`, **no full-screen intent**, D-16);
+- `notices` is not a channel: F-PL-11 notices never post notifications.
 
 ### 10.2 AndroidManifest permissions (merged result for `:app`)
 
@@ -2221,5 +2230,5 @@ The root `build.gradle.kts` applies every plugin alias with `apply false`, inclu
 6. **Ed25519 vendored port** is a security-sensitive component. Mitigation: test vectors in CI, verify-only scope, and BouncyCastle as fallback. A public-domain origin keeps both G4 licensing options open.
 7. **`SystemEventsReceiver` exported.** Accepted, because the handler is idempotent. Re-check when targeting API 37.
 8. **No backend in v1.0** means the kill-switch latency is the refresh interval (≤ 24 h, plus on foreground). That fits the text-error SLA (§14.2: signed notice ≤ 48 h). The v1.1 crash-report Worker (D-32) is write-only and does not change this.
-9. **Hijri implementation choice.** r07 recommends ICU `IslamicCalendar`, but the register mandates `java.time.HijrahDate` via desugaring (D-15, D-27). HijrahDate on API 24–25 is unverified, so the P0 device smoke test compares both on 5 reference dates. Both sit behind `HijriCalendar`, and the ICU implementation is the fallback.
+9. **Hijri implementation choice.** r07 recommends ICU `IslamicCalendar`, but the register mandates `java.time.HijrahDate` via desugaring (D-15, D-27). HijrahDate on API 24–25 is unverified, so the P0 device smoke test compares both on 5 reference dates. Both sit behind `HijriCalendarProvider`, and the ICU implementation is the fallback.
 10. **Personal assets outside git.** The personal build depends on `~/criterion-data`. A fresh clone cannot build `fossPersonal*` until the owner restores that folder; CI builds the personal artifact from the private R2 bucket (doc 08) or skips it.

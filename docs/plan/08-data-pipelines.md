@@ -88,7 +88,7 @@ flowchart LR
 | 1 | content-db | `tools/data-pipeline` | `quran_content.db`, `normalization_vectors.json` | APK asset (`createFromAsset`) | v1.0 (P0 v0, P1 v1); `daily_ayah` rows v1.1 |
 | 2 | mushaf-pack | `tools/mushaf-pipeline` | `mushaf.indopak16_taj.dk@<ver>.db`, `criterion_indopak.ttf`, proof PDFs, `certified_pages.json` | Bundled pack per tier; later layouts downloadable | v1.0 (P0 font, P1 pack, G5 sign-off 2027-01-18) |
 | 3 | translation / tafsir / azkar packs | `tools/packs` | `ur.junagarhi.qe@<ver>.db`, `en.saheeh.qe@<ver>.db`, `azkar.core@<ver>.db`, … | 2 translations bundled (D-09); the rest downloadable | v1.0 bundled translations; v1.1 downloadable packs (F-TR-02) and azkar (F-CP-06); P3 tafsir |
-| 4 | timing packs | `tools/audio-timing` | `timing.<recitationId>@<ver>.db` (plain SQLite) | 12 PUBLIC timing packs bundled (doc 06 §5.1); updates through the index | v1.0 |
+| 4 | timing packs | `tools/audio-timing` | `<packId>@<ver>.db`, e.g. `timing.alafasy.mp3q123@1.db` (plain SQLite) | 12 PUBLIC timing packs bundled (doc 06 §5.1); updates through the index | v1.0 |
 | 5 | catalogue, index, notices, eligibility manifest, signing | `tools/catalogue` | `catalogue.json`, `index.json`, `notices.json` (+ `.sig` each), `bundled.json` per tier | Bundled copies plus remote override | v1.0 for the catalogue override, `notices.json` (F-PL-11) and `bundled.json`; v1.1 for the remote `index.json` (pack system, doc 09 B8) |
 | 6 | cities DB | `tools/packs` (`geonames`) | `cities@<ver>.db` | Bundled pack | v1.0 (prayer times, F-CP-01) |
 | 6b | Hijri PK feed | `tools/catalogue` (`hijri`) | `feeds/hijri-pk.json` + `.sig` | Remote only | v1.0 (F-CP-04) |
@@ -710,19 +710,19 @@ Pack ids follow doc 04 (`<lang>.<name>.<source>`, with `source` ∈ `qe` (QuranE
 
 ## 7. Stage 4: timing packs (`tools/audio-timing`)
 
-### 7.1 Output: `timing.<recitationId>@<ver>.db` (plain SQLite; DDL owned by doc 06 §5.1)
+### 7.1 Output: `<packId>@<ver>.db` timing packs (plain SQLite; DDL owned by doc 06 §5.1)
 
 **Schema = doc 06 §5.1, executed verbatim** from `tools/audio-timing/schema/timing-v1.sql`. That file is a byte copy of doc 06's DDL, and a pytest asserts it matches the doc's code block. The tables are:
 - `pack_info(key, value)`. Required keys: `schema=1`, `pack_id`, `recitation_id`, `version`, `source`, `source_fetched_at`, `built_at`, `pipeline_git_sha`, `attribution`, `onset_snapped`, `words`;
 - `audio_file(recitation_id, surah, url, content_length, etag, last_modified, duration_ms, bitrate_kbps, sample_rate_hz, cbr, highlight_ok, disabled_reason, fixes)`;
 - `ayah_timing(recitation_id, surah, ayah, start_ms, end_ms, words)`. `ayah = 0` is the intro. Rows exist only for surahs with `highlight_ok = 1`.
 
-**Plain SQLite, not Room.** The app reads timing packs through `androidx.sqlite` (`BundledSQLiteDriver`), so the file has **no `room_master_table`** and no Room identity hash. This is the one exception to "every pack is built from its Room-exported schema" (writer ruling; doc 04 §7.3 should note it). `PRAGMA user_version = 1` (schema 1), `VACUUM`.
+**Plain SQLite, not Room.** The app reads timing packs through `androidx.sqlite` (`BundledSQLiteDriver`), so the file has **no `room_master_table`** and no Room identity hash. This is the one exception to "every pack is built from its Room-exported schema" (writer ruling; doc 04 §7.3). `PRAGMA user_version = 1` (schema 1), `VACUUM`.
 
 **Naming.**
-- The pack id is `timing.<recitationId>`, with recitation ids in doc 06's permanent format, e.g. `timing.alafasy.murattal.mp3q123`. This is the `timing.packId` in the catalogue.
-- The bundled file is `app/src/{personal,public}/assets/packs/timing/timing.<recitationId>@<ver>.db`.
-- On the CDN the pack follows the doc 04 index entry: `compression: "zip"`.
+- The pack id is whatever doc 06 assigns as the catalogue's `timing.packId`, e.g. `timing.alafasy.mp3q123` for recitation `alafasy.murattal.mp3q123`. `reciters.yaml` carries it, and the pipeline never derives it.
+- The bundled file is `app/src/{personal,public}/assets/packs/timing/<packId>@<ver>.db`, listed in `bundled.json` (doc 06 §5.1 "Bundling").
+- On the CDN (v1.1 updates) the pack is listed in the index with `compression: "zip"`, the only compressed value doc 04 §7.6's enum allows. Doc 04 §7.3 and doc 06 §5.1 mention `.db.gz`; that is a residual for docs 04/06 to settle, and the pipeline can emit either.
 
 **Gapless only.** Only `GAPLESS_SURAH` recitations with mp3quran timings get a timing pack. Gapped recitations (everyayah, islamic.network, King Fahd Complex) have **no** timing pack. Their integrity data lives in the catalogue `qualities[].checksums`:
 - for everyayah, an `MD5_MANIFEST` pointing at the host's `000_checksum.md5`, which `gapped_checks.py` verifies covers 6,236 ayahs plus basmala files;
@@ -825,7 +825,7 @@ The pipeline emits exactly doc 06 §3.2's shape (`AudioCatalogue`), plus the hea
         "mirrors": [ { "id": "mp3quran", "template": "{host:mp3q}/mishary-alafasy/r1/{sss}.mp3", "role": "PRIMARY", "byteIdentical": true } ],
         "surahBytes": ["…114 measured Content-Length…"], "surahDurationMs": ["…114…"], "totalBytes": 1720000000 } ],
     "basmala": "EMBEDDED_INTRO",
-    "timing": { "packId": "timing.alafasy.murattal.mp3q123", "minVersion": 1, "source": "mp3quran ayat_timing read=123" },
+    "timing": { "packId": "timing.alafasy.mp3q123", "minVersion": 1, "source": "mp3quran ayat_timing read=123" },
     "highlightDisabledSurahs": [],
     "fallbackRecitationId": "alafasy.murattal.ea",
     "licenceStatus": "HOST_GRANT", "basis": "host_grant: mp3quran.net statement archived 2026-10-19",
@@ -1003,72 +1003,106 @@ def gate(tier, monetized, bundled, listed):
 - **PERSONAL-only audio** appears **only** in the bundled PERSONAL catalogue and in `personal-overlay.json`, which holds original-host URLs: the Shamshad Ali Khan Urdu voice, Husary Muallim and Qari Sadaqat Ali (D-12). It is never in any R2 object.
 - **Public builds never reference** quranicaudio, QF/QDC, Tarteel audio hosts or archive.org rips (D-28). V-X06 checks every mirror host against an allowlist.
 
-## 9. Stage 6: geo DB and Hijri feed
+## 9. Stage 6: cities DB, Hijri feed and companion content
 
-### 9.1 `geo.cities15000.sqlite` (Room `GeoDb`, P2)
+### 9.1 Cities pack `cities@<ver>.db` (Room `CitiesDb`; tables per doc 07 §3 / doc 04 §7.3) — v1.0 (F-CP-01)
+
+This is doc 04's `cities` pack type. Its tables are `city`, plus `city_alias(alias_norm, city_id)`, whose primary key starts with `alias_norm` so lookups are a prefix scan; `country` and `admin1` come with them. FTS is optional and is built only if the exported schema declares it. Columns come from doc 04 §7.3 / doc 07 §3 via the exported Room schema. The pipeline implements doc 07's rules:
 
 ```python
 rows = parse_tsv(unzip(fetch_pinned("geonames.cities15000")))   # 19 GeoNames columns
-keep: geonameid, name, asciiname, lat, lon, country_code, admin1, timezone, population,
-      names_ar_script = [n for n in alternatenames.split(",") if is_arabic_script(n)]   # Urdu: لاہور, کراچی, گوجرانوالہ
-city(id PK, name, ascii, lat, lon, cc, admin1, tz, population)
-city_name(city_id, name, name_norm, lang_hint)     # ascii + Arabic-script names, normalised (ur_norm / alias key)
-FTS5 city_fts(name_norm, unicode61, content=city_name)
-assert rows == pinned_count (34,173 on the 2026-10-19 dump), PK rows == 372, all PK tz == "Asia/Karachi"
+admin1 = parse_tsv(fetch_pinned("geonames.admin1CodesASCII"))    # same licence
+for r in rows:
+    city(id=r.geonameid, name=r.name, ascii=r.asciiname, name_ur=pick_name_ur(r), lat, lon, cc=r.country_code,
+         admin1=f"{r.cc}.{r.admin1}", tz=r.timezone, population)
+    aliases = {r.asciiname.lower()} | {ur_norm(n) for n in r.alternatenames.split(",") if any_char_in(n, 0x0600, 0x06FF)}
+    city_alias rows (alias_norm, city_id) for each alias
+# pick_name_ur: PK/IN/AF → first Arabic-script alias with an Urdu-specific letter (ٹ ڈ ڑ ں ے ہ ھ گ), else first
+#   Arabic-script alias; then the hand-checked override CSV data/curated/cities_name_ur.csv (top-100 PK cities)
+assert len(rows) == pinned_count (34,173 on the 2026-10-19 dump) and count(cc == "PK") == 372
+assert all(tz == "Asia/Karachi" for PK rows)
 assert lookup("لاہور") and lookup("کراچی") and lookup("lahore") resolve to the expected geonameids
 ```
 
-The output is ≈ 3.14 MB raw / 1.49 MB zipped (r08 §2.5), bundled as a pre-installed pack. Attribution: "GeoNames, CC BY 4.0". Refresh it at most once per release, since GeoNames changes daily: re-pin, diff the row counts and review.
+The output is ≈ 3.14 MB raw / 1.49 MB zipped (r08 §2.5), bundled as a pack per tier. Attribution: "GeoNames, CC BY 4.0". Refresh it at most once per release, since GeoNames changes daily: re-pin, diff the row counts and review.
 
-### 9.2 PK Hijri month-start feed (`crit hijri`, P2; semantics in doc 07)
+### 9.2 PK Hijri month-start feed (`crit hijri`; semantics in doc 07) — v1.0 (F-CP-04)
 
 ```bash
 uv run --frozen python -I -m crit hijri set 1448-06 2026-11-11 --source "Central Ruet-e-Hilal Committee / MoRA notification" --announced 2026-11-10T15:30:00Z
-uv run --frozen python -I -m crit sign hijri && python -I -m crit publish feeds --go
+uv run --frozen python -I -m crit sign hijri && uv run --frozen python -I -m crit publish --channel feeds --go
 ```
 
-The payload follows the r08 §2.7 body (`schema`, `region`, `authority`, `months[{hijri, start, source, announced}]`) plus `sequence`/`expires`. It is wrapped in the §8.3 envelope; r08's embedded `"sig"` field is replaced by the envelope. Validation:
+The file is `v1/feeds/hijri-pk.json` + `.sig`, shared by all channels (doc 04 §1). The body is r08 §2.7's (`schema`, `region`, `authority`, `months[{hijri, start, source, announced}]`) plus the §8 header fields `kid`, `sequence`, `generatedAt`, `expiresAt`. r08's embedded `"sig"` field is replaced by the detached `.sig` (§8.4).
+
+Validation (V-X08):
 - months are contiguous and increasing;
 - each `start` is 29 or 30 days after the previous month's `start`;
-- each `start` is within ±2 days of the Umm al-Qura month start in `data/curated/ummalqura_months.csv`. That table covers 1446–1460 AH and is exported once from `java.time.chrono.HijrahDate` by a JVM unit test in `:core:model` (doc 10), so Python and app use the same calendar;
+- each `start` is within ±2 days of the Umm al-Qura month start in `data/curated/ummalqura_months.csv`. That table covers 1446–1460 AH and is exported once from `java.time.chrono.HijrahDate` by a JVM unit test in `:core:model` (doc 10), so Python and the app use the same calendar. If doc 07's ICU fallback is chosen, the test exports from ICU instead;
 - only the latest 24 months are kept.
 
 Owner effort is about 5 minutes per month (r08).
+
+### 9.3 Companion content builders (lead ruling: azkar, daily ayah, passages)
+
+| Output | Release | Builder | Source | Checks |
+|---|---|---|---|---|
+| Content-DB `passage` + `passage_range` (F-IX-08 quick access, Manzil dua `PlayScope.Passage`) | v1.0 | `build_content.py` (§4.2) | `passages.csv`, `passage_ranges.csv` | V-C25: every range valid and ordered; `manzil_dua` = 18 ranges / 79 ayahs; every quick-access passage has en + ur titles; the print citation is recorded before BETA |
+| Content-DB `daily_ayah` | table v1.0 (empty), rows v1.1 (F-CP-08 widget, F-CP-09 reminder) | `build_content.py` | `daily_ayah.csv` | V-C26: 0 or exactly 366 rows; valid Kufan ranges of ≤ 5 ayahs; `reviewed_by` non-empty for BETA/PUBLIC |
+| `azkar.core@<ver>.db` pack (Room `AzkarPackDb`, tables per doc 04 §7.3: `dhikr_category`, `dhikr`, `dhikr_translation`, `pack_info`) | v1.1 (F-CP-06) | `build_azkar.py` | `data/curated/azkar/*.csv`: Arabic from osamayy/azkar-db, English from fitrahive (MIT) where it overlaps, Urdu commissioned and scholar-reviewed (doc 07 §9.1) | V-P07 (below): every `dhikr` has `reference`, `licence`, `source_dataset`; `quran_ranges` parse to valid Kufan ranges; BETA/PUBLIC drop rows with no `reviewed_by` (doc 07 §9.4); no fadha'il text; Arabic is never empty and every translation has a dhikr |
+
+AI agents never author or translate this content (D-31). The pipeline only loads curated, reviewed CSVs.
 
 ---
 
 ## 10. Stage 7: publish to Cloudflare R2 (`crit publish`)
 
-**Bucket `criterion-content`** (public through the custom domain `<CDN_HOST>`, chosen at G3) and **bucket `criterion-private`** (no public access; CI read-only token).
+**Bucket `criterion-content`** is public through the brand-neutral custom domain behind `CDN_BASE_URL`. The owner registers that domain in week 1 (doc 04 §1; doc 09 E-23-S01), so G3 never forces a URL change. **Bucket `criterion-private`** has no public access; CI holds a read-only token.
 
 ```
-v1/<profile>/index.json            envelope   Cache-Control: public, max-age=300
-v1/<profile>/catalogue.json        envelope   max-age=300
-v1/feeds/hijri-pk.json             envelope   max-age=300
-v1/packs/<pack_id>/<pack_version>/<pack_id>-<pack_version>.sqlite.zip   immutable  max-age=31536000, immutable
-v1/timing/<recitation_id>/<version>/timing.<recitation_id>-<version>.sqlite.zip   immutable
-v1/audio/<recitation_id>/<sss>.mp3 | <sss><aaa>.mp3   immutable (only permission-cleared audio: KFC reciters, granted others)
-v1/legal/attributions.json        informational
+v1/<channel>/catalogue.json (+ .sig)     channel ∈ {beta, public}   Cache-Control: public, max-age=60
+v1/<channel>/notices.json   (+ .sig)                                max-age=60
+v1/<channel>/index.json     (+ .sig)     v1.1                       max-age=60
+v1/feeds/hijri-pk.json      (+ .sig)     shared by all channels     max-age=60
+v1/packs/<type>/<id>/<version>/<id>-<version>.zip     immutable    max-age=31536000, immutable
+v1/audio/<recitationId>/<sss>.mp3 | <sss><aaa>.mp3 (+ sha256 manifest)   immutable (only permission-cleared audio)
+v1/legal/attributions.json                                            informational
 ```
+
+**There is no `personal` channel and no `v1/personal/` prefix.** `publish.py` refuses `--channel personal`. It also refuses any object whose registry entry is not eligible for the target channel's tier: beta = BETA, public = PUBLIC (§8.6).
 
 ```python
-def publish(go: bool):
-    plan = diff(local_outputs(), r2_listing())                 # new immutable objects + changed envelopes
-    assert crit_validate_all_ok() and signatures_verify(plan.envelopes, data/keys/*.pub)
+def publish(channel: str, go: bool):
+    assert channel in ("beta", "public", "feeds")              # never "personal"
+    tier = {"beta": "BETA", "public": "PUBLIC", "feeds": None}[channel]
+    plan = diff(local_outputs(channel), r2_listing())          # new immutable objects + changed signed JSON
+    assert crit_validate_all_ok(tier)
+    for obj in plan.immutable + plan.signed:
+        if tier: assert eligible(registry[obj.item_id], tier, monetized=False), obj.item_id   # §8.6
+    for f in plan.signed:
+        assert verify_any(read(f.json), b64decode(read(f.json + ".sig")), data/keys/*.pub)
+        assert json(f).get("channel", channel) == channel
     for obj in plan.immutable:                                  # 1) immutable first; never overwrite an existing key
         assert not r2.exists(obj.key)
         rclone_copyto(obj.path, obj.key, header=CACHE_IMMUTABLE, checksum=True)
-        assert sha256(r2.get(obj.key)) == obj.sha256            # read-back verify through <CDN_HOST>
-    for env in plan.envelopes:                                  # 2) envelopes last (atomic single objects)
-        rclone_copyto(env.path, env.key, header=CACHE_SHORT)
-    verify_live()                                               # fetch, verify sig, HEAD every URL, check bytes/sha
-    write("out/publish-log.jsonl", plan)                        # committed summary in docs/ops via PR (doc 11)
+        assert sha256(http_get(CDN_BASE_URL + obj.key)) == obj.sha256      # read-back verify through the CDN
+    for f in plan.signed:                                       # 2) signed JSON last: body, then .sig, back to back
+        rclone_copyto(f.json, f.key, header=CACHE_SHORT)
+        rclone_copyto(f.json + ".sig", f.key + ".sig", header=CACHE_SHORT)
+    verify_live(channel)                                        # fetch, verify .sig + sequence + expiresAt, HEAD every URL
+    write("out/publish-log.jsonl", plan)                        # summary committed to docs/ops via PR (doc 11)
 ```
 
-- `rclone` remote type `s3`, provider `Cloudflare`, endpoint `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`, with an R2 API token scoped to the bucket and stored in the owner's rclone config (never in the repo).
+- `rclone` remote type `s3`, provider `Cloudflare`, endpoint `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`. The R2 API token is scoped to the bucket and stored in the owner's rclone config, never in the repo.
 - `wrangler` is used only for one-time bucket and custom-domain setup.
 - Original hosts stay as fallback mirrors in the catalogue (D-24).
-- Self-hosting King Fahd Complex audio: `crit audio import-kfc <zip>` renames files to `SSSAAA.mp3`, checks the counts (6,236 + basmala file), hashes them, builds a gapped timing pack (manifest only) and uploads to `v1/audio/<rec>/` **only when** `permissions.yml: kfc.status == granted` or the registry marks the recording as producer-licensed "free general use" with archived evidence (doc 03 decides). The credit is "Recording: King Fahd Glorious Qur'an Printing Complex".
+- **Self-hosting King Fahd Complex audio.** `crit audio import-kfc <zip>`:
+  - renames the files to `SSSAAA.mp3`;
+  - checks the counts (6,236 + the basmala file);
+  - writes a `SHA256_MANIFEST` for the catalogue's `checksums` (gapped, so no timing pack);
+  - uploads to `v1/audio/<recitationId>/` **only when** `permissions.yml: kfc.status == granted`, or the registry marks the recording as producer-licensed "free general use" with archived evidence (doc 03 decides). Until then nothing is uploaded, and the recitation stays `PENDING` in the catalogue.
+
+  The credit is "Recording: King Fahd Glorious Qur'an Printing Complex".
 
 ---
 

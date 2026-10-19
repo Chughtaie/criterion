@@ -374,7 +374,7 @@ Columns: **Phase** = where the feature was specified (D-25); **Release** = where
 **Acceptance criteria**
 1. **Given** a page, **when** the user pinches, **then** zoom ranges 1.0×–2.0×, panning is enabled above 1.0×, and on release the page re-lays out at the new size and is crisp (vector, no bitmap blur).
 2. **Given** the user zooms then swipes to another page, **then** the zoom level persists across pages and app restarts (per orientation) — fixing "zoom resets every page" (r02 §2.4).
-3. **Given** double-tap, **then** zoom toggles between 1.0× and the last non-1.0 zoom (default 1.5×).
+3. **Given** any zoom level, **then** zoom is changed by pinch only. There is no double-tap zoom in v1, because a double-tap detector would delay every single tap that toggles the chrome (doc 02 §4.4, doc 05 §8). A "Reset zoom" action in the reader overflow returns to 1.0×.
 4. **Given** zoom > 1.0×, **then** horizontal swipes pan first and turn the page only at the edge.
 5. P3: above 1.6× an option "Large text mode" offers a reflowed ayah layout (F-RD-06 P3).
 
