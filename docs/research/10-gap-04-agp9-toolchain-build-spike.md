@@ -15,7 +15,7 @@ Researcher key: `gap-agp9-toolchain-build-spike` · Date: 2026-10-19
 > - **Variants.** Then built four variant copies: Kotlin 2.3.21, Kotlin 2.2.10, OkHttp 4.12 forced, and Room 2.8.5 + FTS4.
 > - **Kashida.** Read the AOSP sources at the `android-7.0.0_r1` … `android-11.0.0_r1` tags. Measured `Paint.getRunAdvance` in Robolectric NATIVE graphics mode and checked the numbers against uharfbuzz.
 > - **Artifacts.**
->   - Skeleton and scripts: `/tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/repos/gap-agp9-toolchain-build-spike/spike-skeleton.tgz`
+>   - Skeleton and scripts: `<scratch>/repos/gap-agp9-toolchain-build-spike/spike-skeleton.tgz`
 >   - Build logs: `…/gap-agp9-toolchain-build-spike/logs/*.log`
 >
 > **Tags.**
@@ -620,7 +620,7 @@ db.execute(f"PRAGMA user_version = {sch['version'] if a.user_version is None els
 - `platform/external/sqlite`: `dist/Android.mk`, `dist/sqlite3.h`, `dist/sqlite3.c` @7.0.0_r1 (3.9.2; FTS3/FTS4/ICU flags; `SQLITE_DISABLE_FTS3_UNICODE` guard).
 
 **Local build evidence**
-- In `/tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/repos/gap-agp9-toolchain-build-spike/logs/`:
+- In `<scratch>/repos/gap-agp9-toolchain-build-spike/logs/`:
   - `01-buildEnvironment`, `02/03-assembleDebug`, `04/05-content-test`, `06-assembleRelease`, `07–09-app-test`, `10-full-clean`, `11-deprec`, `12-deps`, `13–18` kashida and native probes (`kashida-results.txt`);
   - `20-k23`, `21-k22`, `22-ok4` (+ `-attempt1`), `23/24/25-room2`, `26-ok4`, `30-final`.
 - Skeleton and scripts: `…/gap-agp9-toolchain-build-spike/spike-skeleton.tgz`; variants in `…/var-{k23,k22,ok4,room2}/`.

@@ -30,7 +30,7 @@ Researcher key: `gap-audio-rights-and-gapless-timing` · Date: 2026-10-19
 >   - I ran an independent check over all 6,236 ayahs that catches off-by-one ayah labels: ayah duration correlated with letter count, under label shifts of −1, 0 and +1.
 > - **Hygiene.** All Python ran with `python3 -I`. No third-party code was run.
 >
-> Scripts are in `/tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/gap-audio-rights-and-gapless-timing/scripts/` and data in `…/gap-audio-rights-and-gapless-timing/data/`: `validation_*.json` and `decode_report.txt`. Audio samples are in `…/audio/`.
+> Scripts are in `<scratch>/gap-audio-rights-and-gapless-timing/scripts/` and data in `…/gap-audio-rights-and-gapless-timing/data/`: `validation_*.json` and `decode_report.txt`. Audio samples are in `…/audio/`.
 
 Tags:
 - **[verified: url]** means fetched or inspected in this session.

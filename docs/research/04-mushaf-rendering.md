@@ -473,5 +473,5 @@ Scores run from 1 (bad) to 5 (best). Effort: 5 = least effort.
 | /home/user/criterion/docs/research/01-reference-app-teardown.md | The reference app uses a 16-line Taj scan with no ayah mapping, inverted-scan night mode, and bitmap zoom (user complaints) |
 
 Prototype artifacts (scratch, not committed):
-- `/tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/repos/r04-mushaf-rendering/proto/` — `taj16_p50_quranwbw.png`, `taj16_p50_kfgqpc.png`, `taj16_p50_dk.png`, `taj16_p50_dk_kashida.png`, `compare_spacing_vs_kashida.png`, `taj16_p50_dk_glyf_kashida.png`
-- Scripts: `/tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/scripts/render_page.py`, `render_page_k.py`, `otf2ttf.py`, `fontinfo.py`
+- `<scratch>/repos/r04-mushaf-rendering/proto/` — `taj16_p50_quranwbw.png`, `taj16_p50_kfgqpc.png`, `taj16_p50_dk.png`, `taj16_p50_dk_kashida.png`, `compare_spacing_vs_kashida.png`, `taj16_p50_dk_glyf_kashida.png`
+- Scripts: `<scratch>/scripts/render_page.py`, `render_page_k.py`, `otf2ttf.py`, `fontinfo.py`

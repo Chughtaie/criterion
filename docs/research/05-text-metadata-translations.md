@@ -3,7 +3,7 @@
 **Researcher key:** r05-text-metadata-translations · **Date:** 2026-10-19
 **Scope:** every textual dataset the Criterion Quran app needs: where to get it, its exact license, its format and size, and how to package it offline.
 
-Tag legend: **[verified: url]** means fetched or inspected in this session. **[unverified]** means from memory or not confirmed live. **[measured]** means computed in this session by scripts over downloaded data (scratch: `/tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/work-r05/`).
+Tag legend: **[verified: url]** means fetched or inspected in this session. **[unverified]** means from memory or not confirmed live. **[measured]** means computed in this session by scripts over downloaded data (scratch: `<scratch>/work-r05/`).
 
 ---
 
@@ -637,4 +637,4 @@ Indexing only one column loses 30–100 % of these hits.
 | https://www.wipo.int/wipolex/en/text/497207 | Punjab Holy Quran (Printing and Recording) Act 2011: s.5(3) proofreading, s.5(6) no translation without Arabic text, Punjab scope |
 | Search results: old.quranwbw.com; gittrend marwan/quranwbw | QuranWBW "copying… not allowed"; Urdu WBW credited to Dr Farhat Hashmi (secondary) |
 
-Local measurement artifacts (scratch, not part of the repo): Tanzil downloads, QuranEnc SQLite files, quran.com verse dumps (`qcverses*/`), QUL 16-line page captures (`qul16/`), the prototype DBs (`proto/`) and scripts (`bin/proto_db.py`, `bin/proto_search.py`, `bin/qul_find.py`) under `/tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/work-r05/`.
+Local measurement artifacts (scratch, not part of the repo): Tanzil downloads, QuranEnc SQLite files, quran.com verse dumps (`qcverses*/`), QUL 16-line page captures (`qul16/`), the prototype DBs (`proto/`) and scripts (`bin/proto_db.py`, `bin/proto_search.py`, `bin/qul_find.py`) under `<scratch>/work-r05/`.

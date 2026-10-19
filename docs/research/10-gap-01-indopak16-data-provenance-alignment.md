@@ -12,7 +12,7 @@ Researcher key: `gap-indopak16-data-provenance-alignment` · Date: 2026-10-19
 > - **Re-break experiment.** I re-broke the DK text into 16-line pages with HarfBuzz and the DK font, to measure how much of the layout a self-derived approach could reproduce automatically.
 > - **Hygiene.** All Python ran with `python3 -I`. No third-party build scripts were run, and no third-party data was copied into the project.
 >
-> Scripts are in `/tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/scripts-gap16/`, data and results in `/tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/work/gap-indopak16/`. The main result is `align_result.json`.
+> Scripts are in `<scratch>/scripts-gap16/`, data and results in `<scratch>/work/gap-indopak16/`. The main result is `align_result.json`.
 
 ---
 
@@ -485,5 +485,5 @@ CREATE INDEX ayah_marker_display ON ayah_marker(script_id, surah, display_number
 | /home/user/criterion/docs/research/03, 04, 05 | Context: DK/QUL rendering plan; Indo-Pak para table (matches §2.4) |
 
 Scratch artefacts (not committed):
-- **Scripts:** `/tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/scripts-gap16/{fetch_qul16.sh, parse_qul.py, parse_dk.py, tok_dk.py, dk_numbering.py, parse_waqar.py, norm.py, align.py, rebreak2.py, tanzil_meta.py}`
-- **Results:** `/tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/work/gap-indopak16/{align_result.json, align_maps.json, dk15_keyed.json, dk_disputed.json, qul16.json}`
+- **Scripts:** `<scratch>/scripts-gap16/{fetch_qul16.sh, parse_qul.py, parse_dk.py, tok_dk.py, dk_numbering.py, parse_waqar.py, norm.py, align.py, rebreak2.py, tanzil_meta.py}`
+- **Results:** `<scratch>/work/gap-indopak16/{align_result.json, align_maps.json, dk15_keyed.json, dk_disputed.json, qul16.json}`

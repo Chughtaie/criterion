@@ -368,4 +368,4 @@ Representative quotes (abridged):
 | https://apkpure.com/x/&lt;package&gt; (redirects to app pages) | Approximate APK download sizes (Ref 26.2 MB, Q4A 13.5 MB, Quran Majeed 58.1 MB, Greentech 70.7 MB, Ayah 142.3 MB, Islam360 166.1 MB, Muslim Pro 97.5 MB, Tarteel 256.9 MB, Taj 16-line 45.9 MB, Dawat-e-Islami 66.4 MB, Fanzetech 67.3 MB, JedyApps 95.8 MB, iroshni 94.6 MB) |
 | https://www.apkmirror.com (search result snippets) | Q4A release cadence 3.5.0 (Jun 2025) to 3.6.3 (Feb 2026) — search-snippet only |
 
-*Raw working data (not part of the deliverable): /tmp/claude-0/-home-user-criterion/eece52d7-90a8-5227-b2fc-70627d430e45/scratchpad/r02-work/ (details_main.json, details_pk.json, reviews.json, searches.txt, requests.json).*
+*Raw working data (not part of the deliverable): <scratch>/r02-work/ (details_main.json, details_pk.json, reviews.json, searches.txt, requests.json).*
