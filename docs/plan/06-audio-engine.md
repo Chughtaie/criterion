@@ -51,7 +51,7 @@ flowchart LR
     PL[Mini + full player] --> AC
   end
   AC[PlaybackController\ninterface :core:domain\nimpl :core:audio] -->|MediaController\nplan: media id| SVC
-  subgraph SVC["PlaybackService : MediaLibraryService (:core:audio)"]
+  subgraph SVC["QuranPlaybackService : MediaLibraryService (:core:audio)"]
     CB[QuranSessionCallback] --> PE[PlanExpander\npure Kotlin, :core:audio]
     PE --> MAP[MediaItemMapper]
     MAP --> FP[QuranForwardingPlayer]
@@ -75,9 +75,9 @@ flowchart LR
 
 | Module | Contents (this doc) |
 |---|---|
-| `:core:model` (pure Kotlin) | Doc 04 §5 identity and request types used verbatim: `VerseKey`, `SurahId`, `ParaId`, `ManzilId`, `RukuId`, `MushafId`, `PageIndex`, `AyahRange`, `RecitationId`, `PlayScope`, `Until`, `RepeatSpec`, `PauseRule`, `PlayRequest`. Catalogue model owned here (§3.3): `AudioLayout`, `RecitationStyle`, `BasmalaStrategy`, `LicenceStatus`, `ContentTier`, `QualityTier`, `Reciter`, `Recitation` |
-| `:core:domain` (pure Kotlin) | Interfaces: `PlaybackController`, `PlaybackStateHub`, `PlaybackState`, `PlaybackEvent`, `HighlightTarget`, `Segment`, `AudioError`, `AudioCatalogRepository`, `DownloadManager` (doc 04 §6), `QuranStructure`, `TimingIndex`; the scope resolver `ResolvePlayScope` (doc 04 §5.4 = §7.2 here) |
-| `:core:audio` | `PlaybackService`, `PlaybackControllerImpl`, `PlaybackStateHubImpl`, **`PlanExpander`** (pure Kotlin, no `android.*` imports, plain JVM unit tests), player factory, `QuranForwardingPlayer`, `MediaItemMapper`, data sources, `AyahTracker`, repeat/pause/sleep controllers, `ResumeStore`, `TimingRepository`, `TimingGuard`, `AudioCatalogRepositoryImpl` |
+| `:core:model` (pure Kotlin) | Doc 04 §5 identity and request types used verbatim: `VerseKey`, `SurahId`, `ParaId`, `ManzilId`, `RukuId`, `MushafId`, `PageIndex`, `AyahRange`, `RecitationId`, `PlayScope`, `Until`, `RepeatSpec`, `PauseRule`, `PlayRequest`. Owned here and placed in `:core:model` (doc 04 §6.1): catalogue model (§3.3: `AudioLayout`, `RecitationStyle`, `BasmalaStrategy`, `LicenceStatus`, `ContentTier`, `QualityTier`, `Reciter`, `Recitation`), `SleepTimer`, `SleepTimerState`, `AudioError` (§11) |
+| `:core:domain` (pure Kotlin) | Interfaces: `PlaybackController`, `PlaybackStateHub`, `PlaybackState`, `PlaybackEvent`, `HighlightTarget`, `Segment`, `AudioCatalogRepository`, `DownloadManager` (doc 04 §6), `QuranStructure`, `TimingIndex`; the scope resolver `ResolvePlayScope` (doc 04 §5.4 = §7.2 here) |
+| `:core:audio` | `QuranPlaybackService`, `PlaybackControllerImpl`, `PlaybackStateHubImpl`, **`PlanExpander`** (pure Kotlin, no `android.*` imports, plain JVM unit tests), player factory, `QuranForwardingPlayer`, `MediaItemMapper`, data sources, `AyahTracker`, repeat/pause/sleep controllers, `ResumeStore`, `TimingRepository`, `TimingGuard`, `AudioCatalogRepositoryImpl` |
 | `:core:remote` (splits into `:core:network` + `:core:download` at doc 04's ~4k LOC trigger) | `DownloadManagerImpl`, `DownloadEngine`, `HttpDownloader`, `ZipInstaller`, `ChecksumVerifier`, `AudioFileStore`, `StorageLocationManager`, `AudioDownloadJobService` (UIDT, API 34+), `DownloadWorker` (WorkManager), `downloads.db`; `SignedFileFetcher` (doc 04) for the catalogue |
 | `:core:designsystem` | Localised `AudioError` strings and player styling |
 | `:feature:audio` | Mini player, full player sheet, reciter picker, downloads/storage-manager screens (UI per doc 02) |
@@ -90,10 +90,10 @@ flowchart LR
 
 ### 3.1 Files, hosting, signing, refresh
 
-- **Bundled copy.** `src/{public,personal}/assets/catalogue/catalogue.json` + `catalogue.json.sig` (doc 04 §7.7/§11.2; the APK asset is `catalogue/catalogue.json`). This is the source on first launch and offline. CI regenerates it from the same source as the R2 copy, and `verifyContentEligibility<Variant>` checks it.
+- **Bundled copy.** `src/<tier>/assets/audio/catalogue.json` + `catalogue.json.sig` (doc 04 §7.7/§11.2; the PERSONAL source set also carries `audio/personal-overlay.json`). This is the source on first launch and offline. CI regenerates it from the same source as the R2 copy, and `verifyContentEligibility<Variant>` checks it.
 - **Remote copy.** `${CDN_BASE_URL}/v1/<channel>/catalogue.json` + detached `.sig` on Cloudflare R2 (D-24), where `<channel>` is `beta` or `public` per doc 04 §11 (including its monetized variant of `public`). `BuildConfig.CDN_BASE_URL` is doc 04's brand-neutral domain. PERSONAL builds fetch the `beta` channel; their personal-only entries come from the bundled `personal-overlay.json` and are **never uploaded to R2** (an overlay entry never overrides a remote entry with the same id). The signature is Ed25519 over the exact file bytes (detached `.sig`, two pinned public keys), checked by doc 04's `SignedFileFetcher`, the same path as `index.json` and `notices.json` (D-10, D-30).
 - **Refresh.** Doc 04's daily `RemoteRefreshWorker` (network connected) plus an on-demand fetch when the reciter picker opens and the copy is > 24 h old. It uses a conditional GET (`If-None-Match`).
-- **Acceptance** (`SignedFileFetcher`, doc 04 §7.6): the signature is valid, `kid` names a trusted key, `schema` is supported, `sequence` ≥ the last accepted `sequence` (anti-rollback) and `expiresAt` is in the future. An expired file is not applied, and the last accepted (or bundled) copy stays active. An accepted copy **replaces** the active catalogue wholesale; fields are never merged. It is persisted to `files/remote/catalogue.json` (+ `.sig`, `.etag`). `catalogueVersion` is informational only (shown in diagnostics and Sources & Credits).
+- **Acceptance** (`SignedFileFetcher`, doc 04 §7.6): the signature is valid, `kid` names a trusted key, `schema` is supported, `sequence` ≥ the last accepted `sequence` (anti-rollback) and `expiresAt` is in the future. An expired file is not applied, and the last accepted (or bundled) copy stays active. An accepted copy **replaces** the active catalogue wholesale; fields are never merged. It is persisted to `files/remote/<channel>/catalogue.json` (+ `.sig`, `.etag`). `catalogueVersion` is informational only (shown in diagnostics and Sources & Credits).
 - **Forward compatibility.** Parse with `ignoreUnknownKeys = true`. A recitation with an unknown enum value (style, layout, basmala, tier) is **skipped**; it never crashes the parse. `minAppVersionCode` hides entries that need a newer app.
 
 ### 3.2 Schema (JSON) with two real entries
@@ -405,7 +405,7 @@ CREATE TABLE ayah_timing (
 - mp3quran marks each start at the **beginning of the pause** before the ayah. With `onset_snapped = 1`, the pipeline moved starts to `onset − 150 ms` (max shift 1.5 s).
 - Size estimate: ~6,300 rows ≈ 0.3 MB raw, much less gzipped. The `recitation_id` column is constant per file, kept so packs can be merged later.
 
-**Bundling.** The 12 PUBLIC timing packs (§4.1–4.2) ship as bundled packs in both tier source sets (`assets/packs/timing/<packId>@<ver>.db`, listed in `bundled.json`; doc 04 §7.7/§11.2), about 1–4 MB in all. `PackManager.ensureBundledInstalled()` copies them to `files/packs/timing/<packId>/<ver>/pack.db`. Highlighting therefore works offline from first launch. Updates arrive through the signed pack index (D-10; downloadable packs land in v1.1 per doc 09, while the signed catalogue's `highlightDisabledSurahs` override works from v1.0).
+**Bundling.** The 12 PUBLIC timing packs (§4.1–4.2) ship in `src/main/assets/audio/timing/<packId>@<ver>.db.gz` (eligible in every tier; doc 04 §7.7), about 1–4 MB in all. `PackManager.ensureBundledInstalled()` gunzips them to `files/packs/timing/<packId>/<ver>/pack.db`, checking sha256 from `bundled.json`. Highlighting therefore works offline from first launch. Updates arrive through the signed pack index (D-10; downloadable packs land in v1.1 per doc 09, while the signed catalogue's `highlightDisabledSurahs` override works from v1.0).
 
 **Why not Room for packs.** These are fixed read-only files with three queries. Reading them directly through `androidx.sqlite` (`BundledSQLiteDriver`, already in the stack) avoids coupling packs to Room identity hashes. **Ruling:** timing packs are the one plain-SQLite exception to doc 04's "every pack is built from its Room-exported schema" (no `room_master_table`); they still carry `pack_info` and are verified by sha256 before install. Translation and mushaf packs stay on Room.
 
@@ -592,7 +592,7 @@ fun sliceBySurah(r: AyahRange) = (r.from.surah..r.to.surah).map { s ->
 
 ### 7.2 Scope resolution (pseudocode per scope)
 
-This is doc 04's `ResolvePlayScope` in `:core:domain`; `PlanExpander` calls the same pure function. It returns a **list** of ranges so that `Passage` is expressible (doc 04 must widen its return type from `AyahRange` to `List<AyahRange>`).
+This is doc 04's `ResolvePlayScope` in `:core:domain`; `PlanExpander` calls the same pure function. It returns a **list** of ranges so that `Passage` is expressible (doc 04 §5.4: `suspend (PlayScope) -> List<AyahRange>`).
 
 ```kotlin
 fun resolve(scope: PlayScope): List<AyahRange>? = when (scope) {
@@ -758,7 +758,7 @@ Qari Sadaqat Ali (untimed) therefore supports Surah scopes and any Para or Manzi
 
 ```kotlin
 @AndroidEntryPoint
-class PlaybackService : MediaLibraryService() {          // doc 04 name; com.chughtai.criterion.core.audio.PlaybackService
+class QuranPlaybackService : MediaLibraryService() {     // doc 04 §3/§10 name; com.chughtai.criterion.core.audio.QuranPlaybackService
     @Inject lateinit var playerFactory: QuranPlayerFactory
     @Inject lateinit var callback: QuranSessionCallback
     @Inject lateinit var tracker: AyahTracker
@@ -924,7 +924,7 @@ It extends Media3's `ForwardingSimpleBasePlayer`, the state-consistent forwardin
 
 ### 8.8 Compose UI (`:feature:audio`, visuals per doc 02)
 
-- **Controller connection.** `PlaybackControllerImpl` (in `:core:audio`) builds `MediaController.Builder(ctx, SessionToken(ctx, ComponentName(ctx, PlaybackService::class.java))).buildAsync()`. It connects on `ProcessLifecycleOwner` ON_START and releases on ON_STOP (it never holds the service alive). The resulting `MediaController` is the `Player` handed to the composables through doc 04's `PlaybackController.playerForUi()`.
+- **Controller connection.** `PlaybackControllerImpl` (in `:core:audio`) builds `MediaController.Builder(ctx, SessionToken(ctx, ComponentName(ctx, QuranPlaybackService::class.java))).buildAsync()`. It connects on `ProcessLifecycleOwner` ON_START and releases on ON_STOP (it never holds the service alive). The resulting `MediaController` is the `Player` handed to the composables through doc 04's `PlaybackController.playerForUi()`.
 - **Components.** Use `media3-ui-compose-material3` 1.11.1: `MiniController`, `ProgressSlider`, `PlaybackSpeedToggleButton` and `PlaybackSpeedControl` (r06 §2.7). Wrap them in `:core:designsystem` styling. If `MiniController`'s slots can't carry the ayah line and repeat badge, build the bar from the `media3-ui-compose` button state holders instead.
 - **Positions.** The UI reads `player.currentPosition` on a 250 ms tick only while visible. The hub never ticks: `PlaybackState.positionMs` is a sample taken at emission time, which the reader extrapolates with `speed` (§9.2).
 
@@ -1023,7 +1023,7 @@ sealed interface Segment {
 sealed interface HighlightTarget {
     data class Ayah(val key: VerseKey) : HighlightTarget            // also used while its TRANSLATION item plays
     data class BasmalaLine(val surah: SurahId) : HighlightTarget    // BASMALA item, or INTRO of surahs ≠ 1, 9
-    // v1.x (F-AU-12): data class Word(val key: VerseKey, val wordId: WordIndex) : HighlightTarget
+    // v1.x (F-AU-12): data class Word(val key: VerseKey, val wordId: WordId) : HighlightTarget   (doc 04 word id = DK token id)
 }
 sealed interface PlaybackEvent {
     data class AyahCompleted(val key: VerseKey, val recitation: RecitationId, val atEpochMs: Long) : PlaybackEvent
@@ -1066,7 +1066,7 @@ The reader computes the live position as `positionMs + (now − emittedAt) × sp
 
 - **Detecting the boundary.** Gapped uses the `onMediaItemTransition` away from K. Gapless uses a `PlayerMessage` at `end(K) − clipStart`, or the clip end.
 - **Fade.** When the boundary time is known ahead, fade over 3 s before it; otherwise pause immediately.
-- **State.** `SleepTimerState(kind, endsAtElapsed | boundaryKey)` is in the hub. The timer is cancelled by the user or by plan completion, and is kept across plan changes.
+- **State.** `SleepTimerState(timer, endsAtElapsedMs, boundaryKey)` (§11) is in the hub's `PlaybackState.sleep`. The timer is cancelled by the user or by plan completion, and is kept across plan changes.
 
 ### 10.2 Speed
 
@@ -1101,7 +1101,27 @@ The reader computes the live position as `positionMs + (now − emittedAt) × sp
 | Plan error (`VerseLevelUnavailable`, `NotEligible`) | `onSetMediaItems` future fails | Hub `error` set; nothing plays | Alternatives sheet |
 | Catalogue signature invalid | Verifier | Keep the previous catalogue; local diagnostic | — |
 
-`AudioError` (in `:core:domain`) maps onto doc 04 §4.3 `AppError { Offline, Network, NoSpace, Integrity, NotFound, PermissionDenied, Unavailable(reason), Unknown }`: offline → `Offline`, kill-switch / not eligible / `PENDING` hidden → `Unavailable(KILL_SWITCHED | NOT_ELIGIBLE_FOR_BUILD | LICENCE_PENDING)`. Localised strings live in `:core:designsystem`.
+`AudioError` (in `:core:model`, below) maps onto doc 04 §4.3 `AppError { Offline, Network, NoSpace, Integrity, NotFound, PermissionDenied, Unavailable(reason), Unknown }`: offline → `Offline`, kill-switch / not eligible / `PENDING` hidden → `Unavailable(KILL_SWITCHED | NOT_ELIGIBLE_FOR_BUILD | LICENCE_PENDING)`. Localised strings live in `:core:designsystem`.
+
+```kotlin
+// :core:model — doc 04 §6.1 references these; this doc defines them
+sealed interface SleepTimer {
+    data class Minutes(val n: Int) : SleepTimer                      // 5, 10, 15, 30, 45, 60, 90
+    data class EndOf(val boundary: Boundary) : SleepTimer
+    enum class Boundary { AYAH, SURAH, PARA, PLAN }
+}
+data class SleepTimerState(val timer: SleepTimer, val endsAtElapsedMs: Long?, val boundaryKey: VerseKey?)
+sealed interface AudioError {
+    data object Offline : AudioError                                                    // → AppError.Offline
+    data class CellularBlocked(val estMbPerHour: Int) : AudioError                       // NEVER, or ASK declined
+    data class SourceUnavailable(val surah: SurahId, val key: VerseKey?) : AudioError   // all mirrors failed → AppError.Network
+    data class CorruptFile(val surah: SurahId) : AudioError                             // → AppError.Integrity
+    data class StorageMissing(val volumeUuid: String?) : AudioError                     // SD card removed → AppError.NotFound
+    data class VerseLevelUnavailable(val surah: SurahId, val alternatives: List<RecitationId>) : AudioError
+    data class NotEligible(val recitation: RecitationId, val reason: UnavailableReason) : AudioError  // → AppError.Unavailable
+    data class Unknown(val detail: String) : AudioError
+}
+```
 
 ---
 
@@ -1127,7 +1147,7 @@ The reader computes the live position as `positionMs + (now − emittedAt) × sp
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
-<service android:name="com.chughtai.criterion.core.audio.PlaybackService" android:exported="true"
+<service android:name="com.chughtai.criterion.core.audio.QuranPlaybackService" android:exported="true"
          android:foregroundServiceType="mediaPlayback">
   <intent-filter>
     <action android:name="androidx.media3.session.MediaLibraryService"/>
@@ -1671,7 +1691,7 @@ Fixtures:
 
 ### 16.5 Service tests (Robolectric; the pattern was proven in the g04 spike)
 
-- `@AndroidEntryPoint` `PlaybackService` built via `Robolectric.buildService`, with `MediaSession.ControllerInfo.createTestOnlyControllerInfo` (g04 build log 09 pattern).
+- `@AndroidEntryPoint` `QuranPlaybackService` built via `Robolectric.buildService`, with `MediaSession.ControllerInfo.createTestOnlyControllerInfo` (g04 build log 09 pattern).
 - `onSetMediaItems(plan:v1:…)` returns the expanded items.
 - `onCustomCommand(SET_REPEAT)` re-expands and keeps the current ayah.
 - `onPlaybackResumption` rebuilds from `ResumeStore`.
@@ -1752,7 +1772,7 @@ The P1 floor is gapless playback with all scopes, highlight, repeat/pause, speed
 |---|---|
 | 02 UX | Player, reciter picker, download and storage-manager screens per §8.8 / §13.9. The ayah sheet "Play from here" uses `Until` (default CONTINUOUS). Stream on mobile data default = Ask (`audio_mobile_data`). The untimed-surah sheet (§7.6) asks before any fallback. "Highlighting off" and "verse-level unavailable" sheets. No reciter photos. |
 | 03 Content & licensing | 5-value `licenceStatus` + `basis` and `eligibleTiers` in §4 (D-29). mp3quran statement archived (PDF + SHA-256 + date), referenced in `basis`. Permission emails: Alafasy Berhad, QF developers@quran.com, King Fahd Complex; Hi-Tech and Sadaqat Ali only if going public. Credits strings per recitation. |
-| 04 Architecture | Publishes the shared types used verbatim here (FINAL SHARED-TYPES RULING): `VerseKey`, value ids, `AyahRange`, `RecitationId`, `PlayScope` incl. **`Passage` and `Quran`**, `Until { END_OF_SURAH, END_OF_PARA, CONTINUOUS }` (doc 04 §5.4 still has `END_OF_QURAN`), `PlayRequest` incl. **`startAt` + `startOffsetMs`**, `PlaybackState` / `PlaybackStateHub` / `PlaybackEvent` / `HighlightTarget` exactly as §9.2 (doc 04 §6 still has a smaller `PlaybackState`). Interfaces in `:core:domain`, impls in `:core:audio`; downloads in `:core:remote`; no `:core:audio-api`. `PlaybackService` class name; `ResolvePlayScope` must return `List<AyahRange>`. `RecitationId` examples use this doc's format (`alafasy.murattal.mp3q123`, `husary.murattal.mp3q118`). `BuildConfig.CONTENT_TIER` + `BuildConfig.MONETIZED`, `BuildConfig.CDN_BASE_URL`; catalogue at `${CDN_BASE_URL}/v1/<channel>/catalogue.json` (doc 04 §1 table lacks the channel segment). Timing packs = plain-SQLite exception to the Room-pack rule. `downloads.db` and `playback_resume.json` **excluded** from Auto Backup, and user.db carries no `download_task` / `audio_file` / `listening_position` duplicates. `DownloadManager` additions and `AudioUnit.Range`/`Passage` (§15). Shared `OkHttpClient`, `NetworkMonitor`, `SignedFileFetcher`. Add `kotlinx-coroutines-guava` 1.11.0. Add **`RUN_USER_INITIATED_JOBS`** to the permission set. Audio paths `<vol>/audio/<recitationId>/…`. |
+| 04 Architecture | Publishes the shared types used verbatim here (FINAL SHARED-TYPES RULING): `VerseKey`, value ids, `AyahRange`, `RecitationId`, `PlayScope` incl. **`Passage` and `Quran`**, `Until { END_OF_SURAH, END_OF_PARA, CONTINUOUS }`, `PlayRequest` incl. **`startAt` + `startOffsetMs`**, `PlaybackState` / `PlaybackStateHub` / `PlaybackEvent` / `HighlightTarget` exactly as §9.2. Interfaces in `:core:domain`, impls in `:core:audio`; downloads in `:core:remote`; no `:core:audio-api`. `ResolvePlayScope` returns `List<AyahRange>`. `RecitationId` examples use this doc's format (`alafasy.murattal.mp3q123`, `husary.murattal.mp3q118`). `BuildConfig.CONTENT_TIER` + `BuildConfig.MONETIZED`, `BuildConfig.CDN_BASE_URL`; catalogue at `${CDN_BASE_URL}/v1/<channel>/catalogue.json`. Timing packs = plain-SQLite exception to the Room-pack rule. `downloads.db` and `playback_resume.json` **excluded** from Auto Backup, and user.db carries no `download_task` / `audio_file` / `listening_position` duplicates. `DownloadManager` additions and `AudioUnit.Range`/`Passage` (§15). Shared `OkHttpClient`, `NetworkMonitor`, `SignedFileFetcher`. Add `kotlinx-coroutines-guava` 1.11.0. Add **`RUN_USER_INITIATED_JOBS`** to the permission set. Audio paths `<vol>/audio/<recitationId>/…`. |
 | 05 Reader | Consumes `PlaybackStateHub.state` (`highlight` with Kufan keys, `ayahStartMs`, `ayahEndMs`, `positionMs`, `speed`, `isPlaying`). Provides `MushafLayoutRepository.pageOfAyahStart()` and the page → ayah range used by `PlayScope.Page`. Owns the auto-turn rule (8 s suspension, "Follow recitation" chip, proportional mid-ayah turn, doc 05 §8.6). Basmala-line highlight optional. |
 | 07 Companion | Reminders and widgets are tap-to-play through an activity deep link (doc 04 §8.3: `criterion://play?scope=…&rec=…`; autoplay only for our own PendingIntents). The adhan uses its own service (`USAGE_ALARM`), never this session. Hifz (P3) uses `RepeatSpec.cumulative` and `PlaybackEvent.AyahCompleted`. |
 | 08 Pipelines | Emit timing packs in the exact §5.1 DDL (gzip; plain SQLite, not Room). Emit `catalogue.json` in the exact §3.2 camelCase shape (`eligibleTiers`, `licenceStatus`, `basis`, `commercialOk`, `fossOk`, `kid`, `sequence`, `generatedAt`, `expiresAt`) and take every mp3quran folder slug from `api/v3/ayat_timing/reads`. Run `normalise()` per g03 §2.6 (relabel, clamp, disable, optional onset snap). Generate `catalogue.json` with measured bitrate, sample rate, `surahBytes`, `surahDurationMs` and `highlightDisabledSurahs`. SHA-256 manifests for R2 sets. Weekly ETag re-validation. Signing. |

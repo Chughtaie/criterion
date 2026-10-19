@@ -95,7 +95,7 @@ flowchart TB
     MR[":core:mushaf-render [P1]<br/>Canvas page engine (doc 05)"]
   end
   subgraph CorePure["Pure Kotlin (JVM)"]
-    DOM[":core:domain [P0]<br/>repository + service interfaces incl. PlaybackStateHub,<br/>PlaybackController; use cases; ResolvePlayScope, AppDispatchers"]
+    DOM[":core:domain [P0]<br/>repository + service interfaces incl. PlaybackStateHub,<br/>PlaybackController; use cases; ResolvePlayScope, PlanExpander"]
     MOD[":core:model [P0]<br/>VerseKey, MushafId, PageIndex, PlayScope, PlayRequest,<br/>PlaybackState, QuranMeta, AppError/AppResult, TextNormalizer"]
   end
   subgraph CoreImpl["Implementation core (bound via Hilt)"]
@@ -103,7 +103,7 @@ flowchart TB
     CON[":core:content [P0]<br/>Room3 RO: QuranContentDb + pack DB classes"]
     DB[":core:database [P0]<br/>Room3 user.db + typed DataStore UserSettings"]
     REM[":core:remote [P1]<br/>OkHttp, signed fetch (Ed25519), downloader + downloads.db,<br/>Work host (P1), UIDT host (S5)"]
-    AU[":core:audio [P1]<br/>Media3 QuranPlaybackService, PlaybackStateHubImpl,<br/>PlaybackControllerImpl, PlanExpander (doc 06)"]
+    AU[":core:audio [P1]<br/>Media3 QuranPlaybackService, PlaybackStateHubImpl,<br/>PlaybackControllerImpl, MediaItemMapper (doc 06)"]
     PR[":core:prayer [P2]<br/>adhan2, Hijri, qibla, location, alarms, adhan FGS, reminders"]
   end
   TEST[":core:testing [P0]<br/>fakes, MainDispatcherRule, fixture DBs"]
@@ -133,13 +133,13 @@ flowchart TB
 | Module | Plugin(s) | Responsibility | Public API (exported) | May depend on | Phase |
 |---|---|---|---|---|---|
 | `:core:model` | `criterion.jvm.library` + serialization | Value types, including the audio types `PlayScope`, `PlayRequest`, `PlaybackState`, `HighlightTarget` and `AudioError` (§5.4, §6.1); the static Quran structure (`QuranMeta`, ported from QuranKit); the error model; the text normalizer | Everything in §5 and §4.3 | kotlinx-serialization, kotlinx-datetime | P0 |
-| `:core:domain` | `criterion.jvm.library` | Repository and service interfaces (§6), including `PlaybackStateHub` and `PlaybackController`; use cases (`ResolvePlayScope`, `ComputeKhatamPlan`, `ResolveGoTo`, `NextPrayer`); `AppDispatchers`, `AppScope`; injected `kotlin.time.Clock` | Interfaces, use-case classes (plain constructors) | model, coroutines-core | P0 |
+| `:core:domain` | `criterion.jvm.library` | Repository and service interfaces (§6), including `PlaybackStateHub` and `PlaybackController`; use cases (`ResolvePlayScope`, `PlanExpander` and `QuranStructure` (doc 06 §7), `ComputeKhatamPlan`, `ResolveGoTo`, `NextPrayer`); `AppDispatchers`, `AppScope`; injected `kotlin.time.Clock` | Interfaces, use-case classes (plain constructors) | model, coroutines-core | P0 |
 | `:core:content` | `criterion.android.library` + `criterion.room3` | `QuranContentDb` (asset copy), Room pack DB classes (`TranslationPackDb`, `TafsirPackDb`, `MushafPackDb`, `AzkarPackDb`, `CitiesDb`), DAOs; `TimingPackReader` (plain `androidx.sqlite`, no Room; §7.3) | **Internal.** Exposes only the `ContentDataSource` façade and `PackDbOpener` to `:core:data` | model | P0 (content), P1 (packs) |
 | `:core:database` | android.library + room3 + serialization | `UserDb` (user.db), DAOs, migrations, exported schemas; typed `DataStore<UserSettings>` | Internal. Exposes the `UserDataSource` and `SettingsDataSource` façades | model | P0 |
 | `:core:remote` | android.library + hilt + serialization + room3 | Shared `OkHttpClient`; `SignedFileFetcher` (ETag, Ed25519, sha256); `Ed25519Verifier`; `HttpDownloader` (Range, `.part`, atomic rename, ZIP); `DownloadManagerImpl` with its device-local queue `downloads.db` (DDL in [06](06-audio-engine.md) §13.3); `DownloadWorker` (P1, every API) and UIDT `AudioDownloadJobService` (API 34+, from S5, job ID 4201); `RemoteRefreshWorker` | `OkHttpClient` binding; download and fetch façades | domain, model | P1 |
-| `:core:data` | android.library + hilt | All repository implementations except audio and prayer; `PackManagerImpl`; `ContentPolicy` (tier/eligibility filter); `BackupSerializer` (JSON); `DailyMaintenanceWorker` | Hilt `@Binds` only | domain, model, content, database, remote | P0 |
-| `:core:audio` | android.library + hilt | `QuranPlaybackService : MediaLibraryService`, `PlanExpander` (scope to MediaItems), `ResolvingDataSource` chain, `PlaybackStateHubImpl` (implements the `:core:domain` `PlaybackStateHub`), `PlaybackControllerImpl` (MediaController wrapper), sleep timer, `DataStore<PlaybackResume>` | `PlaybackStateHub` and `PlaybackController` bindings | domain, model, remote | P1 |
-| `:core:prayer` | android.library + hilt | adhan2 wrapper, `HijrahHijriCalendarProvider` (java.time `HijrahDate` + offset + Maghrib rollover + PK feed; ICU `IslamicCalendar` fallback, D-27), Qibla sensor fusion, `LocationProviderImpl` (LocationManagerCompat + cities DB via `CitiesRepository`), `AlarmSchedulerImpl`, `AdhanAlarmReceiver`, `SystemEventsReceiver`, `AdhanPlaybackService`, `ReminderScheduler`, notification channels | Bindings for `PrayerTimesRepository`, `LocationProvider`, `HijriCalendarProvider`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler` | domain, model | P2 |
+| `:core:data` | android.library + hilt | All repository implementations except audio and prayer; `PackManagerImpl`; `ContentFilter` (applies the pure `ContentPolicy` of §11.2 with `BuildInfo`); `BackupSerializer` (JSON); `DailyMaintenanceWorker` | Hilt `@Binds` only | domain, model, content, database, remote | P0 |
+| `:core:audio` | android.library + hilt | `QuranPlaybackService : MediaLibraryService`, `MediaItemMapper` (expanded plan → MediaItems; `PlanExpander` itself is pure, in `:core:domain`), `ResolvingDataSource` chain, `PlaybackStateHubImpl` (implements the `:core:domain` `PlaybackStateHub`), `PlaybackControllerImpl` (MediaController wrapper), sleep timer, `DataStore<PlaybackResume>` | `PlaybackStateHub` and `PlaybackController` bindings | domain, model, remote | P1 |
+| `:core:prayer` | android.library + hilt | adhan2 wrapper, `HijriCalendarImpl` (java.time `HijrahDate` + offset + Maghrib rollover + PK feed; ICU `IslamicCalendar` fallback after a device check, D-27), Qibla sensor fusion, `LocationProviderImpl` (LocationManagerCompat + cities DB via `CitiesRepository`), `AlarmSchedulerImpl`, `AdhanAlarmReceiver`, `SystemEventsReceiver`, `AdhanPlaybackService`, `ReminderScheduler`, notification channels | Bindings for `PrayerTimesRepository`, `LocationProvider`, `HijriCalendar`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler` | domain, model | P2 |
 | `:core:designsystem` | `criterion.android.library.compose` | Theme (light/sepia/night/AMOLED, F-RD-03), typography (Noto Nastaliq Urdu UI, D-21), icons (vector drawables, no `material-icons-extended`), components, model-bound rows (`SurahRow`, `ParaRow`, `DownloadButton`), `AppError` → string mapping | Composables, `CriterionTheme` | model | P0 |
 | `:core:navigation` | android.library.compose + serialization | Every `@Serializable` NavKey (§8), `NavigationState`, `Navigator`, `DeepLinkParser` | Keys and navigator | model | P0 |
 | `:core:mushaf-render` | android.library.compose | Canvas renderer, hit-testing, highlight layer ([05](05-mushaf-rendering-engine.md)) | `MushafPage(...)` composable, `HitTester` | model, designsystem | P1 |
@@ -176,7 +176,7 @@ flowchart TB
 | `:feature:khatam` (doc 07) | `:feature:bookmarks` (split) |
 | `:core:hifz` (doc 07, P3) | `:core:domain` (`HifzPlanner`) + `:feature:hifz` |
 | `:core:mushaf`, `:core:mushaf-ui` (doc 05) | `:core:mushaf-render`. `MushafRepositoryImpl` is in `:core:data` |
-| `HijriService` (doc 07), `HijriCalendar` (earlier draft) | `HijriCalendarProvider` (D-27) |
+| `HijriService` (doc 07), `HijriCalendarProvider` (doc 12 D-27 wording) | `HijriCalendar` (`:core:domain`; impl `HijriCalendarImpl`) |
 | `PageModel` (earlier doc 05 draft) | `PageLayout` (fields owned by doc 05) |
 | `WordIndex` (earlier doc 04 draft) | `WordId` |
 
@@ -494,7 +494,7 @@ data class PlayRequest(
 )
 ```
 
-`:core:domain` contains `ResolvePlayScope(index, mushaf): suspend (PlayScope) -> List<AyahRange>`. It is pure and unit-tested (for example, "Para 4 = [3:92–4:23]", "Passage(manzil dua) = 18 ranges, 79 ayahs", "Page(taj16, p) starts at the first ayah that starts on p"). `Quran` and `FromHere(CONTINUOUS)` resolve to `[1:1–114:6]` and `[start–114:6]`; doc 06's `PlanExpander` windows them by surah and starts the window at `startAt` when set. Doc 06 turns the ranges into Media3 items. Deep links and reminders name passages by code (`passage:manzil-dua`). `DeepLinkParser` resolves the code through `IndexRepository.passages()` into `PlayScope.Passage(ranges, titleRes)`.
+`:core:domain` contains `ResolvePlayScope(index, mushaf): suspend (PlayScope) -> List<AyahRange>`. It is pure and unit-tested (for example, "Para 4 = [3:92–4:23]", "Passage(manzil dua) = 18 ranges, 79 ayahs", "Page(taj16, p) starts at the first ayah that starts on p"). `Quran` and `FromHere(CONTINUOUS)` resolve to `[1:1–114:6]` and `[start–114:6]`; doc 06's `PlanExpander` (pure, in `:core:domain`) windows them by surah and starts the window at `startAt` when set. `:core:audio`'s `MediaItemMapper` turns the expanded plan into Media3 items. Deep links and reminders name passages by code (`passage:manzil-dua`). `DeepLinkParser` resolves the code through `IndexRepository.passages()` into `PlayScope.Passage(ranges, titleRes)`.
 
 ### 5.5 `QuranMeta` (static structure, pure Kotlin)
 
@@ -759,7 +759,7 @@ interface LocationProvider {                                          // P2; coa
     suspend fun searchCities(query: String, limit: Int = 20): List<City>      // offline GeoNames cities15000
     suspend fun nearestCity(p: GeoPoint): City?
 }
-interface HijriCalendarProvider {                                     // D-27: HijrahDate (desugared) default, ICU IslamicCalendar fallback
+interface HijriCalendar {                                             // D-27: HijrahDate (desugared) default, ICU IslamicCalendar fallback
     fun today(): Flow<HijriDate>; suspend fun convert(date: LocalDate, afterMaghrib: Boolean): HijriDate
 }
 interface QiblaSensor { fun readings(): Flow<QiblaReading> /* bearing, heading, accuracy */ }
@@ -1523,9 +1523,9 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
 | | `ContentModule` (`:core:content`, internal) | `QuranContentDb`, DAOs, `PackDbOpener`, `ContentDataSource` |
 | | `DatabaseModule` (`:core:database`) | `UserDb` (TRUNCATE journal, migrations), DAOs, `DataStore<UserSettings>` |
 | | `RemoteModule` (`:core:remote`) | the one `OkHttpClient` (shared by Media3 and downloads; UA `Criterion/<versionName>`; `Cache(cacheDir/http, 10 MB)` for JSON), `Json`, `SignedFileFetcher`, `Ed25519Verifier`, `DownloadManager` |
-| | `DataModule` (`:core:data`, `@Binds`) | `ContentRepository`, `MushafRepository`, `IndexRepository`, `TranslationRepository`, `SearchRepository`, `BookmarkRepository`, `NoteRepository`, `ReadingProgressRepository`, `KhatamRepository`, `TasbeehRepository`, `AzkarRepository`, `PackManager`, `SettingsRepository`, `BackupManager`, `AudioCatalogRepository`, `ContentPolicy`, `DiagnosticsLog` |
+| | `DataModule` (`:core:data`, `@Binds`) | `ContentRepository`, `MushafRepository`, `IndexRepository`, `TranslationRepository`, `SearchRepository`, `BookmarkRepository`, `NoteRepository`, `ReadingProgressRepository`, `KhatamRepository`, `TasbeehRepository`, `AzkarRepository`, `PackManager`, `SettingsRepository`, `BackupManager`, `AudioCatalogRepository`, `ContentFilter`, `DiagnosticsLog` |
 | | `AudioModule` (`:core:audio`) | `SimpleCache` (singleton; `LeastRecentlyUsedCacheEvictor(cacheMb)`), `PlaybackStateHub` → `PlaybackStateHubImpl` (`@Singleton`), `PlaybackController` (its `state` is the hub's `state`), `DataStore<PlaybackResume>` |
-| | `PrayerModule` (`:core:prayer`, P2) | `PrayerTimesRepository`, `LocationProvider`, `HijriCalendarProvider`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler`, `NotificationChannels` |
+| | `PrayerModule` (`:core:prayer`, P2) | `PrayerTimesRepository`, `LocationProvider`, `HijriCalendar`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler`, `NotificationChannels` |
 | | `FlavorModule` (`:app/src/{play,foss}`) | `InAppReview` (play: Play review API, F-PL-10, v1.0-stretch/v1.1; foss: no-op), `CrashReporter` (v1.1 ACRA → crash Worker, both flavors, opt-in), `SupportPurchases` (v1.5 play only; foss: absent) |
 | | `BuildInfoModule` (`:app`) | `BuildInfo(distribution, contentTier: ContentTier, monetized, channel, versionCode, cdnBaseUrl, trustedKeys)` from `BuildConfig` |
 | `ViewModelComponent` | `@HiltViewModel` (assisted with the NavKey) | — |
@@ -1694,26 +1694,44 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
 
 ## 11. Build variants and content eligibility
 
-### 11.1 Variants
+### 11.1 Variants and `CONTENT_TIER`
+
+The flavor dimension `tier` says **which source set** is packaged. `BuildConfig.CONTENT_TIER` says **which content rules** apply. They differ only for the public tier, which builds as BETA (closed testing) unless the release is explicitly marked production.
+
+| Flavor `tier` | Gradle properties | `CONTENT_TIER` | Use |
+|---|---|---|---|
+| `personal` | (`criterion.release` must be unset) | `PERSONAL` | Owner's daily build (`fossPersonalRelease`, sideloaded), family |
+| `public` | default | `BETA` | Internal and closed testing. Shows the "proofreading in progress" notice (Home card + reader-chrome chip, never over Quran text) until G5 |
+| `public` | `-Pcriterion.release=production` | `PUBLIC` | Production track. `verifyContentEligibility` also demands G1 and G5 evidence |
+
+`BuildConfig.MONETIZED` is `true` only with `-Pcriterion.monetized=true`, which is allowed only for `play` + `public` from v1.5 (F-PL-08). Any other combination fails configuration.
 
 ```kotlin
 // build-logic: criterion.android.application.flavors
+val release = providers.gradleProperty("criterion.release").orNull          // null | "production"
+val monetized = providers.gradleProperty("criterion.monetized").orNull == "true"
+require(release == null || release == "production") { "criterion.release must be 'production' or unset" }
+
 android {
     flavorDimensions += listOf("distribution", "tier")
     productFlavors {
         create("play")     { dimension = "distribution"; buildConfigField("String", "DISTRIBUTION", "\"play\"") }
         create("foss")     { dimension = "distribution"; buildConfigField("String", "DISTRIBUTION", "\"foss\"") }
-        create("public")   { dimension = "tier"; buildConfigField("String", "CONTENT_TIER", "\"public\"") }
+        create("public")   { dimension = "tier"
+                             buildConfigField("String", "CONTENT_TIER", if (release == "production") "\"PUBLIC\"" else "\"BETA\"")
+                             buildConfigField("String", "REMOTE_CHANNEL", if (release == "production") "\"public\"" else "\"beta\"") }
         create("personal") { dimension = "tier"; applicationIdSuffix = ".personal"; versionNameSuffix = "-personal"
                              resValue("string", "app_name_suffix", " (personal)")
-                             buildConfigField("String", "CONTENT_TIER", "\"personal\"") }
+                             buildConfigField("String", "CONTENT_TIER", "\"PERSONAL\"")
+                             buildConfigField("String", "REMOTE_CHANNEL", "\"beta\"") }   // + bundled personal-overlay.json
     }
     buildTypes {
         debug { applicationIdSuffix = ".debug" }
         release { optimization { enable = true } }        // AGP 9.3+ DSL; R8 full mode
     }
     defaultConfig {
-        buildConfigField("boolean", "MONETIZED", "false")  // true only for playPublic from v1.5 (F-PL-08)
+        buildConfigField("boolean", "MONETIZED", monetized.toString())   // validated in androidComponents.onVariants:
+                                                                         // only playPublic*, never with personal/foss
         buildConfigField("String", "CDN_BASE_URL", "\"${providers.gradleProperty("criterion.cdn").getOrElse("https://cdn.example.invalid")}\"")
         buildConfigField("String", "TRUSTED_KEYS", "\"${providers.gradleProperty("criterion.trustedKeys").get()}\"") // 2 hex keys, comma-sep
     }
@@ -1721,37 +1739,74 @@ android {
     bundle { language { enableSplit = false } }           // in-app language switch (D-21)
     packaging { resources { excludes += "DebugProbesKt.bin" } }
 }
+androidComponents {
+    beforeVariants(selector().withFlavor("distribution" to "play").withFlavor("tier" to "personal")) { it.enable = false }
+    onVariants { v -> if (release != null) check(v.productFlavors.contains("tier" to "public")) { "production needs tier=public" } }
+}
 ```
 
-| Variant | Goes to | Content allowed |
-|---|---|---|
-| `playPublicRelease` | Play (internal → closed → production) | `eligibility.public == true`; and `monetized == true` when `MONETIZED` |
-| `fossPublicRelease` | Optional APK / F-Droid later (G4) | `public == true` (never monetized) |
-| `fossPersonalRelease` | Owner's phone (sideload, CI artifact) | `personal == true`, a superset that includes `PENDING`/`PERSONAL_ONLY` (Shamshad Ali Khan voice, Husary Muallim, Qari Sadaqat Ali, gapped everyayah, D-12) |
-| `playPersonal*` | Disabled via `androidComponents.beforeVariants { enable = false }` | — |
-| `*Debug` | Developer devices | Same as the tier |
+`BuildInfo` maps the strings to `enum class ContentTier { PERSONAL, BETA, PUBLIC }` once, in `:app`.
+
+| Variant | Goes to | `CONTENT_TIER` | Content allowed (§11.2) |
+|---|---|---|---|
+| `playPublicRelease` | Play internal / closed testing | BETA | Items with BETA in `eligibleTiers`. Mushaf layout only if G1-cleared or clean-room. PENDING recitations allowed |
+| `playPublicRelease -Pcriterion.release=production` | Play production (staged rollout) | PUBLIC | Items with PUBLIC in `eligibleTiers`; no PENDING or PERSONAL_ONLY; G1 + G5 evidence; with `MONETIZED` (v1.5+) also `commercialOk` |
+| `fossPublicRelease` | Optional APK / F-Droid later (G4) | BETA or PUBLIC (same rule) | As above, plus `fossOk`; never monetized |
+| `fossPersonalRelease` | Owner's phone (sideload, CI artifact), `com.chughtai.criterion.personal` | PERSONAL | Everything with PERSONAL in `eligibleTiers`, including PENDING and PERSONAL_ONLY items (QUL-derived layout before G1, Shamshad Ali Khan voice, Husary Muallim, Qari Sadaqat Ali, gapped everyayah, D-12) |
+| `playPersonal*` | Disabled | — | — |
+| `*Debug` | Developer devices | Same as the tier | Same as the tier |
 
 ### 11.2 Where eligibility lives
 
-1. **Pipeline outputs** carry flags on every item: packs (`eligibility`), catalogue recitations (`buildEligibility`, schema in [06](06-audio-engine.md)) and the default layout pack (G1-dependent).
+**Per-item fields (one vocabulary for packs, catalogue recitations, bundled items and datasets; D-29).**
+
+| Field | Values | Meaning |
+|---|---|---|
+| `licenceStatus` | `PERMITTED`, `HOST_GRANT`, `PENDING`, `PERSONAL_ONLY`, `REVOKED` | PERMITTED = licence or written permission covers us. HOST_GRANT = the host's general grant (for example mp3quran). PENDING = asked, no answer yet. PERSONAL_ONLY = may never leave the owner's devices. REVOKED = withdrawn |
+| `basis` | free text | Why the status holds: licence name, permission record (PERM-xx, doc 03), "clean-room" |
+| `eligibleTiers` | subset of `PERSONAL`, `BETA`, `PUBLIC` | Tiers the pipeline cleared the item for |
+| `commercialOk` | boolean | Required for MONETIZED builds. False for every Tanzil translation |
+| `fossOk` | boolean | Required for `fossPublic` builds |
+| `enabled` | boolean | Kill-switch (remote index or a `notices.json` `disable`) |
+
+**One rule, shared by CI and the device.** `ContentPolicy` lives in `:core:model` as a pure function, so `verifyContentEligibility`, the pipeline's `publish.py` tests (via the shared JSON vectors) and every repository apply the same logic:
+
+```kotlin
+fun allows(item: Eligibility, tier: ContentTier, monetized: Boolean, foss: Boolean, type: ItemType): Boolean =
+    item.enabled &&
+    tier in item.eligibleTiers &&
+    when (item.licenceStatus) {
+        REVOKED       -> false
+        PERSONAL_ONLY -> tier == PERSONAL
+        PENDING       -> tier != PUBLIC && !(type == MUSHAF_LAYOUT && tier == BETA)   // PENDING audio is fine in BETA
+        PERMITTED, HOST_GRANT -> true
+    } &&
+    (type != MUSHAF_LAYOUT || tier == PERSONAL || item.licenceStatus == PERMITTED || item.basis == "clean-room") &&
+    (!monetized || item.commercialOk) &&
+    (!(foss && tier != PERSONAL) || item.fossOk)
+```
+
+1. **Pipeline outputs** carry these fields on every item: packs (`index.json`, `pack_info`), catalogue recitations ([06](06-audio-engine.md)), datasets inside the content DB (`source.licence_json`), and the bundled layout pack.
 2. **Bundled content** is split by source set:
-   - `src/main/assets/`: the content DB and fonts, which are eligible everywhere.
-   - `src/public/assets/` and `src/personal/assets/`: `packs/`, `catalogue/catalogue.json` and `content/bundled.json`. `bundled.json` lists every bundled item as `{id, type, sha256, eligibility, licenceStatus}`.
-3. **Remote.** The public `index.json` and `catalogue.json` list **only public-eligible items**. Personal-only items are **never uploaded to R2**: they are either bundled into personal APKs or fetched from their original host URLs listed in `src/personal/assets/catalogue/personal-overlay.json`.
-4. **Runtime.** `ContentPolicy.allows(eligibility, licenceStatus)` is the single filter that every repository applies, and it tests `BuildInfo.tier` and `BuildInfo.monetized`. Kill-switches (`disabled`, plus notices) override everything.
+   - `src/main/assets/`: the content DB, fonts, licence texts and the public timing packs. These must be eligible in every tier.
+   - `src/public/assets/` and `src/personal/assets/`: `packs/`, `audio/catalogue.json` and `content/bundled.json`. `bundled.json` lists every bundled file (main and tier) as `{id, type, path, sha256, licenceStatus, basis, eligibleTiers, commercialOk, fossOk}`.
+   - **`app/src/personal/assets/packs/` is gitignored.** QUL-derived (G1-pending) packs and any personal-only content are never committed to git or LFS. A Gradle task `copyPersonalAssets` (in `criterion.android.application.flavors`, wired before `mergeFossPersonal*Assets`) copies them from `~/criterion-data` (or `data/private/`). Only public-eligible generated assets (the Tanzil-based content DB, clean-room or G1-cleared packs, public timing packs) may be committed, via Git LFS.
+3. **Remote channels.** The pipeline publishes `personal` (never uploaded to R2), `beta` and `public`. Each uploaded channel has its own signed `index.json`, `catalogue.json` and `notices.json` under `${CDN_BASE_URL}/v1/<channel>/`, listing only items whose `eligibleTiers` contain that tier. PUBLIC builds read `public`. BETA and PERSONAL builds read `beta`. Personal-only items are either bundled into personal APKs or fetched from their original host URLs listed in `src/personal/assets/audio/personal-overlay.json`. Monetized builds read `public` and filter on `commercialOk` on the device.
+4. **Runtime.** Every repository filters through `ContentPolicy.allows(…)` with `BuildInfo.contentTier`, `monetized` and `distribution`. Kill-switches (`enabled = false`, plus notices) override everything.
 
-### 11.3 CI enforcement
+### 11.3 CI enforcement (`verifyContentEligibility`)
 
-- **`verifyContentEligibility<Variant>`** comes from the `criterion.content.eligibility` plugin and is wired before `merge<Variant>Assets`. It parses the variant's merged `bundled.json` and `catalogue.json`, recomputes the sha256 of each bundled file, and **fails** if:
-  - any item's flag for the tier is false;
-  - `MONETIZED && !commercialUse`;
-  - a file exists in `assets/packs` that is not listed;
-  - a hash mismatches.
-- **`release.yml`** builds `playPublicRelease` only after this task passes. It also runs `apkanalyzer`/`aapt2 dump` to assert that no `src/personal` asset path is present in the public AAB.
-- **The pipeline's `publish.py`** refuses to upload any pack with `eligibility.public == false` to R2 ([08](08-data-pipelines.md)).
-- **G1 linkage.** Until G1 is granted, `src/public/assets/packs/mushaf_layout/` must contain either the clean-room layout pack (D-06 fallback) or nothing. A public release with no eligible layout pack fails the build. This is how "go public only if gates cleared" (D-25) becomes mechanical.
+**`verifyContentEligibility<Variant>`** comes from the `criterion.content.eligibility` plugin and is wired before `merge<Variant>Assets`. It parses the variant's merged `bundled.json` and `audio/catalogue.json` and recomputes the sha256 of each bundled file. It **fails** if:
+- any bundled item or default-catalogue recitation fails `ContentPolicy.allows` for the variant's `CONTENT_TIER`, `MONETIZED` and distribution (the same function as on the device);
+- a file exists under `assets/packs` or `assets/audio/timing` that is not listed, or a hash mismatches;
+- a BETA or PUBLIC variant has no `mushaf_layout` pack, or its layout pack is neither G1-cleared (`licenceStatus = PERMITTED` and `data/legal/permissions.yml` → `qul_res_11: granted` with archived evidence, doc 03/08) nor `basis = "clean-room"`;
+- **PUBLIC only (G5):** the layout pack's `pack_info.proof_certificate_id` is NULL, or any page's text-layer hash (`page.page_hash`: word positions + glyph runs, doc 05) is missing from or differs from `certified_pages.json` for that certificate. The certificate binds the text layer, not the ornament layer;
+- **PUBLIC only:** any `para_quarter.verified_source` is NULL in the bundled content DB (§7.2.1).
 
----
+Other gates:
+- **`release.yml`** builds the production AAB only after this task passes for `playPublicRelease -Pcriterion.release=production`. It runs `apkanalyzer`/`aapt2 dump` to assert that no `src/personal` asset path is present in any public-tier artifact.
+- **The pipeline's `publish.py`** refuses to upload to a channel any item whose `eligibleTiers` lack that channel's tier, and never uploads the `personal` channel ([08](08-data-pipelines.md)).
+- **G1 linkage.** Until G1 is granted, `src/public/assets/packs/mushaf_layout/` contains either the clean-room layout pack (D-06 fallback) or nothing. Closed testers are third parties, so the BETA build is held to the same layout rule. This is how "go public only if gates cleared" (D-25) becomes mechanical.
 
 ## 12. Security
 
@@ -1774,12 +1829,14 @@ android {
 
 | Metric | Target | Measured by |
 |---|---|---|
-| Cold start TTID (Pixel 6a class) | < 500 ms (r07 §2.7) | `StartupBenchmark` (`CompilationMode.Partial(BaselineProfile)`) |
-| Cold start TTID (low-end Android 11, 2–3 GB RAM) | < 1,200 ms (our target) | Manual on the device lab (doc 10) |
-| Page-turn frame time p90 | < 16 ms | `PageTurnBenchmark` `FrameTimingMetric` |
+| Cold start to Home TTID (Pixel 6a class) | ≤ 500 ms (r07 §2.7) | `StartupBenchmark` (`CompilationMode.Partial(BaselineProfile)`) |
+| Cold start to Home TTID (mid-range) | ≤ 1,200 ms | Device lab (doc 10) |
+| Cold start to Home TTID (low-end, 3 GB, API 24-class, Infinix/Tecno tier) | ≤ 1,500 ms | Manual on the device lab (doc 10 QB) |
+| Page-turn frame time p90 | ≤ 16 ms | `PageTurnBenchmark` `FrameTimingMetric` |
 | Search, first results page (unicode61, 3 columns) | < 150 ms on mid-range | JVM benchmark + trace |
 | First-run asset copy (content DB + bundled packs) | < 2 s total, during onboarding | Trace section `content.copy` |
-| AAB download size (playPublic) | ≤ 25 MB; CI fails at budget + 10 % | `bundletool get-size total` |
+| Download size (playPublic) | ≤ 20 MB at P1, ≤ 25 MB at v1.0; CI fails at budget + 10 % | `bundletool get-size total` |
+| Total PSS in the reader | ≤ 150 MB (doc 01 NFR) | `dumpsys meminfo` in the nightly macrobenchmark |
 | Java heap steady state in the reader | < 120 MB on 2 GB devices | LeakCanary (debug) + Memory profiler |
 
 **Startup path.**
@@ -1834,29 +1891,46 @@ sequenceDiagram
   Note over U: user.db untouched — keys are VerseKey / (mushafId,pageIndex)
 ```
 
-### 14.2 Pack update (also the fast path for mushaf errata)
+### 14.2 Pack updates and text errata (D-30)
 
-The flow is `RemoteRefreshWorker` → verified `index.json` → for each installed pack with a higher `version`, either enqueue it (when `autoUpdate`, or for the default `mushaf_layout` pack) or mark `UPDATE_AVAILABLE` → install as in §7.6 → `MushafRepository` invalidates its LRU on `installed()` change.
+The flow for downloadable packs (v1.1) is `RemoteRefreshWorker` → verified `index.json` → for each installed pack with a higher `version`, enqueue it (when `autoUpdate`) or mark `UPDATE_AVAILABLE` → install as in §7.6 → repositories invalidate their caches on `installed()` change.
 
-The mushaf pack's `word_override` table ([05](05-mushaf-rendering-engine.md)) lets a **word-level text erratum** reach users within hours with no app release. It still needs hafiz sign-off (D-22, [11](11-release-compliance-business.md)). Content-DB errata (Tanzil text or structure) ship through an app release.
+**The remote plane never changes Quran text or layout (D-30).** It may only revoke (`enabled = false`), disable or annotate (`notices.json`). Concretely:
+- `index.json` never offers a new version of an installed `mushaf_layout` pack, and the default layout pack is never auto-updated. The index may offer *additional* layouts (P3), each with its own certificate.
+- `word_override` ([05](05-mushaf-rendering-engine.md)) is a **build-time errata record**. The pipeline applies it when it builds the pack, after hafiz sign-off (D-22). The app applies no text overlay at runtime.
+- Every text or layout fix, in the content DB or the mushaf pack, ships as an **app update**.
 
-### 14.3 Kill-switches and notices (`notices.json`, signed)
+**Text-error SLA** (doc 12; the bundled content makes a text fix an app update): triage ≤ 24 h; signed `notices.json` warn or disable for the affected pages ≤ 48 h; corrected build submitted ≤ 72 h; reporter acknowledged ≤ 72 h. The `minVersion` nudge then points users at the fixed build.
+
+### 14.3 Kill-switches and notices (`notices.json`, signed; F-PL-11, v1.0 floor)
 
 ```json
-{ "schema": 1, "sequence": 12, "generatedAt": "2026-12-20T10:00:00Z",
+{ "schema": 1, "kid": "k1", "sequence": 12, "generatedAt": "2026-12-20T10:00:00Z", "expiresAt": "2027-03-31T00:00:00Z",
+  "channel": "public",
+  "minVersion": { "versionCode": 1000299, "message": { "en": "This update fixes a text issue.", "ur": "…" } },
   "notices": [
-    { "id": "n-2026-12-20-01", "target": { "type": "page", "mushaf": "indopak16_taj", "page": 412 },
+    { "id": "n-2026-12-20-01", "target": { "type": "page", "mushaf": "indopak16_taj", "pages": [412] },
       "action": "warn", "message": { "en": "A possible text issue on this page is under review.", "ur": "…" },
       "until": "2027-01-31T00:00:00Z" },
-    { "id": "n-…", "target": { "type": "surahHighlight", "recitation": "husary.murattal.gapless.mp3quran", "surah": 2 },
+    { "id": "n-…", "target": { "type": "page", "mushaf": "indopak16_taj", "pages": [412, 413] }, "action": "disable",
+      "message": { "en": "These pages are being corrected.", "ur": "…" } },
+    { "id": "n-…", "target": { "type": "surahHighlight", "recitation": "husary.murattal.mp3q118", "surah": 2 },
       "action": "disable" },
     { "id": "n-…", "target": { "type": "pack", "id": "ur.example" }, "action": "disable" },
     { "id": "n-…", "target": { "type": "recitation", "id": "…" }, "action": "disable" },
-    { "id": "n-…", "target": { "type": "feature", "id": "autoPageTurn" }, "action": "disable" } ] }
+    { "id": "n-…", "target": { "type": "feature", "id": "autoPageTurn" }, "action": "disable" },
+    { "id": "n-…", "target": { "type": "feature", "id": "renderFallback", "device": { "model": "SM-A105F", "sdk": [28, 30] } },
+      "action": "enable", "level": "L1" } ] }
 ```
 
-`PackManager.notices()` feeds the following:
-- `MushafRepository` adds a page banner.
+- `target.type` ∈ `page | surahHighlight | pack | recitation | feature`. `action` ∈ `warn | disable` (plus `enable` for opt-in device workarounds such as doc 05's renderer fallback trigger T6, whose `level` is `L1` or `L2`).
+- Optional `target.device` (`model`, `manufacturer`, `sdk` range) limits a notice to matching devices. It is evaluated locally; nothing is sent.
+- Top-level `minVersion` drives the "Update available" card when `BuildConfig.VERSION_CODE` is lower. It is never a blocking dialog.
+- `until` is optional per notice. The file as a whole is governed by `expiresAt` (§7.6), but active kill-switches stay in force after expiry.
+
+`PackManager.notices()` feeds the following. Notices appear **only** as a dismissible Home card, an info chip in the reader chrome and a notice sheet ([02](02-ux-ui-spec.md) §4.23). There is no banner, toast or overlay on Quran text, and no push notification.
+- `page`/`warn`: chip on the target pages; the page is drawn unchanged.
+- `page`/`disable`: the target pages show the ruled placeholder plus an inline card offering the translation view. Nothing is drawn over text.
 - `AudioCatalogRepository.highlightEnabled` and `recitations()` drop disabled targets.
 - `TranslationRepository.installed()` hides disabled packs.
 - Feature flags are read by the ViewModels.
@@ -1880,7 +1954,7 @@ Page bookmarks and `last_read` are stored per `mushaf_id`, with an anchor `Verse
   - the last 50 rows of `adhan_log`.
 
   The screen lists the contents first. Sharing then goes through the system share sheet via FileProvider, sent by the user's own choice of email or WhatsApp.
-- **Crashes and ANRs** come from Play Android vitals in v1. Opt-in ACRA (dialog, then email or a self-hosted endpoint) follows later as F-PL-09 (P3; D-20 targets v1.1). `Thread.setDefaultUncaughtExceptionHandler` chains to the default after writing the stack trace to the ring file, so a crash is included in the next diagnostics share.
+- **Crashes and ANRs** come from Play Android vitals in v1.0. Opt-in ACRA follows in **v1.1** as F-PL-09 (D-20, D-32): after a crash, a dialog asks once per report; an accepted report is POSTed to the crash-report Cloudflare Worker (`${CDN_BASE_URL}/crash`), which stores it in R2 for 90 days. Reports carry the `build.json`/`device.json` fields below and the stack trace, never reading history, queries or location. This Worker is the only server-side code (§1). `Thread.setDefaultUncaughtExceptionHandler` chains to the default after writing the stack trace to the ring file, so a crash is included in the next diagnostics share.
 - **Adhan health check** (F-CP-02) reads `AlarmScheduler.health()`: exact-alarm permission, notification permission, channel importance, battery-optimization state (read-only), OEM guidance key and recent lateness from `adhan_log`.
 - **Tracing.** `androidx.tracing` sections (`content.copy`, `reader.layout`, `search.query`, `pack.install`) appear in macrobenchmark traces.
 
@@ -1935,7 +2009,7 @@ okhttp = "5.5.0"                  # everywhere incl. Media3 datasource (g04 §2.
 desugarJdkLibs = "2.1.5"
 adhan2 = "0.0.7"                  # MIT (g04 §2.6)
 aboutLibraries = "15.3.0"
-playReview = "2.0.2"              # play flavor only, v1.x
+playReview = "2.0.2"              # play flavor only, F-PL-10 (v1.0-stretch/v1.1)
 # Test
 junit4 = "4.13.2"
 truth = "1.4.5"
@@ -1954,7 +2028,7 @@ dependencyAnalysis = "3.19.2"
 foojay = "1.0.0"
 # Later phases (pin when the feature starts)
 # playBilling = "…"               # UNVERIFIED — v1.5 play flavor (F-PL-08)
-# acra = "…"                      # UNVERIFIED — opt-in crash reports (F-PL-09)
+# acra = "…"                      # UNVERIFIED — opt-in crash reports to the crash Worker (F-PL-09, v1.1, D-32)
 # appAuth = "…"                   # UNVERIFIED — QF PKCE sync (F-BM-07)
 # firebaseBom = "…"               # UNVERIFIED — play flavor group khatam (F-CP-11)
 
@@ -2024,6 +2098,7 @@ androidx-benchmark-macro = { group = "androidx.benchmark", name = "benchmark-mac
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+kotlinx-coroutines-guava = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-guava", version.ref = "kotlinxCoroutines" }  # Media3 session callbacks (doc 06)
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" }
 kotlinx-collections-immutable = { group = "org.jetbrains.kotlinx", name = "kotlinx-collections-immutable", version.ref = "kotlinxCollectionsImmutable" }
@@ -2079,6 +2154,7 @@ criterion-jvm-library = { id = "criterion.jvm.library" }
 criterion-hilt = { id = "criterion.hilt" }
 criterion-room3 = { id = "criterion.room3" }
 criterion-android-robolectric = { id = "criterion.android.robolectric" }
+criterion-android-screenshot = { id = "criterion.android.screenshot" }
 criterion-android-lint = { id = "criterion.android.lint" }
 criterion-spotless = { id = "criterion.spotless" }
 criterion-content-eligibility = { id = "criterion.content.eligibility" }
@@ -2094,18 +2170,19 @@ The root `build.gradle.kts` applies every plugin alias with `apply false`, inclu
 |---|---|
 | `criterion.android.application` | AGP app; compileSdk `release(37)`, targetSdk 36, minSdk 24; Java 17; `isCoreLibraryDesugaringEnabled` + `coreLibraryDesugaring(desugar_jdk_libs)`; R8 `optimization { enable = true }` for release; packaging excludes; lint wiring |
 | `criterion.android.application.compose` | Compose compiler plugin, BOM, `stabilityConfigurationFiles` (`:core:model` types), `-PcomposeReports` metrics |
-| `criterion.android.application.flavors` | §11.1 dimensions and BuildConfig fields; disables `playPersonal*`; applies `criterion.content.eligibility` |
+| `criterion.android.application.flavors` | §11.1 dimensions and BuildConfig fields (`CONTENT_TIER`, `REMOTE_CHANNEL`, `MONETIZED` from `-Pcriterion.release` / `-Pcriterion.monetized`); disables `playPersonal*`; `copyPersonalAssets` from `~/criterion-data` into the gitignored `app/src/personal/assets/packs/`; applies `criterion.content.eligibility` |
 | `criterion.android.library` / `.compose` | Same SDK/Java/desugaring for libraries; `resourcePrefix` per module; Compose as above |
 | `criterion.android.feature` | library.compose + hilt + serialization; adds `:core:domain`, `:core:model`, `:core:designsystem`, `:core:navigation`, lifecycle-runtime-compose, lifecycle-viewmodel-navigation3, hilt-lifecycle-viewmodel-compose, navigation3-runtime, collections-immutable; testImplementation `:core:testing`, Turbine, Roborazzi |
 | `criterion.jvm.library` | `org.jetbrains.kotlin.jvm`, JVM 17 toolchain/target; JUnit4 + Truth + coroutines-test |
 | `criterion.hilt` | KSP + Hilt plugin; `ksp(hilt-compiler)`; for Android modules also `androidx.hilt` compiler if workers are present |
 | `criterion.room3` | KSP + `androidx.room3`; `room3 { schemaDirectory("$projectDir/schemas") }`; room3-runtime + sqlite-bundled + `ksp(room3-compiler)`; room3-testing; a **migration-completeness check** for `user.db` |
 | `criterion.android.robolectric` | g04 rec. 8: `--add-exports java.base/jdk.internal.access` + `--add-opens java.base/java.io`; host `libsqliteJni` extraction from `sqlite-bundled-jvm` (linux_x64/linux_arm64/osx_arm64/windows_x64); `isIncludeAndroidResources`; `-ProboSdks=N` path for NATIVE-graphics kashida goldens, one SDK per JVM; never a test-resource folder named `fonts/` |
-| `criterion.android.lint` | `warningsAsErrors` on CI, `abortOnError`, baseline, Slack compose-lint checks |
+| `criterion.android.screenshot` | Roborazzi plugin + `roborazzi-compose`; `verifyRoborazziDebug` / `recordRoborazziDebug`; the doc 10 screenshot matrix (4 themes × EN/UR × 100/130/200 % font scale) |
+| `criterion.android.lint` | `warningsAsErrors` on CI, `abortOnError`, baseline, Slack compose-lint checks, rules from `:lint-rules` |
 | `criterion.spotless` | Spotless + ktlint 1.8.0 + compose-rules 0.6.8; licence-header check (Apache headers on ported files) |
-| `criterion.content.eligibility` | `verifyContentEligibility<Variant>` (§11.3) |
+| `criterion.content.eligibility` | `verifyContentEligibility<Variant>` (§11.3), using the shared `ContentPolicy`; G1/G5 checks for PUBLIC |
 | `criterion.android.test` | `com.android.test` + baselineprofile for `:baselineprofile` |
-| `criterion.root` | Task `checkModuleBoundaries` (rules in §3.4); task `verifyKotlinGradlePlugin` (asserts `buildEnvironment` resolves `kotlin-gradle-plugin` to 2.4.21, g04 rec. 1); aggregate `kover` |
+| `criterion.root` | Guard tasks `checkModuleBoundaries` (rules in §3.4) and `verifyKotlinGradlePlugin` (asserts `buildEnvironment` resolves `kotlin-gradle-plugin` to 2.4.21, g04 rec. 1); aggregate `kover`. **Root aggregate tasks** (library modules have no flavors, so CI calls these instead of per-module names): `quickCheck` = `spotlessCheck` + guard tasks + every library `testDebugUnitTest` + `:app:testFossPersonalDebugUnitTest`. `prCheck` = `quickCheck` + every library `verifyRoborazziDebug` + `:app:testPlayPublicDebugUnitTest` + `:app:lintPlayPublicRelease` + `:app:lintFossPersonalRelease` + `verifyContentEligibilityPlayPublicRelease` + `verifyContentEligibilityFossPersonalRelease` + `:app:assemblePlayPublicRelease :app:assembleFossPersonalRelease`. The required GitHub status is `ci/check` (doc 10) |
 
 ---
 
@@ -2119,9 +2196,9 @@ The root `build.gradle.kts` applies every plugin alias with `apply false`, inclu
 | A4 | `QuranContentDb` entities (§7.2) + exported schema; pipeline v0 creates the DB ([08](08-data-pipelines.md)) | P0 | 1.5 d | §7.2.1 invariants green; no-master open passes; FTS returns 45 hits for الرحمن (g04 baseline) |
 | A5 | `UserDb` v0 + DAOs + `DataStore<UserSettings>` + repository impls for bookmarks/last-read/settings | P0–P1 | 2 d | Turbine tests for Flows; DataStore corruption test |
 | A6 | Navigation shell (`NavigationState`, keys, `DeepLinkParser`) + `MainActivity : AppCompatActivity` + per-app locale switch | P0 | 1 d | Process-death test restores the back stack; Urdu switch works on API 24 and 33 |
-| A7 | `:core:remote`: OkHttp, `SignedFileFetcher`, `Ed25519` port, `HttpDownloader`, UIDT + Work hosts | P1 | 4 d | RFC 8032 + Wycheproof vectors pass; MockWebServer resume and 304 tests; rollback rejected |
-| A8 | `PackManager` + bundled-pack install + `installed_pack` + notices | P1 | 2.5 d | Bundled packs install in < 2 s; tampered pack rejected; kill-switch hides pack |
-| A9 | Eligibility plugin + `bundled.json` + CI release gate | P1 | 1 d | A test fixture with `public=false` fails `verifyContentEligibilityPlayPublicRelease` |
+| A7 | `:core:remote`: OkHttp, `SignedFileFetcher`, `Ed25519` port, `HttpDownloader`, `downloads.db`, `DownloadWorker`; UIDT host in S5 | P1 (UIDT S5) | 4 d | RFC 8032 + Wycheproof vectors pass; MockWebServer resume and 304 tests; lower sequence and same-sequence-different-bytes rejected; body/sig race retried once; expired index offers no installs |
+| A8 | `PackManager` + per-tier bundled-pack install (incl. gunzipped timing packs) + `installed_pack` + `notices()` incl. `minVersion` and `device` targets | P1 | 2.5 d | Bundled packs install in < 2 s; tampered pack rejected; kill-switch hides pack; page notice shows only the chip (no pixel inside the page frame changes) |
+| A9 | Variant wiring (`CONTENT_TIER`, `REMOTE_CHANNEL`, `MONETIZED`, `copyPersonalAssets`), eligibility plugin + `bundled.json` + CI release gate | P1 | 1.5 d | Fixtures fail `verifyContentEligibility`: an item without BETA in `eligibleTiers` in `playPublicRelease`; a PENDING layout pack in BETA; a PUBLIC build without `proof_certificate_id` or with one page hash differing from `certified_pages.json`; a MONETIZED build with a `commercialOk = false` item. A PENDING recitation passes in BETA and fails in PUBLIC |
 | A10 | Remaining P1 modules per docs 05/06; P2 `:core:prayer` per doc 07 | P1/P2 | (in those docs) | — |
 | A11 | `:baselineprofile` journeys + startup/page-turn benchmarks | P1 (late) | 1.5 d | Budgets in §13 reported nightly |
 
@@ -2130,7 +2207,7 @@ The root `build.gradle.kts` applies every plugin alias with `apply false`, inclu
 - **S-2.** `setJournalMode(TRUNCATE)` produces a single `user.db` file. Auto Backup restore via `adb shell bmgr` restores bookmarks.
 - **S-3.** `hiltViewModel` with an assisted NavKey factory inside a Nav3 entry. Fallback: pass the key through `SavedStateHandle`.
 - **S-4.** A FTS5 trigram index over 3 Arabic columns is built and its size measured. If it adds more than 3 MB to the compressed AAB, restrict the trigram index to `norm_imlaei` (logged as an open issue, not a register change).
-- **S-5.** The UIDT job scheduled from a visible activity on API 34 shows its notification and survives app swipe-away.
+- **S-5.** The UIDT job scheduled from a visible activity on API 34 shows its notification and survives app swipe-away. (Run in S1 on the API 34 device; the UIDT host itself ships in S5.)
 
 ---
 
@@ -2139,9 +2216,10 @@ The root `build.gradle.kts` applies every plugin alias with `apply false`, inclu
 1. **Room 3 youth** (stable since 2026-07-01). Both DBs depend on it. Mitigation: thin DAOs, a proven Room 2.8.5 + FTS4 fallback (g04 §2.4). Switching costs about 2 days of imports and query syntax.
 2. **Pack-per-file Room instances.** S-1 must pass. Fallback: open packs through a raw `BundledSQLiteDriver().open(path)` connection with hand-written readers. This is small: 3 query shapes per pack type.
 3. **Trigram index size** over 3 columns is unmeasured (S-4). The register (D-11) says 3 columns, and any narrowing goes to doc 12 as a proposal.
-4. **UIDT scheduling rule** (it must be scheduled while visible). Auto-updates on API 34+ are deferred to the next foreground. This is acceptable.
+4. **UIDT scheduling rule** (it must be scheduled while visible). Auto-updates on API 34+ are deferred to the next foreground. This is acceptable. P1 avoids the question by using `DownloadWorker` on every API until S5.
 5. **Assisted ViewModel injection on Nav3** (S-3). It affects ergonomics only.
 6. **Ed25519 vendored port** is a security-sensitive component. Mitigation: test vectors in CI, verify-only scope, and BouncyCastle as fallback. A public-domain origin keeps both G4 licensing options open.
 7. **`SystemEventsReceiver` exported.** Accepted, because the handler is idempotent. Re-check when targeting API 37.
-8. **No backend in v1** means the kill-switch latency is the refresh interval (≤ 24 h, plus on foreground). This is acceptable under D-22's fast-fix SLA ([11](11-release-compliance-business.md)).
-9. **Hijri implementation choice.** r07 recommends ICU `IslamicCalendar`, but the register mandates `java.time.HijrahDate` via desugaring (D-15). We follow the register. Both sit behind `HijriCalendar`.
+8. **No backend in v1.0** means the kill-switch latency is the refresh interval (≤ 24 h, plus on foreground). That fits the text-error SLA (§14.2: signed notice ≤ 48 h). The v1.1 crash-report Worker (D-32) is write-only and does not change this.
+9. **Hijri implementation choice.** r07 recommends ICU `IslamicCalendar`, but the register mandates `java.time.HijrahDate` via desugaring (D-15, D-27). HijrahDate on API 24–25 is unverified, so the P0 device smoke test compares both on 5 reference dates. Both sit behind `HijriCalendar`, and the ICU implementation is the fallback.
+10. **Personal assets outside git.** The personal build depends on `~/criterion-data`. A fresh clone cannot build `fossPersonal*` until the owner restores that folder; CI builds the personal artifact from the private R2 bucket (doc 08) or skips it.

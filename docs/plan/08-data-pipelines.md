@@ -37,7 +37,7 @@ Where this doc shows a schema, it is an abridged copy for orientation. The owner
 - **Timing packs** come only from the **mp3quran `ayat_timing` + the same host's audio**. They go through the g03 normaliser (relabel, clamp, onset snap, per-surah disable), with ETag/length/sha256 guards (D-12, D-13).
 - **Signing.** Every remote JSON (`index.json`, `catalogue.json`, `notices.json`, `feeds/hijri-pk.json`) is plain JSON carrying `kid`, `sequence` and `expiresAt`. It has a **detached `X.json.sig`**: base64 of the 64-byte Ed25519 signature over the exact file bytes (doc 04 §7.6). The private key is offline on the owner's machine and **never in CI**. Two public keys are compiled into the app (D-10, D-15, D-24, D-30).
 - **Hosting.** An R2 bucket behind a brand-neutral custom domain (`CDN_BASE_URL`, doc 04 §1). Packs and audio use immutable versioned paths. Signed JSON uses short-TTL mutable paths. Uploads go through `rclone` (D-24).
-- **Eligibility** travels with every dataset as `licenceStatus` (5 values: `PERMITTED`, `HOST_GRANT`, `PENDING`, `PERSONAL_ONLY`, `REVOKED`), free-text `basis`, per-tier eligibility and `commercialOk`. The pipeline builds per **content tier** `PERSONAL` / `BETA` / `PUBLIC` plus the `MONETIZED` flag (D-29). The CI gate:
+- **Eligibility** travels with every dataset as `licenceStatus` (5 values: `PERMITTED`, `HOST_GRANT`, `PENDING`, `PERSONAL_ONLY`, `REVOKED`), free-text `basis`, `eligibleTiers` (subset of `PERSONAL`, `BETA`, `PUBLIC`), `commercialOk` and `fossOk` (final naming ruling). The pipeline builds per **content tier** `PERSONAL` / `BETA` / `PUBLIC` plus the `MONETIZED` flag (D-29). The CI gate:
   - blocks non-commercial content when `MONETIZED`;
   - blocks `PENDING`/`PERSONAL_ONLY` content from PUBLIC, and `PERSONAL_ONLY` from BETA;
   - blocks any layout that is neither G1-cleared nor clean-room from BETA and PUBLIC.
@@ -113,7 +113,7 @@ tools/
     roomdb.py               # write SQLite from Room schema JSON (generalised build_content_db.py)
     normalize.py            # Arabic / Urdu / English normalisers (spec §4.4) — mirrored in Kotlin
     quran_ref.py            # surah ayah counts, global id <-> s:a, Kufan keys
-    registry.py             # data/curated/content_registry.yaml (licenceStatus, basis, eligibility, attribution)
+    registry.py             # data/curated/content_registry.yaml (licenceStatus, basis, eligibleTiers, commercialOk, fossOk, attribution)
     tiers.py                # ONE eligibility function shared by every gate (§8.6); mirrors doc 04 ContentPolicy
     sign.py                 # Ed25519 detached-signature create/verify over exact file bytes (§8.4)
     report.py               # JSON + Markdown run reports (posted by CI)
@@ -170,7 +170,7 @@ out/                                  # git-ignored build outputs and reports
 - GPL sources (quran_android, QuranApp) are never read by `tools/` code. Waqar144 and preview data are used **only** by `oracle.py`, locally (D-06, D-18).
 
 **Generated assets in git (lead ruling).**
-- **Only public-eligible generated assets are committed**, through **Git LFS** (`*.db`, `*.db.gz`, `*.ttf` under `app/src/main/assets/` and `app/src/public/assets/`). This covers the Tanzil/DK-based content DB, the font, a G1-cleared or clean-room layout pack, the bundled QuranEnc translations, the PUBLIC timing packs, the cities pack, and the BETA/PUBLIC catalogue. Android Studio builds of the public flavour therefore need no Python. CI rebuilds these files and checks reproducibility (§12).
+- **Only public-eligible generated assets are committed**, through **Git LFS** (`*.db`, `*.ttf` under `core/content/src/main/assets/`, `app/src/main/assets/` and `app/src/public/assets/`). Build outputs first land in the gitignored `out/`. This covers the Tanzil/DK-based content DB, the font, a G1-cleared or clean-room layout pack, the bundled QuranEnc translations, the PUBLIC timing packs, the cities pack, and the BETA/PUBLIC catalogue. Android Studio builds of the public flavour therefore need no Python. CI rebuilds these files and checks reproducibility (§12).
 - **QUL-derived (G1-pending) packs and any personal-only content are never committed to git or LFS.** `crit` writes them to the gitignored `data/private/out/`, a symlink into `~/criterion-data`. At build time, the Gradle task `syncPersonalAssets` (in the `criterion.content.eligibility` plugin, doc 04 §11.3) copies them into the **gitignored** `app/src/personal/assets/packs/` and `…/audio/`. A personal build on a machine without `~/criterion-data` fails with a clear message instead of shipping without a layout.
 - `crit install-assets --tier <T>` writes both locations, and a pre-commit hook rejects any staged file under `app/src/personal/assets/` or any LFS object whose `bundled.json` entry is not PUBLIC- or BETA-eligible.
 
@@ -178,8 +178,8 @@ Destinations follow doc 04 §7.7/§11.2 and doc 06 §5.1, and are configured in 
 
 | Output | Destination | In git? |
 |---|---|---|
-| `quran_content.db` | `app/src/main/assets/content/quran_content.db` | LFS (eligible in every tier: Tanzil CC BY, DK MIT, our curated tables) |
-| `criterion_indopak.ttf` + `OFL.txt` | `app/src/main/assets/fonts/`, `…/licenses/` | LFS |
+| `quran_content.db` | `core/content/src/main/assets/content/quran_content.db`: module `:core:content`, asset path `content/quran_content.db` = `QuranContentDb.ASSET` (doc 04 §7.2). It merges into every variant | LFS (eligible in every tier: Tanzil CC BY, DK MIT, our curated tables) |
+| `criterion_indopak.ttf` + `OFL.txt` | `app/src/main/assets/fonts/criterion_indopak.ttf` (doc 05 §3.1) and `app/src/main/assets/licenses/OFL-1.1.txt` | LFS (OFL, every tier) |
 | `normalization_vectors.json` | `core/model/src/test/resources/` (test only, never shipped) | yes |
 | Mushaf layout pack `mushaf.indopak16_taj.dk@<ver>.db` | PERSONAL: `app/src/personal/assets/packs/mushaf_layout/` (QUL-derived allowed). BETA/PUBLIC: `app/src/public/assets/packs/mushaf_layout/` **only** if G1-cleared or clean-room; otherwise the directory is empty and the public build fails (doc 04 §11.3). Never `src/main` | personal copy: **no** (build-time copy). Public copy: LFS |
 | Bundled translations `ur.junagarhi.qe`, `en.saheeh.qe` | `app/src/{personal,public}/assets/packs/translation/<id>@<ver>.db` | public copy LFS; the personal copy is the same file, copied at build time |
@@ -325,31 +325,27 @@ What the pipeline writes into each doc 04 table:
 | Doc 04 table | Rows | Filled from |
 |---|---|---|
 | `surah` (incl. `basmala_kind` 'verse' for 1, 'none' for 9, 'header' otherwise) | 114 | `surahs.csv` + Tanzil metadata counts; `ruku_count` from the derived rukus |
-| `ayah` (`surah_id`, `ayah_no`, verbatim `text_uthmani`/`text_imlaei`, `para_id`, `manzil_id`, `ruku_id`, `juz_madani`, `rub_madani`, `first_word_index`, `last_word_index`) | 6,236 | Tanzil XML (verbatim, D-08), curated Para/Manzil, derived rukus, Tanzil metadata (Madani), DK token ranges |
-| `para` (`name_ar`, `name_roman`, `start_ayah_id`, `end_ayah_id`, `madani_start_ayah_id`) | 30 | `paras.csv` (`name_ur` stays in the CSV for UI strings until doc 04 adds a column) |
+| `ayah` (`surah_id`, `ayah_no`, verbatim `text_uthmani`/`text_imlaei`, `para_id`, `manzil_id`, `ruku_id`, `juz_madani`, `rub_madani`, `first_word_index`, `last_word_index`, `letters`) | 6,236 | Tanzil XML (verbatim, D-08), curated Para/Manzil, derived rukus, Tanzil metadata (Madani), DK token ranges. `letters` is the simple-clean letter count, also used by the timing QA (§7.2) |
+| `para` (`name_ar`, `name_ur`, `name_roman`, `start_ayah_id`, `end_ayah_id`, `madani_start_ayah_id`) | 30 | `paras.csv` |
 | `manzil` | 7 | `manzils.csv` |
 | `ruku` (`surah_id`, `ruku_in_surah`, `para_id`, `ruku_in_para`, `start_ayah_id`, `end_ayah_id`, `ayah_count`) | 558 | Derived from DK U+08D6 (§4.3) |
 | `sajda` (`number`, `kind` 'hanafi'/'shafii_only', `label_ar`) | 15 | `sajdas.csv`, cross-checked with DK U+08DB |
-| `para_quarter` (`para_id`, `quarter`, `ayah_id`, `after_word_pos`) | 90 | `para_quarters.csv`. `verified_source` is checked in the CSV (V-C15) and copied only if doc 04 adds the column |
+| `para_quarter` (`para_id`, `quarter`, `ayah_id`, `after_word_pos`, `verified_source`) | 90 | `para_quarters.csv`. `verified_source` must be non-NULL for all 90 rows in BETA/PUBLIC (V-C15) |
 | `word` (`word_index`, `ayah_id`, `position`, `qul_position`, `is_end`, `text`) | 83,669 | DK token stream after **script-level** overrides. `qul_position` comes from the deterministic DK→QUL rule (identity except 72:16), so it is never NULL. It is verified against `qul.res565` when that input is present |
-| `ayah_marker` (`script_id`=1, `word_index`, `surah`, `verse_ayah`, `display_number`, `is_kufan_end`, `disputed_end`) | 6,354 | DK end tokens + U+08E2 tokens. This is the **only** `ayah_marker` table. Mushaf packs reference it and do not copy it (writer ruling) |
+| `ayah_marker` (`script_id`=1, `word_index`, `surah`, `verse_ayah`, `display_number`, `is_kufan_end`, `disputed_end`, `has_ruku_sign`, `has_sajda_sign`) | 6,354 | DK end tokens + U+08E2 tokens. This is the **only** `ayah_marker` table. Mushaf packs reference it and do not copy it (writer ruling) |
 | `ayah_search` (`ayah_id`, `norm_imlaei`, `norm_uthmani`, `norm_indopak`) + `ayah_fts`, `ayah_fts_tri` | 6,236 | §4.4 normalisers. The FTS tables are filled by the content-sync triggers, then `rebuild` + `optimize` |
 | `alias` (`id`, `term_norm`, `lang`, `target_type`, `target_id`, `weight`) | ~150 | `aliases.csv` |
 | `passage`, `passage_range` | ~10 / ~30 | `passages.csv`, `passage_ranges.csv` (F-IX-08, Manzil dua) |
-| `content_meta` (`key`, `value`) | — | Doc 04 keys (`content_version`, `built_at`, `pipeline_git_sha`, `sources_lock_sha256`, `normalizer_version`, `dk_font_sha256`), plus pipeline keys `build_id`, `data_hash`, `schema_identity_hash`, `tanzil_version`, `dk_commit`, `qul_res565_sha256` (or `none`). `built_at` = the commit time of `pipeline_git_sha`, never the wall clock, which keeps the file reproducible |
-| `attribution` | one per dataset | `content_registry.yaml` |
-| `daily_ayah` (**v1.1**; entity pending in doc 04 §7.2) | 366 | `daily_ayah.csv` → `(day_of_year, from_ayah_id, to_ayah_id, …)`, inserted by the exported column names once the entity exists |
+| `content_meta` (`key`, `value`) | — | Doc 04 keys (`content_version`, `built_at`, `pipeline_git_sha`, `sources_lock_sha256`, `normalizer_version`, `dk_font_sha256`, `content_tier` = `ALL`, because the DB sits in `src/main` and must be eligible in every tier), plus pipeline keys `build_id`, `data_hash`, `schema_identity_hash`, `tanzil_version`, `dk_commit`, `qul_res565_sha256` (or `none`). `built_at` = the commit time of `pipeline_git_sha`, never the wall clock, which keeps the file reproducible |
+| `source` (`dataset_id`, `licence_json`) | one per dataset in the DB | `content_registry.yaml` → doc 03 `LicenceInfo` JSON (`licenceStatus`, `basis`, `eligibleTiers`, `commercialOk`, `fossOk`, …) |
+| `attribution` (`dataset_id` = `ATTR-xx`, `title`, `title_ur`, `source_url`, `licence`, `version`, `notice_en`, `notice_ur`, `section`, `sort`, `licence_text_asset`) | one per credit string | `content_registry.yaml` (doc 03 ATTR strings). `section` is validated against doc 04's list |
+| `daily_ayah` (`day_of_year`, `from_ayah_id`, `to_ayah_id`) | 0 in v1.0; 366 in **v1.1** | `daily_ayah.csv`. `reviewed_by` stays in the CSV and is required for BETA/PUBLIC |
 
 Decisions inside the schema:
 - **Fatiha numbering.** `ayah_marker.display_number` is **Kufan** (1:1 = 1 … 1:7 = 7), and the content-DB `word.text` of the 1:1–1:7 end tokens carries those Kufan digits. The Taj "seven empty circles" look is a **layout-level** build-time override: the mushaf pack's `word.text` holds a bare ۝, and its `ayah_display_override` rows record that (§5.1). It is not baked into script data. DK's own Fatiha digits (basmala bare, الحمد = ١, ٦ at عليهم) are discarded (g02 Rec 2).
 - **Trigram columns.** Doc 04 §7.2 declares `ayah_fts_tri` over all 3 normalised columns, at about 1.2 MB per column (g04). The pipeline builds whatever the exported schema declares. Narrowing it to `norm_imlaei` alone is doc 04 spike S-4's decision, not a pipeline deviation.
-- **No extra columns.** Pipeline-only values (per-ayah letter counts for timing QA, ruku/sajda sign flags) are computed in memory and are not stored in the DB.
 - **Translations are not in the content DB.** They are separate packs, including the two bundled ones (§6), so QuranEnc's "keep updated" condition can be met without an app update.
-- **Requests to doc 04** (listed so they are not lost):
-  - add `para.name_ur`;
-  - add `para_quarter.verified_source`;
-  - add the doc 03 `source(dataset_id, licence_json)` table and `attribution.section`/`sort`;
-  - add the `daily_ayah` entity (v1.1).
+- **No pipeline-private columns.** Anything the pipeline needs beyond doc 04's entities stays in the curated CSVs or in memory.
 
 ### 4.2 Algorithm
 
@@ -384,7 +380,7 @@ def build_content(cfg):
     #   - 1:7:4: drop "U+202E ٦", keep U+08E2 (+ U+06D9 «لا» if the P0 render check passes; else ornament)
     markers = [Marker(w, surah=w.surah, verse_ayah=w.ayah, kufan_end=w.is_end, disputed="࣢" in w.text,
                       display=w.ayah if w.is_end else None,        # Kufan, incl. 1:1 = 1
-                      ruku="ࣖ" in w.text, sajda="ࣛ" in w.text)     # ruku/sajda flags: in memory only
+                      has_ruku_sign="ࣖ" in w.text, has_sajda_sign="ࣛ" in w.text)
                for w in words if w.is_end or "࣢" in w.text]
     assert len(markers) == 6_354
 
@@ -402,9 +398,9 @@ def build_content(cfg):
     paras   = curated.paras();   assert boundaries_differ_from_madani(paras, M) == {(3,92),(5,83),(9,94),(15,2),(27,60),(29,45),(36,22)}
     manzils = curated.manzils(); assert starts(manzils) == M.manzil_starts
     rukus   = derive_rukus.from_dk(markers, paras)              # ends at U+08D6 tokens; numbering per §4.3
-    sajdas  = curated.sajdas();  assert {s.key for s in sajdas} == {m.key for m in markers if m.sajda}
+    sajdas  = curated.sajdas();  assert {s.key for s in sajdas} == {m.key for m in markers if m.has_sajda_sign}
     quarters, aliases, surahs, passages, ranges = curated.load_rest()   # surah headers go to the pack (§5.5)
-    daily = curated.daily_ayah() if schema.has_entity("daily_ayah") else None   # v1.1
+    daily = curated.daily_ayah() if cfg.release >= "1.1" else []   # table exists from v1.0; rows from v1.1
 
     # --- ayah + ayah_search rows (normalize.py; identical spec in Kotlin, §4.4)
     ayahs, search = [], []
@@ -414,7 +410,8 @@ def build_content(cfg):
         ayahs.append(dict(id=gid, surah_id=s, ayah_no=a, text_uthmani=ut, text_imlaei=cl,
                           para_id=para_of(gid), manzil_id=manzil_of(gid), ruku_id=ruku_of(gid),
                           juz_madani=M.juz(gid), rub_madani=M.rub(gid),
-                          first_word_index=ws[0].word_index, last_word_index=ws[-1].word_index))
+                          first_word_index=ws[0].word_index, last_word_index=ws[-1].word_index,
+                          letters=letter_count(cl)))
         search.append(dict(ayah_id=gid, norm_imlaei=ar_norm(cl), norm_uthmani=ar_norm(ut), norm_indopak=ar_norm(ip)))
 
     # --- Write (generalised spikes/toolchain-spike/scripts/build_content_db.py)
@@ -436,7 +433,7 @@ def build_content(cfg):
 
 ```python
 def from_dk(markers, paras):
-    ends = [m.ayah_id for m in markers if m.ruku]               # 558, mushaf order
+    ends = [m.verse_ayah_id for m in markers if m.has_ruku_sign]               # 558, mushaf order
     rukus, start = [], 1
     for i, end in enumerate(ends, 1):
         s = surah_of(end); first = max(start, first_ayah_id(s))  # a ruku never crosses a surah
@@ -619,7 +616,7 @@ Canonical JSON uses sorted keys, no whitespace, integers as-is, and REALs format
 **Proof renders (`proof.py`).**
 - **Vector SVG per page.** Glyph outlines come from fontTools `SVGPathPen`, at the same positions and features as the pack, using the same ornament SVGs. Each page carries the furniture, the margin markers, a **page label + `build_id` + `page_hash[:8]` watermark**, and slot numbers 1–16 in the gutter.
 - `--debug` adds word boxes and kashida step colours for engineers.
-- `cairosvg` renders each page to PDF. `pypdf` merges them into 30 files `build/proofing/indopak16_taj/<build_id>/para-NN.pdf`. A PNG at 1080 px wide is also written for each page (screenshot baselines for doc 10). Every proofing output, PDFs and PNGs alike, stays out of the repo and out of the APK.
+- `cairosvg` renders each page to PDF. `pypdf` merges them into 30 files `out/proof/indopak16_taj/<build_id>/para-NN.pdf`. A PNG at 1080 px wide is also written for each page (screenshot baselines for doc 10). Every proofing output, PDFs and PNGs alike, stays out of the repo and out of the APK.
 - `proof-manifest.json` holds `{page_index, page_label, page_hash, ornament_hash, pdf_sha256}` × 548, plus the font sha256.
 - `--changed-since <build_id>` renders only the pages whose `page_hash` changed, as `delta-<build>.pdf`. It also emits the **per-pack-version page-diff report** `page-diff-<old>-<new>.md`, listing changed pages with their reason (text, position, marker, furniture text, ornament only).
 - Templates: `signoff.csv` and `certificate-template.pdf`. The certificate records the layout, `build_id`, page count, reviewer name and qualification, a statement mirroring Punjab Act 2011 s.5(3), and signature/date. Legal wording is per doc 11 §5.4.
@@ -658,16 +655,13 @@ This is built **only if G1 fails by 2026-11-19** (D-06). `rebreak.py` implements
 
 There is no "Urdu only" schema variant: both FTS tables are filled for every pack. `text_norm` is the normalised text plus footnotes, used for search only and never displayed.
 
-`pack_info` keys are the doc 04 set:
+`pack_info` keys are the doc 04 §7.3 set:
 - `id`, `type=translation`, `version`, `schema_version`, `lang`, `dir`, `title`;
 - `licence`, `attribution`, `source_url`, `source_sha256`;
-- `min_content_version`, `built_at`.
+- `min_content_version`, `built_at`;
+- the D-29 eligibility keys `licence_status` (5-value), `basis`, `eligible_tiers`, `commercial_ok`, `foss_ok`.
 
-The pipeline adds:
-- `translator`, `upstream_version`;
-- `attribution_en`, `attribution_ur`, `notice`;
-- `licence_status` (5-value), `basis`, `eligibility_json`, `commercial_ok`;
-- `has_footnotes`, `normalizer_version`.
+The pipeline adds: `translator`, `upstream_version`, `attribution_en`, `attribution_ur`, `notice`, `has_footnotes` and `normalizer_version`.
 
 **Tafsir packs** (P3) use doc 04's `TafsirPackDb`: `tafsir(id PK, from_ayah_id, to_ayah_id, text)` with an index on `(from_ayah_id, to_ayah_id)`, the same `pack_info`, and no FTS in v1.
 
@@ -818,8 +812,8 @@ Field names are the owner doc's camelCase. `crit validate` checks every file aga
 The pipeline emits exactly doc 06 §3.2's shape (`AudioCatalogue`), plus the header fields. Abridged:
 
 ```json
-{ "schema": 1, "kid": "c26a", "sequence": 7, "catalogueVersion": 7,
-  "generatedAt": "2026-12-22T00:00:00Z", "expiresAt": "2027-03-22T00:00:00Z", "minAppVersionCode": 0,
+{ "schema": 1, "kid": "c26a", "sequence": 7, "generatedAt": "2026-12-22T00:00:00Z", "expiresAt": "2027-03-22T00:00:00Z",
+  "catalogueVersion": 7, "minAppVersionCode": 0,
   "hosts": { "mp3q": "https://cdn.mp3quran.net/audio", "ea": "https://everyayah.com/data",
              "in": "https://cdn.islamic.network/quran", "r2": "${CDN_BASE_URL}/v1/audio" },
   "defaults": { "PUBLIC": "alafasy.murattal.mp3q123", "BETA": "alafasy.murattal.mp3q123", "PERSONAL": "alafasy.murattal.mp3q123" },
@@ -835,20 +829,24 @@ The pipeline emits exactly doc 06 §3.2's shape (`AudioCatalogue`), plus the hea
     "highlightDisabledSurahs": [],
     "fallbackRecitationId": "alafasy.murattal.ea",
     "licenceStatus": "HOST_GRANT", "basis": "host_grant: mp3quran.net statement archived 2026-10-19",
-    "buildEligibility": ["PERSONAL", "BETA", "PUBLIC"], "commercialUse": "UNKNOWN",
+    "eligibleTiers": ["PERSONAL", "BETA", "PUBLIC"], "commercialOk": false, "fossOk": true,
     "attribution": { "en": "Recitation: Mishary Rashid Alafasy · Audio: mp3quran.net", "ur": "…" },
     "sourceUrl": "https://www.mp3quran.net/eng/privacy", "enabled": true, "killAction": "DISABLE" } ] }
 ```
 
 - **`highlightDisabledSurahs`** is generated from the timing pack's `audio_file.highlight_ok = 0` rows (doc 06 §5.3). In the signed catalogue it **overrides** the pack, so a surah's highlight can be turned off remotely with no pack rebuild. Remote kill-switch edits are allowed to add surahs, never to remove ones the pack disabled (V-T11).
 - **`licenceStatus`** takes the doc 12 D-29 values `PERMITTED`, `HOST_GRANT`, `PENDING`, `PERSONAL_ONLY` and `REVOKED`. `basis` is free text saying why. `REVOKED` entries are emitted with `enabled: false` and `killAction: DISABLE_AND_PURGE`, so installed copies are purged (doc 06 §3.4).
-- **`buildEligibility`** is derived by `tiers.py` (§8.6), never hand-written:
+- **`eligibleTiers`** is derived by `tiers.py` (§8.6), never hand-written:
   - `PERMITTED`/`HOST_GRANT` → PERSONAL + BETA + PUBLIC;
   - `PENDING` → PERSONAL + BETA;
   - `PERSONAL_ONLY` → PERSONAL;
   - `REVOKED` → none.
-- **`catalogueVersion` = `sequence`**. Doc 06 §3.1 accepts a copy only if `catalogueVersion` is greater than the current one. Both fields are emitted until doc 06 adopts `sequence`.
-- **Per channel.** The pipeline emits one catalogue per channel. `v1/catalogue.json` (PUBLIC) lists only PUBLIC-eligible recitations. `v1/beta/catalogue.json` adds the BETA ones (PENDING gapped sets). The PERSONAL catalogue is **bundled only**, together with `personal-overlay.json`, and is never uploaded (doc 04 §11.2).
+- **`sequence` drives acceptance** (doc 04 §7.6 `SignedFileFetcher`). `catalogueVersion` is informational only (doc 06 §3.1), and the pipeline sets it equal to `sequence`.
+- **Per channel.** The pipeline emits one catalogue per channel:
+  - `v1/public/catalogue.json` lists only PUBLIC-eligible recitations;
+  - `v1/beta/catalogue.json` adds the BETA ones, i.e. the PENDING gapped sets;
+  - the PERSONAL catalogue is **bundled only**, together with `personal-overlay.json`, and is never uploaded (doc 04 §11.2).
+- **MONETIZED.** A monetized catalogue (v1.5+) contains only `commercialOk = true` entries (doc 06 §16.2).
 
 ### 8.2 `index.json` (packs; schema owned by doc 04 §7.6) — remote copy v1.1
 
@@ -856,24 +854,24 @@ The pipeline emits exactly doc 04 §7.6's JSON Schema, plus the header fields. A
 
 ```json
 { "schema": 1, "kid": "c26a", "sequence": 12, "generatedAt": "2027-03-01T00:00:00Z", "expiresAt": "2027-06-01T00:00:00Z",
-  "minAppVersionCode": 1010099,
+  "channel": "public", "minAppVersionCode": 1010099,
   "packs": [ {
     "id": "ur.jalandhari.tanzil", "type": "translation", "version": 1, "schemaVersion": 1, "lang": "ur", "dir": "rtl",
     "title": { "en": "Fateh Muhammad Jalandhari", "ur": "فتح محمد جالندھری" },
     "url": "${CDN_BASE_URL}/v1/packs/translation/ur.jalandhari.tanzil/1/ur.jalandhari.tanzil-1.zip",
     "compression": "zip", "bytes": 731004, "sha256": "…", "unpackedBytes": 2201088, "unpackedSha256": "…",
     "minContentVersion": 1,
-    "licence": { "name": "Tanzil translation terms (non-commercial)", "commercialUse": false, "redistribution": true },
-    "licenceStatus": "PERMITTED", "basis": "open_licence: Tanzil translation terms",
+    "licence": { "name": "Tanzil translation terms (non-commercial, verbatim, with attribution)", "redistribution": true },
     "attribution": { "en": "Translation by Fateh Muhammad Jalandhari, via Tanzil.net", "ur": "…" },
-    "eligibility": { "personal": true, "beta": true, "public": true, "monetized": false },
-    "autoUpdate": false, "disabled": false } ] }
+    "licenceStatus": "PERMITTED", "basis": "Tanzil translation terms (DS-xx, doc 03)",
+    "eligibleTiers": ["PERSONAL", "BETA", "PUBLIC"], "commercialOk": false, "fossOk": true, "enabled": true,
+    "autoUpdate": false } ] }
 ```
 
-- `licenceStatus`, `basis` and `eligibility.beta` are the D-29 additions. Doc 04's schema must list them (residual for doc 04). Until then they ride in as extra properties, which doc 04's `ignoreUnknownKeys` parse tolerates.
+- `licenceStatus`, `basis`, `eligibleTiers`, `commercialOk`, `fossOk` and `enabled` are required on every entry (doc 04 §7.6). `channel` must equal the path the file is published under.
 - Entries of every pack type use this one shape: `translation`, `tafsir`, `mushaf_layout`, `timing`, `font`, `azkar`, `cities`.
 - Text-error notices are **not** carried here. The earlier `advisories` array moved to `notices.json` (§8.3).
-- v1.0 ships no downloadable pack (doc 09: pack system = B8 / v1.1). In v1.0, `crit index build` produces only the bundled `remote-seed/index.json` + `.sig` used by the shared verifier tests. Publishing `v1/index.json` starts in v1.1 (E-03-S10).
+- v1.0 ships no downloadable pack (doc 09: pack system = B8 / v1.1). In v1.0, `crit index build` produces only the bundled `remote-seed/index.json` + `.sig` used by the shared verifier tests. Publishing `v1/<channel>/index.json` starts in v1.1 (E-03-S10).
 
 ### 8.3 `notices.json` (F-PL-11 signed notices; schema owned by doc 04 §14.3) — v1.0 floor
 
@@ -896,9 +894,9 @@ until: 2027-03-31T00:00:00Z
 evidence: errata/taj16.csv#R-0007                           # internal; stripped from the output
 ```
 
-**Build (`build_notices.py`).**
-1. Drop notices whose `until` has passed.
-2. Emit doc 04 §14.3's `{schema, sequence, generatedAt, notices[]}` plus `kid` and `expiresAt`.
+**Build (`build_notices.py`, `--channel beta|public`).**
+1. Drop notices whose `until` has passed, and those whose optional `channels:` list excludes this channel.
+2. Emit doc 04 §14.3's `{schema, kid, sequence, generatedAt, expiresAt, notices[]}`.
 3. Set `expiresAt` = min(now + 30 days, the latest `until`), so a stale file stops being trusted.
 
 **Validation (V-X09).** The build is checked before signing:
@@ -910,7 +908,7 @@ evidence: errata/taj16.csv#R-0007                           # internal; stripped
 **Owner runbook ("publish a text-error notice", target ≤ 15 min, §14):**
 1. Write the notice: `crit notices new …`, then edit the YAML.
 2. `just notice`, which runs `crit notices build`, `crit validate notices` and `crit sign notices`.
-3. `crit publish --channel public --go`, then the same for `--channel beta`. `notices.json` is channel-independent, so it is uploaded once to `v1/notices.json`; the second publish is a no-op for it.
+3. `crit publish --channel public --go`, then `crit publish --channel beta --go`. Each channel has its own `v1/<channel>/notices.json` (doc 04 §1); a text-error notice normally goes to both. PERSONAL builds read the beta channel's notices.
 4. `crit verify-live notices`, then a screenshot on a device to confirm the Home card and the reader chip (UI per doc 02).
 
 ### 8.4 Detached signatures and keys (`sign.py`, `crit keys`)
@@ -960,14 +958,14 @@ The app's verifier is the vendored TweetNaCl verify port in `:core:remote` (doc 
     { "id": "mushaf.indopak16_taj.dk", "type": "mushaf_layout", "version": 3,
       "path": "packs/mushaf_layout/mushaf.indopak16_taj.dk@3.db", "sha256": "…",
       "licenceStatus": "PERMITTED", "basis": "written_permission PERM-01 (G1)",
-      "eligibility": { "personal": true, "beta": true, "public": true, "monetized": false },
-      "requiredGates": ["G1", "G5"], "certifiedPages": "548/548" },
+      "eligibleTiers": ["PERSONAL", "BETA", "PUBLIC"], "commercialOk": false, "fossOk": true,
+      "requiredGates": ["G1", "G5"], "proofCertificateId": "G5-indopak16_taj-001", "certifiedPages": 548 },
     { "id": "ur.junagarhi.qe", "type": "translation", "version": 1, "path": "…", "sha256": "…",
       "licenceStatus": "PERMITTED", "basis": "QuranEnc republish terms",
-      "eligibility": { "personal": true, "beta": true, "public": true, "monetized": true } } ] }
+      "eligibleTiers": ["PERSONAL", "BETA", "PUBLIC"], "commercialOk": true, "fossOk": true } ] }
 ```
 
-Doc 04's `verifyContentEligibility<Variant>` Gradle task reads this file before `merge<Variant>Assets`. It recomputes each file's sha256 and fails on any unlisted file in `assets/packs`. The pipeline runs the **same** eligibility function (§8.6) when it writes the file, so CI and the device agree.
+Doc 04's `verifyContentEligibility` Gradle task (per variant) reads this file before `merge<Variant>Assets`. It recomputes each file's sha256 and fails on any unlisted file in `assets/packs`. The pipeline runs the **same** eligibility function (§8.6) when it writes the file, so CI and the device agree.
 
 ### 8.6 Content tiers and the eligibility gate (`tiers.py`)
 
@@ -975,16 +973,16 @@ The tiers follow D-29 and doc 04 §11.1:
 
 | Tier | Built from | Remote channel |
 |---|---|---|
-| `PERSONAL` | `tier=personal` flavour (`fossPersonalRelease`, owner's phone) | none: bundled only, **never uploaded to R2** |
+| `PERSONAL` | `tier=personal` flavour (`fossPersonalRelease`, owner's phone) | Personal-only items are bundled only and **never uploaded to R2**. For shared items the app reads the beta channel |
 | `BETA` | `tier=public` flavour, default (closed test) | `v1/beta/…` |
-| `PUBLIC` | `tier=public` flavour with `-Pcriterion.release=production`, which requires G1 + G5 evidence | `v1/…` |
+| `PUBLIC` | `tier=public` flavour with `-Pcriterion.release=production`, which requires G1 + G5 evidence | `v1/public/…` |
 
 `MONETIZED` is a separate flag (`-Pcriterion.monetized=true`, v1.5+, play only). The pipeline CLI takes the same names: `--tier PERSONAL|BETA|PUBLIC [--monetized]`. The withdrawn profile names map as `personal` → PERSONAL, `public` → PUBLIC (BETA is the new closed-test tier), and `public_monetized` → PUBLIC + `--monetized`.
 
 ```python
 def eligible(r, tier, monetized):                 # ONE function: install-assets, catalogue, index, publish, CI
     if r.licenceStatus == "REVOKED": return False
-    if tier not in r.eligibleTiers: return False   # eligibleTiers = registry eligibility flags as a set
+    if tier not in r.eligibleTiers: return False   # registry eligibleTiers (doc 03 LicenceInfo)
     if r.licenceStatus == "PERSONAL_ONLY" and tier != "PERSONAL": return False
     if r.licenceStatus == "PENDING" and tier == "PUBLIC": return False        # PENDING allowed in PERSONAL + BETA (D-29)
     if r.type == "mushaf_layout" and tier in ("BETA", "PUBLIC"):

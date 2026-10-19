@@ -685,7 +685,7 @@ class PageTurnBenchmark {
 
 | Tier | Devices | When |
 |---|---|---|
-| A — every release candidate | Owner's daily phone (Ref-high or similar). **Ref-low:** Infinix Hot/Smart or Tecno Spark, 3 GB, XOS/HiOS. Samsung Galaxy A-series (One UI) | P1 internal builds weekly; every RC |
+| A — every release candidate | Owner's daily phone (Ref-high or similar). **Ref-low:** Infinix Hot/Smart or Tecno Spark, 3 GB, XOS/HiOS. Samsung Galaxy A-series (One UI; Ref-mid) | P1 internal builds weekly; every RC |
 | B — before any public or closed release | Xiaomi/Redmi Note (HyperOS), Vivo Y-series (Funtouch), Oppo A / realme (ColorOS), itel 2 GB (low-RAM; `isLowRamDevice`), API 24/25 device, 10" tablet (≥ 600 dp), foldable (Pixel Fold/Galaxy Z Fold emulator acceptable until P3) | Closed-test RC, public RC |
 | C — automated | GMD: `api24` (aosp), `api26` (aosp), `api30` (aosp-atd), `api34` (aosp, benchmarks + baseline profile), `api36` (aosp-atd), `api37` | Nightly |
 
@@ -809,7 +809,7 @@ This section defines the **QA process** around that tooling and the app-side reg
 flowchart LR
   P[tools.yml build<br/>build_id B1] --> R[proof PDFs para-01..30<br/>+ special-decision sheet]
   R --> H1[Pass 1: Reviewer A<br/>all 548 pages vs owner's Taj print]
-  H1 --> E[(data/curated/errata/taj16.csv)]
+  H1 --> E[(data/curated/errata/indopak16_taj.csv)]
   E --> F[Fix as pipeline rule / override<br/>never hand-edit a DB]
   F --> D[delta PDF: pages whose page_hash changed]
   D --> H2[Pass 2: Reviewer B<br/>delta pages + 10% sample + golden set]
@@ -825,7 +825,7 @@ flowchart LR
   - the U+202E handling;
   - the 4:112:3 / 18:19:34 whitelist entries;
   - the 7 Indo-Pak Para-start pages, read as a set.
-- **Errata severity** (column added to `errata/taj16.csv` triage):
+- **Errata severity** (column added to `errata/indopak16_taj.csv` triage):
   - **S1**: wrong letter, harakat or waqf mark; missing or extra word or ayah marker;
   - **S2**: wrong ruku, sajda, quarter, manzil or Para marker or header;
   - **S3**: layout, ornament or spacing.
@@ -877,7 +877,7 @@ flowchart LR
 | Tool | Version | Config | Gate |
 |---|---|---|---|
 | Spotless + ktlint + compose-rules (`io.nlopez.compose.rules:ktlint`) | 8.10.4 / 1.8.0 / 0.6.8 | `criterion.spotless` convention plugin: `.editorconfig` (ktlint_official, max line 140, compose-rules enabled); Kotlin, KTS, XML, Markdown trailing whitespace | `spotlessCheck` on PR (fail) |
-| Android Lint + Slack compose-lint-checks | AGP 9.4.1 / 1.6.1 | `criterion.android.lint`: `warningsAsErrors = true` on CI, `abortOnError = true`, `checkDependencies = true`, `lint-baseline.xml` per module (created in P0, may only shrink), `disable += "GradleDependency"` (Renovate handles updates) | Library `lintDebug` + `:app:lintPlayPublicDebug` + `:app:lintFossPublicDebug` on PR (inside `prCheck`) |
+| Android Lint + Slack compose-lint-checks | AGP 9.4.1 / 1.6.1 | `criterion.android.lint`: `warningsAsErrors = true` on CI, `abortOnError = true`, `checkDependencies = true`, `lint-baseline.xml` per module (created in P0, may only shrink), `disable += "GradleDependency"` (Renovate handles updates) | Library `lintDebug` + `:app:lintPlayPublicDebug` + `:app:lintFossPersonalDebug` on PR (inside `prCheck`) |
 | dependency-analysis | 3.19.2 | `buildHealth` with `onAny { severity("fail") }` for unused/misdeclared deps; `onIncorrectConfiguration { severity("fail") }` | Nightly fail, PR warn (keeps PRs fast) |
 | Kover | 0.9.11 | Aggregate report; no hard gate before v1.0; target ≥ 80% line coverage on `:core:model`, `:core:domain`, `:core:content` normalizers by v1.0 | Nightly report |
 | Compose compiler reports | Kotlin 2.4.21 | `-PcomposeReports`; `stabilityConfigurationFiles` lists `:core:model` types (r07 §2.7) | On demand (perf work) |
@@ -898,7 +898,7 @@ flowchart LR
 
 | Task | What it does | Fails when |
 |---|---|---|
-| `quickCheck` / `prCheck` (`criterion.root`, doc 13) | Aggregates. `quickCheck` = `spotlessCheck` + every library's `testDebugUnitTest` + the golden verify run (`testGoldens` in Roborazzi verify mode, §7.3; doc 13's "Roborazzi verify") + `:app:testPlayPublicDebugUnitTest` + `:app:testFossPublicDebugUnitTest`. `prCheck` = `quickCheck` + library `lintDebug` + `:app:lintPlayPublicDebug` + `:app:lintFossPublicDebug` + the guards in this table for the `playPublicRelease` and `fossPublicRelease` variants + `:app:assemblePlayPublicDebug` + `:app:assembleFossPublicDebug`. Both cover the **public tier only**, because personal-tier assets are never in the repository (§12.2). `personalCheck` (owner's machine only) adds the `fossPersonal*` equivalents | Any member fails. A unit test asserts that the aggregate depends on at least one library test task, so library tests can never silently drop out (doc 13 open issue 1) |
+| `quickCheck` / `prCheck` (`criterion.root`, doc 13) | Aggregates. `quickCheck` = `spotlessCheck` + every library's `testDebugUnitTest` + the golden verify run (`testGoldens` in Roborazzi verify mode, §7.3; doc 13's "Roborazzi verify") + `:app:testPlayPublicDebugUnitTest` + `:app:testFossPersonalDebugUnitTest` (code paths only; the gitignored personal packs folder is empty in CI). `prCheck` = `quickCheck` + library `lintDebug` + `:app:lintPlayPublicDebug` + `:app:lintFossPersonalDebug` + the guards in this table for the `playPublicRelease` and `fossPublicRelease` variants + `:app:assemblePlayPublicDebug` + `:app:assembleFossPublicDebug`. Assembly and eligibility checks cover the **public tier only**, because personal-tier assets are never in the repository (§12.2). `personalCheck` (owner's machine only) adds `verifyContentEligibilityFossPersonalRelease` and `:app:assembleFossPersonalRelease` | Any member fails. A unit test asserts that the aggregate depends on at least one library test task, so library tests can never silently drop out (doc 13 open issue 1) |
 | `verifyKotlinGradlePlugin` (`criterion.root`, doc 04 §16.2) | Runs `buildEnvironment` and greps `kotlin-gradle-plugin:2.2.10 -> 2.4.21` and `symbol-processing-gradle-plugin:… -> 2.3.12` (g04 rec 1) | The KGP lift is lost |
 | `checkModuleBoundaries` (`criterion.root`, doc 04 §3.4) | Inspects project dependencies | Any `:feature:*` depends on another `:feature:*`; `:core:model`/`:core:domain` depend on Android or DI annotations (D-03) |
 | `verifyContentEligibility<Variant>` (`criterion.content.eligibility`, doc 04 §11.3) | Parses the variant's merged `bundled.json` and `catalogue.json` and recomputes each bundled file's sha256 | An item is not allowed for the variant's `CONTENT_TIER` (the D-29 table in §3.5 `ContentPolicyTest`); `MONETIZED` and `commercialOk = false`; an unlisted file in `assets/packs`; a hash mismatch; a public-tier build without an eligible (G1-cleared or clean-room) layout pack; **PUBLIC** without G1 evidence or with a layout page hash missing from `certified_pages.json` (G5) |
@@ -931,6 +931,7 @@ flowchart LR
     - a BETA build lists a PERSONAL_ONLY or REVOKED item (PENDING audio is allowed in BETA);
     - a MONETIZED build can reach an item with `commercialOk = false` (e.g. any Tanzil translation file);
     - a personal-only recitation (Shamshad Ali Khan, Husary Muallim, Qari Sadaqat Ali) appears in a BETA or PUBLIC catalogue.
+- **Quran-text guard (doc 13 §2.3).** `tools/ci/quran_text_guard.py` fails a PR whose added lines in `*.kt`, `*.kts`, `*.xml` or `*.csv` contain Arabic harakat runs (U+064B–U+0652, U+0670, U+06D6–U+06ED) outside `data/curated/**`, which also needs the `content-review` label. Quran text enters the app only through the pipeline outputs.
 - **QF-content guard (r05 risk, D-09).** `tools/ci/no_qf_hosts.py` fails if any URL in `data/pins.lock`, the bundled catalogue/index snapshots or the app's network allowlist matches `quran.com`, `api.quran.com`, `quran.foundation` or `qurancdn.com`. The F-BM-07 sync client (P3) is exempted only by its explicit module path.
 
 ---
@@ -1040,11 +1041,12 @@ jobs:
           ./gradlew :app:bundlePlayPublicRelease :app:assembleFossPublicRelease
           verifyContentEligibilityPlayPublicRelease verifyContentEligibilityFossPublicRelease
           verifyNoPrivateAssetsCommitted verifyNoDebugProbes verify16kAlignment verifyAppSize
-      - name: Licence, clean-room, QF-host scans
+      - name: Licence, clean-room, QF-host and Quran-text scans
         run: |
           ./gradlew :app:exportLibraryDefinitions
           python3 -I tools/ci/cleanroom_scan.py
           python3 -I tools/ci/no_qf_hosts.py
+          python3 -I tools/ci/quran_text_guard.py --base "${{ github.event.pull_request.base.sha || github.event.before }}"   # doc 13 §2.3
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -1058,7 +1060,7 @@ jobs:
 
 Library modules have no flavors, so their tasks are `testDebugUnitTest` and `lintDebug`; only `:app` has the variant tasks (`playPublic*`, `fossPublic*`, `fossPersonal*`; `playPersonal*` is disabled, doc 04 §11.1). A PR build never passes `-Pcriterion.release=production`, so its `playPublicRelease` is a BETA build and its eligibility check uses the BETA rules.
 
-**CI builds the public tier only.** QUL-derived (G1-pending) packs and all personal-only content are never committed to git or LFS. They live in `~/criterion-data` / `data/private/` and are copied into the gitignored `app/src/personal/assets/packs/` by a Gradle task at build time, on the owner's machine only. So `fossPersonal*` tasks are not part of `prCheck`. The owner runs `./gradlew personalCheck` (`:app:testFossPersonalDebugUnitTest`, `:app:lintFossPersonalDebug`, `verifyContentEligibilityFossPersonalRelease`, `:app:assembleFossPersonalRelease`) locally before each sideload build.
+**CI builds the public tier only.** QUL-derived (G1-pending) packs and all personal-only content are never committed to git or LFS. They live in `~/criterion-data` / `data/private/` and are copied into the gitignored `app/src/personal/assets/packs/` by a Gradle task at build time, on the owner's machine only. So CI runs `fossPersonal*` lint and unit tests on code only, and never assembles or eligibility-checks a personal build. The owner runs `./gradlew personalCheck` (`verifyContentEligibilityFossPersonalRelease`, `:app:assembleFossPersonalRelease`) locally before each sideload build.
 
 **Branch protection on `main`:**
 - `ci/check` is always required; `tools / *` is required when it triggers.
@@ -1186,7 +1188,7 @@ The `api26` device is used on demand for kashida checks; it is not in the nightl
 - **`upstream-drift.yml`** (doc 08 §12; weekly, Monday 02:17 UTC). It covers Tanzil, QuranEnc versions, mp3quran timing JSON and ETag/Content-Length of every catalogue audio file, everyayah checksums, the DK repo HEAD and GeoNames. It opens issues and **never publishes**. On an mp3quran change the app's own guard (§8.2 `TimingGuardTest`) already disables highlight for that surah until a rebuilt timing pack ships. Doc 10 asks doc 08 to add two read-only checks to the same job, both of which also only open issues:
   - **toolchain drift**: latest AGP, Gradle, Kotlin, Compose BOM, Media3 and Room 3 from `maven-metadata.xml` vs `libs.versions.toml`, and the stable Android Studio's AGP ceiling (g04 §1 #8);
   - **DontKillMyApp** vendor JSON hash (`api/v2/<vendor>.json`, CC BY) for the in-app OEM guidance.
-- **`verify-live.yml`** (doc 08; daily). It checks live envelope signatures and expiry and HEADs a sample of URLs. Failures are S2 issues (§13).
+- **`verify-live.yml`** (doc 08; daily). It checks the live detached `.sig` signatures and `expiresAt` of every signed JSON and HEADs a sample of URLs. Failures are S2 issues (§13).
 
 ### 12.5 Versioning, signing and mapping
 
@@ -1370,31 +1372,32 @@ Effort is solo owner + AI agents (D-25). Each item maps to doc 09 epics by featu
 
 | Phase | Item | Est. (h) | Done when |
 |---|---|---|---|
-| **P0** (→ 2026-11-02) | Toolchain PR with `verifyToolchain`; `build-logic` conventions incl. `criterion.android.robolectric`, `criterion.spotless`, `criterion.android.lint`, `criterion.root` | 8 | Green `pr.yml` on the module skeleton |
-| | `android.yml`, branch protection, Gradle verification metadata, retries, LFS cache, Renovate | 4 | Required check enforced |
+| **P0** (→ 2026-11-02) | Toolchain PR with `verifyKotlinGradlePlugin`; `build-logic` conventions incl. `criterion.android.robolectric`, `criterion.android.screenshot`, `criterion.spotless`, `criterion.android.lint`, `criterion.content.eligibility`, `criterion.root` (with `quickCheck`/`prCheck`/`personalCheck`) | 8 | `ci/check` green on the module skeleton |
+| | `android.yml` (workflow `ci`), branch protection, Gradle verification metadata, retries, LFS cache, Renovate | 4 | `ci/check` required on `main` |
 | | `:core:testing` skeleton; app-side mirror of V-C01/V-C10/V-C11/V-C18/V-C20 on DB v0; `PrepackagedSchemaTest` incl. **no-master** | 6 | Runs on PR against the LFS asset |
 | | FTS5 query-vector counts confirmed through the app's query builder (V-C18 mirror); any deviation from the r05 FTS4 counts reviewed with doc 08 | 1 | `SearchInvariantsTest` green |
-| | **Device smoke test** (g04 rec 10): API 24/25 + API 26/27, real or GMD with KVM: `getRunAdvance` 2060/2847/4384, bundled FTS5 loads, desugared `java.time` via adhan2 | 2 | Result recorded in doc 12 (closes the kashida device risk) |
-| | Guards: manifest, dependency allowlist, module graph, fonts-dir, 16 KB, DebugProbes | 4 | Guards in `check` |
-| **P1** (→ 2026-12-21) | Roborazzi + NATIVE golden infra; core golden set; `GeometryParityTest`; `LocaleInvarianceTest` | 10 | Core set verified on PR |
-| | L1 suites: model, PlanExpander (20 rows), tracker, sleep, normalizers + parity, copy sanitizer, verifiers | 12 | Kover ≥ 70% on `:core:domain` |
+| | **Device procurement** (owner, by 2026-10-28, §9.2) and **device smoke test** on P0 Day 7 (g04 rec 10): physical API 24/25 + API 26/27 (plus GMD with KVM): `getRunAdvance` 2060/2847/4384, bundled FTS5 loads, desugared `java.time`/HijrahDate via adhan2 | 2 | Result recorded in doc 12 (closes the kashida device risk; decides the Hijri fallback) |
+| | Guards: manifest, dependency allowlist, module boundaries, fonts-dir, 16 KB, DebugProbes, `verifyNoPrivateAssetsCommitted`, `BuildTierTest` | 4 | Guards in `prCheck` |
+| **P1** (→ 2026-12-21) | Roborazzi + NATIVE golden infra; core golden set; `GeometryParityTest`; `PageHashTest`; `LocaleInvarianceTest` | 10 | Core set verified on PR (goldens guard the pipeline and font fixes before hafiz round 1, 2026-12-01) |
+| | L1 suites: model, PlanExpander (all rows), tracker, sleep, last-read dwell, normalizers + parity, copy sanitizer, verifiers, `ContentPolicyTest` | 12 | Kover ≥ 70% on `:core:domain` |
 | | Audio Robolectric suites (§8.2) | 10 | Green |
-| | Download MockWebServer suites + host selection (§8.3) | 8 | Green |
-| | user.db migration harness (v1 schema baseline) + backup rules test | 3 | Green |
-| | Compose UI tests (§8.1, P1 features) + component goldens | 8 | Green |
-| | `:baselineprofile`: profile generator + 6 benchmarks; first real-device run on Ref-high/Ref-low | 8 | Profile shipped in the 12-21 build; QB-03..06 measured |
+| | Download MockWebServer suites + host selection (§8.3; UIDT rows in S5) | 8 | Green |
+| | user.db schema v1 + freeze test + backup rules test (v1 frozen 2026-12-21, doc 04) | 3 | Green |
+| | Compose UI tests (§8.1, P1 features incl. `HomeScreenTest`) + component goldens | 8 | Green |
+| | `:baselineprofile`: profile generator + 6 benchmarks; first real-device run on Ref-high/Ref-mid/Ref-low | 8 | Profile shipped in the 12-21 build; QB-03..06 measured |
 | | `nightly.yml` (goldens full, GMD, bench trend); `tools.yml` runner/LFS conventions agreed with doc 08 | 6 | Nightly green 3 nights running |
 | | Manual: MQ-RD, MQ-AU, MQ-DL, MQ-UR on Tier A before 2026-12-21 | 6 | Run logs in `qa/runs/` |
-| **P2** (→ ~2027-02-01) | Alarm and scheduler suites (§8.4), companion L1 suites (§3.4), widget tests | 10 | Green |
-| | **MQ-AD 7-day soak**: start **≤ 2027-01-04** on ≥ 4 OEM devices (so it finishes before the closed test fills); repeat on the RC | 6 (+7 calendar days) | QB-11 met |
-| | Proofreading: packet, Pass 1 (hafiz 15–20 h), fixes, Pass 2, certificate (G5) — **target signed by 2027-01-15** | 8 owner + hafiz time | V-M19 passes for the release `build_id` |
-| | `release.yml`, `upstream-drift.yml`, licence checks, release gates | 8 | Dry-run tag `v0.9.0-rc.1` produces a signed draft release |
-| | MQ-A11Y, MQ-CP, MQ-REL; closed-test management and triage | 12 | §13 exit criteria |
-| **P3** | ACRA opt-in (F-PL-09); golden sets + certificates for 15-line and 13-line (F-RD-11); spread goldens (F-RD-10); Android Auto tests (F-AU-11); hifz suites (F-CP-12); automated Play upload | — | Planned in doc 09 |
+| **P2 / v1.0** (→ 2027-02-01) | v1.0 companion and platform suites: `PrayerTimesGoldenTest`, `HijriTest`, `MonthStartFeedTest`, `RamadanTimetableTest`, `KhatamPlannerTest`, `NoticesTest`, `ReportErrorIntentTest`, `ProofreadingBannerTest`; MQ-CP CP-01/03/05/06; v1.0-stretch suites (`TasbeehTest`, `TafsirSheetTest`, `ReviewPromptPolicyTest`) only if those items are pulled in | 10 | Green before the closed-test build (2027-01-11; Hijri and Ramadan land in S6) |
+| | Alarm and scheduler suites (§8.4) + **MQ-AD 7-day soak** on ≥ 4 OEM devices, start ≤ 2027-01-04, repeated on the RC — **only if B1 is pulled in at the 2026-11-30 checkpoint; otherwise v1.1** | 10 + 6 (+7 calendar days) | QB-11 met |
+| | Proofreading: packet, round 1 (2026-12-01 → 12-21, hafiz 30–40 h), fixes, round 2 on device captures (2027-01-05 → 01-15), certificate (G5) — **target signed by 2027-01-18** | 8 owner + hafiz time | V-M19 passes and `certified_pages.json` matches the release layout pack |
+| | `release.yml` (tier-aware), release gates, listing claims audit, host allowlist test, licence checks; `upstream-drift.yml` additions agreed with doc 08 | 8 | Dry-run tag `v0.9.0-rc.1` produces a signed BETA draft release |
+| | MQ-A11Y, MQ-REL (incl. REL-05/06); closed-test management and triage | 12 | §13 exit criteria |
+| **v1.1** (2027-02-02 → 2027-03-22; Ramadan is a hotfix-only freeze until ≈ Eid) | §8.4 alarm suites and the MQ-AD 7-day soak on the v1.1 RC (if not done in v1.0); `QiblaTest`, `ReminderPlannerTest`, `AzkarSessionTest`, `GroupKhatamSheetTest`, `StreakTest`, `NoteEditorTest`/`NoteDaoTest`, `JsonExportImportTest`, `AutoScrollTest`, `PageTransitionTest`, `ShareCardGoldenTest`, `ShortcutsTest`, widget tests, `ReviewPromptPolicyTest`; MQ-CP CP-02/04, DL-09 pack downloads | 16 | QB-11 met before the v1.1 rollout; new suites green |
+| **P3** | ACRA opt-in (F-PL-09) with `CrashPayloadAllowlistTest`; golden sets + certificates for 15-line and 13-line (F-RD-11); spread goldens (F-RD-10); reflow goldens (F-RD-06 large text); word-highlight sync test (F-AU-12); PKCE and token-store tests (F-BM-07); Firestore emulator tests, play flavor only (F-CP-11 realtime); pack V-P checks for F-TR-04/05 and F-SR-04; `PackEligibilityTest` monetized run (F-PL-08); Android Auto tests (F-AU-11); hifz suites (F-CP-12); user.db 1 → 2 migration tests; automated Play upload | — | Planned in doc 09 |
 
 **Definition of Done**
 - **Per PR:**
-  - `android.yml` (and `tools.yml` when triggered) is green;
+  - `ci/check` (and `tools.yml` when triggered) is green;
   - new logic has L1/L3 tests;
   - UI changes have goldens (re-recorded with the `goldens-approved` label);
   - mushaf pixel changes link a render-diff report;
@@ -1402,9 +1405,9 @@ Effort is solo owner + AI agents (D-25). Each item maps to doc 09 epics by featu
   - a guard or allowlist change carries a rationale in the PR body.
 - **Per feature (F-ID):** acceptance criteria from doc 01 are automated where feasible; the relevant MQ items are added to the checklist; the a11y labels exist.
 - **Per release:**
-  - the §12.6 gates for the build profile pass;
+  - the §12.6 gates for the build's `CONTENT_TIER` pass;
   - MQ-REL passes;
-  - for public releases: real-device QB-03..QB-10 JSON attached, the MQ-AD log attached, and the G5 certificate matching the hashes.
+  - for PUBLIC releases: real-device QB-03..QB-10 JSON attached, the MQ-AD log attached when the release contains F-CP-02, and the G5 certificate matching the `certified_pages.json` hashes.
 
 ---
 
@@ -1416,7 +1419,7 @@ Effort is solo owner + AI agents (D-25). Each item maps to doc 09 epics by featu
 | Device farm | Owner devices + GMD + Play pre-launch | Firebase Test Lab paid; BrowserStack | Cost. Pakistani OEMs (Transsion, Vivo) are under-represented in farms [inferred]. Real devices are needed for the adhan soak anyway |
 | Crash reporting v1 | Play vitals only | Crashlytics; Sentry | Breaks "no data collected" and needs GMS (Crashlytics is forbidden on F-Droid); r09 §2.7 |
 | Mocking | Fakes (`:core:testing`) | MockK everywhere | Fakes are reusable, fast and refactor-safe (NiA pattern, r07) |
-| Generated assets | Git LFS-committed, rebuilt + reproducibility-checked by `tools.yml` (doc 08) | Lock file + download from private R2 at build time | LFS lets Android Studio build without Python and keeps CI simple. The history concern is in open issue 10 |
+| Generated assets | Public-eligible assets (Tanzil-based content DB, clean-room or G1-cleared packs, public timing packs) are Git LFS-committed, rebuilt and reproducibility-checked by `tools.yml` (doc 08). QUL-derived and personal-only packs are never committed; they are copied into the gitignored `app/src/personal/assets/packs/` at build time on the owner's machine | Lock file + download from private R2 at build time for everything | LFS lets Android Studio build the public tier without Python and keeps CI simple. Keeping QUL-derived data out of git means the repo can go public at G4 without a history purge (`verifyNoPrivateAssetsCommitted`) |
 | Play upload | Manual through P2 | Gradle Play Publisher / API now | Low release frequency; avoids an unverified plugin on AGP 9.4 and an early service-account key |
 | Static analysis | ktlint + Lint + compose rules | detekt 2.0 alpha | Not stable on Kotlin 2.4 (r07) |
 
@@ -1424,14 +1427,13 @@ Effort is solo owner + AI agents (D-25). Each item maps to doc 09 epics by featu
 
 ## 17. Open issues
 
-1. **Device availability.** No API 24/25 physical device is identified (g04 open q 4). The owner must buy one or borrow one in P0. Until then the kashida and FreeType-2.6 path on real 7.x images is unverified; GMD API 24 covers the platform code but not OEM FreeType/Skia builds.
+1. **Device availability.** No API 24/25 or API 26/27 physical device is identified yet (g04 open q 4). The owner buys both by 2026-10-28 (§9.2) for the P0 Day 7 smoke test. Until then the kashida and FreeType-2.6 path on real 7.x images, and HijrahDate under desugaring on API 24–25, are unverified; GMD API 24 covers the platform code but not OEM FreeType/Skia builds.
 2. **GitHub Actions minutes and KVM.** The private-repo minute quota and KVM availability on the account's runners are [unverified]. Confirm in P0; the fallback is a self-hosted nightly runner on the owner's PC.
 3. **Robolectric SDK 24 jar.** The SDK 24 `android-all` jar fetch failed in the g04 sandbox. Confirm in P0 that `@Config(sdk = [24])` legacy tests resolve. Otherwise API-24-gated logic is tested only on GMD api24.
-4. **Exact Gradle and AboutLibraries DSL names** (GMD `localDevices`/groups in AGP 9.4; AboutLibraries 15.3.0 strict-mode licence allowlist; bundletool version) are sketched, not compiled. Verify in P0.
+4. **Exact Gradle and AboutLibraries DSL and task names** are sketched, not compiled. This covers GMD `localDevices`/groups in AGP 9.4; the flavored GMD, baseline-profile and benchmark task names (`nightlyGroupPlayPublicDebugAndroidTest`, `generatePlayPublicReleaseBaselineProfile`, `api34PlayPublicBenchmarkReleaseAndroidTest`); the Roborazzi verify/record properties on a custom `Test` task; the AboutLibraries 15.3.0 strict-mode licence allowlist; and the bundletool version. Verify all of them in P0.
 5. **R8 mapping in AAB metadata** for Play deobfuscation is [unverified]. Check on the first internal upload.
-6. **Hafiz reviewers.** Not yet sourced. G5 by 2027-01-15 is on the critical path for the Ramadan launch. Doc 12 should carry this as a risk; doc 09 owns the scope-cut ladder.
+6. **Hafiz reviewers.** Not yet sourced; doc 09 needs them contracted by 2026-11-16. G5 by 2027-01-18 is on the critical path for the Ramadan launch. Doc 12 carries this as a risk; doc 09 owns the scope-cut ladder and the launch rule.
 7. **FTS5 query-vector counts.** The r05 hit counts were measured under FTS4 over 3 columns; doc 08 V-C18 asserts the same counts under FTS5. If DB v0 deviates, the re-baseline must be reviewed by a human, not just accepted.
-8. **Closed test before G1.** Whether QUL-derived layout data may go to ≥ 15 closed testers before Tarteel's written permission is a doc 11 / doc 12 decision. The profile choice per track (§12.5) and the gates in §12.6 enforce whatever they decide.
-9. **Play vitals thresholds** (1.09% / 0.47%) are quoted from memory [unverified]. QB-01/02 stand on their own regardless.
-10. **QUL-derived data in git history.** Doc 08 commits generated assets through Git LFS. If G1 is refused and the repo is later made public at G4, LFS history would hold QUL-derived layout data. Before any public repo, either purge LFS objects and history (`git lfs migrate` / a fresh repo), or keep the repo private. This is for doc 12 to record as a risk.
-11. **Module names.** This doc uses r07's `:core:mushaf-render`; doc 08's asset table writes `core/mushaf`. Doc 04 decides. Test locations follow whichever name doc 04 picks.
+8. **Play vitals thresholds** (1.09% / 0.47%) are quoted from memory [unverified]. QB-01/02 stand on their own regardless.
+9. **`criterion.android.screenshot` plugin.** §7.4 defines it (Roborazzi + `testGoldens` + `testKashidaSdk26`), but doc 04 §16.2's plugin list does not name it yet. Doc 04 should add it, or fold its tasks into `criterion.android.robolectric`.
+10. **Personal builds outside CI.** Under the rule that QUL-derived and personal-only packs never enter git or LFS, CI never assembles `fossPersonalRelease` (§12.2). Doc 13 AP-03 and doc 04's system-context diagram, which show CI producing the personal APK, should follow §12.2.
