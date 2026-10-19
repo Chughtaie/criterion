@@ -21,3 +21,4 @@ app/src/personal/assets/packs/
 *.jks
 *.keystore
 *.key
+__pycache__/
