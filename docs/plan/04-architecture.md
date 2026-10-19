@@ -1747,10 +1747,10 @@ android {
     }
     androidResources { generateLocaleConfig = true }      // + res/resources.properties unqualifiedResLocale=en-US
     bundle { language { enableSplit = false } }           // in-app language switch (D-21)
-    packaging { resources { excludes += "DebugProbesKt.bin" } }
 }
 androidComponents {
     beforeVariants(selector().withFlavor("distribution" to "play").withFlavor("tier" to "personal")) { it.enable = false }
+    onVariants(selector().withBuildType("release")) { it.packaging.resources.excludes.add("DebugProbesKt.bin") } // release only (D-02)
     // verifyContentEligibility<Variant> (criterion.content.eligibility) fails a personal-tier variant when release != null,
     // and any non-playPublic variant when monetized == true, so misuse fails the build, not just configuration.
 }
