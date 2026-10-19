@@ -301,7 +301,7 @@ Behaviour:
 │     Starts 2:142 · Page 21           │
 │ ⬡3  تِلْكَ الرُّسُلُ  Tilkar Rusul   ● ▶ │
 │     Starts 2:253 · Page 39     ⌄     │  ⌄ expands quarters (P2, F-IX-07)
-│      ├ ربع  2:… · p.…            ▶  │
+│      ├ ربع  2:273 · p.43        ▶  │
 │      ├ نصف  3:18 · p.48         ▶  │
 │      └ ثلثة 3:54 · p.52         ▶  │
 │ ⬡4  لَنْ تَنَالُوا  Lan Tanaloo      ▶ │
@@ -374,7 +374,7 @@ Behaviour:
 | Title | "Para {n} · Page {label}" + surah. For a page holding several surahs: "Al-Falaq – An-Nas". Tapping the title opens Jump-to. |
 | 🔖 | Toggles a **page bookmark** in the default collection. Filled icon + ribbon glyph in the page's top outer corner. Removal → Undo snackbar. Long-press 🔖 → choose collection. |
 | 🌙 | Toggles day ↔ night theme for the whole app (§6.1, "Mode" override). |
-| 🔒 | On phones: a menu with two checkable items, "Lock screen rotation" and "Lock page turning". On ≥ 600 dp, the rotation item is hidden and 🔒 toggles page-turn lock directly (D-23). The icon is filled when any lock is on, and a 2 s toast-free snackbar confirms the change. Page-turn lock blocks swipe, scrubber and auto page-turn. It does **not** block Jump-to (an explicit command). |
+| 🔒 | On phones: a menu with two checkable items, "Lock screen rotation" and "Lock page turning". On ≥ 600 dp, the rotation item is hidden and 🔒 toggles page-turn lock directly (D-23). The icon is filled when any lock is on, and a 2 s snackbar confirms the change. Page-turn lock blocks swipe, scrubber and auto page-turn. It does **not** block Jump-to (an explicit command). |
 | Scrubber | `Slider` 2–549, RTL, with ticks at Para starts. While dragging, a bubble shows "Page 213 · Para 12 · Hud". The page commits on release. |
 | ☰ Jump to | Full-height sheet with segmented Surah / Para / Manzil / Ruku / Page lists (shared `:core:ui` rows; no feature-to-feature dependency). Tap → page. |
 | ▶ Play | Opens the Play sheet prefilled with **Page scope** of the current page. If an ayah is selected, it is prefilled with "From selected ayah". |
@@ -382,9 +382,9 @@ Behaviour:
 | ⋮ overflow | Search · Go to page/ayah · Night brightness (night themes) · Page-turn animation (P2) · Auto-scroll mode (P2) · Share page as image (P2) · Report text error (P2) · Reader settings. |
 | Keep screen on | On by default while the reader is visible. It releases after N minutes without touch or page turn (Setting: 5 / 15 / 30 / never, default 15). It stays on while audio is playing and the reader is visible. |
 | System bars | Setting *Keep system bars visible* (default off; restores the toggle the reference removed, r01 §2.5). |
-| Zoom (F-RD-6) | Pinch 1.0–2.5×. During the gesture: `graphicsLayer` scale. On release: re-layout at the new font px (crisp vector). While zoomed, a drag pans first and turns the page only at the edge. The zoom level persists across pages and per orientation (r02 rec. 2). Double-tap is **not** used, because it would delay tap-to-toggle. From 1.6× upward, a chip offers "Large text mode" (reflow, P3). |
+| Zoom (F-RD-06) | Pinch 1.0–2.5×. During the gesture: `graphicsLayer` scale. On release: re-layout at the new font px (crisp vector). While zoomed, a drag pans first and turns the page only at the edge. The zoom level persists across pages and per orientation (r02 rec. 2). Double-tap is **not** used, because it would delay tap-to-toggle. From 1.6× upward, a chip offers "Large text mode" (reflow, P3). |
 | Landscape (phone) | One page fitted to width, scrolling vertically within the page. On ≥ 600 dp: see §10. |
-| Auto-scroll (F-RD-9, P2) | Vertical `LazyColumn` of pages with a speed slider (1–10). Touch pauses it, and a ▶ chip resumes. |
+| Auto-scroll (F-RD-09, P2) | Vertical `LazyColumn` of pages with a speed slider (1–10). Touch pauses it, and a ▶ chip resumes. |
 | Page-turn animation (F-RD-12, P2) | Slide (default) · Curl. See §6.6. |
 
 **Tap and gesture contract:**
@@ -429,7 +429,7 @@ stateDiagram-v2
 
 ```
 ┌──────────────────────────────────────┐
-│ Al-Baqarah 2:255 · Page 40 (example) │  header; Ayat al-Kursi alias shown if any
+│ Al-Baqarah 2:255 · Para 3            │  header; alias "Ayat al-Kursi" shown if any
 │ ▶ Play from here    ⟳ Play range…   │
 │ 🔖 Bookmark          ✎ Note (P2)     │
 │ ⧉ Copy               ↗ Share         │  Share = text in P1, image in P2 (F-CP-10)
@@ -506,7 +506,7 @@ stateDiagram-v2
 │ │  [geometric tile, monogram "MA"] │ │  no reciter photo (D-12)
 │ └──────────────────────────────────┘ │
 │ Al-Baqarah · 255                     │  headlineSmall
-│ Para 3 · Page 40 · Mishary Alafasy ▾ │  ▾ = reciter picker
+│ Para 3 · Page {L} · Mishary Alafasy ▾│  ▾ = reciter picker
 │ ●━━━━━━━━━━━━○──────────── 12:05/42:50│  seek bar of current surah item; ayah ticks
 │ Ayah 255 of 286 · Repeat 2/3         │
 │    ⏮ ayah     ⏯     ayah ⏭           │  56 dp centre button
@@ -786,9 +786,10 @@ Plan list / today                       Create plan
 │ Prayer        [Times] [Qibla] [Hijri]│
 │ ‹  Jumada al-Ula 1448   ›   Oct–Nov 2026│
 │  Sun Mon Tue Wed Thu Fri Sat         │
-│        1   2   3   4   5   6         │  Hijri numerals big,
-│       13  14  15  16  17  18         │  Gregorian small below
-│   7 ← today (from Maghrib: 8)        │
+│           1   2   3   4   5          │  Hijri numerals big,
+│          13  14  15  16  17          │  Gregorian small below
+│   6 [7]  8   9  10  11  12           │  [7] = today (Mon 19 Oct; PK = UQ − 1)
+│  18  19  20  21  22  23  24          │
 │ ⓘ Pakistan: Ruet-e-Hilal · updated 13 Oct 2026 │ feed status
 │ Adjust  (−2)(−1)(0)(+1)(+2)          │  user offset (D-15)
 │ EVENTS (toggle each)                 │
@@ -847,6 +848,7 @@ List-detail on ≥ 600 dp. Defaults are authoritative for the `UserSettings` Dat
 |---|---|---|
 | Language & region | App language (English / اردو) · Numerals in Urdu UI (Eastern ۱۲۳ / Western 123) | device-based · Eastern |
 | Appearance | Mode (Follow system / Day / Night) · Day theme (Light / Sepia) · Night theme (Night / Pure black) · Night text brightness 70–100% | Follow system · Light · Night · 100% |
+| Accessibility | Read translation with TalkBack · Reduce motion (Follow system / On) · Volume keys turn pages (P2) | on · Follow system · off |
 | Reading | Open app to (Home / Last page) · Keep screen on (5/15/30 min/never) · Keep system bars visible · Page-turn animation (Slide / Curl, P2) · Vibration on page turn · Show playing indicator · Auto page-turn during recitation | Home · 15 min · off · Slide · **off** · on · on |
 | Translation | Show Urdu · Show English · Translator per language (P2, F-TR-03) · Arabic / Urdu / English sizes | per UI language · Junagarhi / Saheeh · 26/18/16 sp |
 | Audio | Favourite qari · Skip buttons (ayah/surah) · Stream on mobile data (Ask / Allow / Never) · Streaming quality (Auto / Data saver / High) · When other audio plays (Pause / Lower volume) | Alafasy · ayah · Ask · Auto · Pause |
@@ -865,7 +867,7 @@ List-detail on ≥ 600 dp. Defaults are authoritative for the `UserSettings` Dat
 │ MUSHAF                               │
 │ 16-line Indo-Pak, Taj Company layout │
 │ Layout data: QUL / Tarteel (used with permission) │
-│ Font: DigitalKhatt IndoPak © 2024 Amine Anane — SIL OFL 1.1 │
+│ Font: DigitalKhatt IndoPak © 2024 Amine Anane / Tarteel — SIL OFL 1.1 │
 │ Proofread by: <name, qualification, date> (G5) │
 │ QURAN TEXT (search, copy)            │
 │ Tanzil Quran Text (Uthmani, Simple-Clean) — CC BY 3.0, unmodified │
@@ -935,7 +937,7 @@ L = loading, E = empty, Er = error, Off = offline, PD = permission denied. "—"
 | Reader | ruled placeholder page | — | Page model missing → `error_page_render` card on paper + Report; neighbours still swipeable | — (audio errors surface in mini-player) | — |
 | Translation view | skeleton cards | Translation pack missing → "Install translation" card (Arabic still shown) | Pack corrupt → re-download prompt | Pack install disabled + banner | — |
 | Play sheet | size line "Calculating…" | — | Catalogue unavailable → bundled fallback catalogue | Non-downloaded scopes: Play disabled + reason | — |
-| Full player / mini | buffering ring on ⏯ | — | `audio_play_error` + Retry (after mirror failover) | Stream item → skip to next downloaded? **No**: pause + "Not downloaded" | Notification permission denied (13+): playback works; media notification may be hidden → one-time hint |
+| Full player / mini | buffering ring on ⏯ | — | `audio_play_error` + Retry (after mirror failover) | Streaming item → pause + `audio_not_downloaded` (never silently skips ayahs) | Notification permission denied (13+): playback works; media notification may be hidden → one-time hint |
 | Reciter picker | skeleton | Filters match none → "No reciters match" + Clear | Catalogue fetch failed → last cached + banner | banner; samples disabled | — |
 | Listen | skeleton | Downloaded segment → `empty_downloads` | as above | banner; rows not downloaded greyed (still tappable → explains) | — |
 | Downloads | — | `empty_downloads` | Per-item ⟳ with reason; storage full banner | Queue paused "Waiting for internet/Wi-Fi" | Notifications denied → in-app progress only + hint |
@@ -1099,7 +1101,7 @@ No drop shadows on the mushaf page or frame. The page is flat paper.
 
 | Rule | Spec |
 |---|---|
-| UI direction | Follows the app locale: `en` → LTR, `ur` → RTL (`supportsRtl=true`, per-app language via AppCompat, D-21). Icons that imply direction (back, chevrons, play-next) mirror with `autoMirrored`. Media icons ⏮ ⏭ follow **mushaf direction semantics**: "next ayah" points left in both UIs, because Quran order runs RTL. |
+| UI direction | Follows the app locale: `en` → LTR, `ur` → RTL (`supportsRtl=true`, per-app language via AppCompat, D-21). Icons that imply navigation direction (back, chevrons, forward) mirror with `autoMirrored`. Media transport icons (⏮ ⏯ ⏭, seek bar) are **not** mirrored, per Material RTL guidance, in either UI. The mushaf scrubber is the one RTL slider (it represents the book, not time). |
 | Mushaf | Always RTL regardless of locale: pager in `LayoutDirection.Rtl`, page 2 at the start (right) of the scrubber (r07 §2.3). |
 | Translation view | Arabic and Urdu paragraphs: `TextDirection.Rtl`, start-aligned (right). English paragraphs: `TextDirection.Ltr`, left-aligned, **even in Urdu UI**. Card layout direction follows the UI. |
 | Mixed strings | Never concatenate. Use placeholders (`%1$s`) and `BidiFormatter.unicodeWrap()` (FSI…PDI) for every interpolated value of unknown direction: reciter names, surah transliterations in Urdu UI, user collection names, search queries. |
@@ -1363,7 +1365,7 @@ Estimates are for a solo developer with AI agents (D-25) and cover UI only, with
 | Khatam planner + group sheet | P2 | 4 | Plan list, create |
 | Credits, Report error, Share image, widgets, shortcuts | P2 | 5 | Share card × backgrounds |
 | a11y pass (TalkBack, 200%, keyboard) | P1 + P2 | 3 + 2 | — |
-| **Total** | | **P1 ≈ 52, P2 ≈ 27** | |
+| **Total** | | **P1 ≈ 48, P2 ≈ 25** | |
 
 Global acceptance for every screen:
 - (1) EN and UR at 100% and 200% render without clipping.

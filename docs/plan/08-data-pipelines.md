@@ -24,29 +24,29 @@ Related: [Content & licensing](03-content-data-licensing.md) · [Architecture](0
 ```mermaid
 flowchart LR
   subgraph Inputs["Pinned inputs (data/pins.lock)"]
-    TZ[Tanzil Uthmani + Simple-Clean XML\nquran-data.xml]
-    DK[DigitalKhatt @4213fab\nquran_text_indopak_15.ts + hb/indopak.otf]
-    QUL[QUL res 11 layout + res 565 script\n(owner login, private)]
-    CUR[data/curated/*.csv\n(our own tables)]
-    QE[QuranEnc SQLite zips\n+ Tanzil translation txt]
-    MP3Q[mp3quran ayat_timing + MP3s]
-    EA[everyayah 000_checksum.md5]
-    GN[GeoNames cities15000.zip]
+    TZ["Tanzil Uthmani + Simple-Clean XML<br/>quran-data.xml"]
+    DK["DigitalKhatt @4213fab<br/>quran_text_indopak_15.ts + hb/indopak.otf"]
+    QUL["QUL res 11 layout + res 565 script<br/>(owner login, private)"]
+    CUR["data/curated/*.csv<br/>(our own tables)"]
+    QE["QuranEnc SQLite zips<br/>+ Tanzil translation txt"]
+    MP3Q["mp3quran ayat_timing + MP3s"]
+    EA["everyayah 000_checksum.md5"]
+    GN["GeoNames cities15000.zip"]
   end
-  TZ & DK & CUR --> S1[1 content-db]
-  QUL & DK & CUR --> S2[2 mushaf-pack]
+  TZ & DK & CUR --> S1["1 content-db"]
+  QUL & DK & CUR --> S2["2 mushaf-pack"]
   S1 --> S2
-  QE --> S3[3 translation packs]
-  MP3Q & EA --> S4[4 timing packs]
+  QE --> S3["3 translation packs"]
+  MP3Q & EA --> S4["4 timing packs"]
   S1 --> S4
-  S2 & S3 & S4 --> S5[5 catalogue.json + index.json\nEd25519 envelopes]
-  GN --> S6[6 geo pack]
+  S2 & S3 & S4 --> S5["5 catalogue.json + index.json<br/>Ed25519 envelopes"]
+  GN --> S6["6 geo pack"]
   S6 --> S5
-  S5 --> S7[7 publish → R2]
-  S1 --> APK[(APK assets)]
+  S5 --> S7["7 publish → R2"]
+  S1 --> APK[("APK assets")]
   S2 --> APK
   S3 --> APK
-  S2 --> PROOF[proof PDFs → hafiz sign-off (G5)]
+  S2 --> PROOF["proof PDFs → hafiz sign-off (G5)"]
 ```
 
 | # | Stage | Tool dir | Output | Ships how | Phase |
@@ -1056,15 +1056,15 @@ sequenceDiagram
   participant P as Pipeline
   participant O as Owner
   participant H as Hafiz/Qari reviewer
-  P->>O: proof/taj16/<build>/para-01..30.pdf + signoff.csv + certificate template
+  P->>O: proof/taj16/BUILD/para-01..30.pdf + signoff.csv + certificate template
   O->>H: PDFs (print or tablet) + sign-off sheet
   H->>O: errata (page label, slot, word, issue) + OK pages
   O->>P: data/curated/errata/taj16.csv (triaged: data-fix / font-issue / not-an-error / upstream)
   P->>P: overrides → rebuild → delta PDF (pages whose page_hash changed)
-  P->>O: delta-<build>.pdf
+  P->>O: delta-BUILD.pdf
   O->>H: re-review delta only
   H->>O: signed certificate (layout, build_id, 548/548 pages)
-  O->>P: data/legal/proofreading/taj16-<build>.signoff.csv (+ certificate scan stored privately, hash committed)
+  O->>P: data/legal/proofreading/taj16-BUILD.signoff.csv (+ certificate scan stored privately, hash committed)
   P->>P: V-M19 passes → G5 cleared for this layout build family
 ```
 
