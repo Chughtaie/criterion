@@ -338,13 +338,11 @@ Story lists below are in execution order. All IDs are defined in §11.
   - E-13-S01 (i18n infra), E-14-S01 (design tokens)
   - ADM: E-21-S05 (G3 search), E-21-S06 (lawyer)
 - **Demo criteria (M2):**
-  1. Tap Para 14 in the index → opens page label 249 (index 18·14−16 = 236 → label 237)?
-
-  > **Note:** Use the automated table test instead of mental arithmetic. The demo checks P4 (3:92), P7 (5:83), P11 (9:94), P14 (15:2), P20 (27:60), P21 (29:45) and P23 (36:22) against D-07, plus P29 at index 508 and P30 at index 528.
-
-  2. Header row reads "Para · page label · surah".
-  3. Ruku triples and the «منزل N» footer are visible.
-  4. A 548-page PDF is delivered to the hafiz on 11-30.
+  1. Tapping Para 14 in the index opens page label 237 (index 18·14−16 = 236), first ayah 15:2.
+  2. The automated index test passes for all 7 differing Para starts against D-07: P4 3:92, P7 5:83, P11 9:94, P14 15:2, P20 27:60, P21 29:45, P23 36:22. It also passes for P29 (index 508), P30 (index 528) and all 7 Manzil starts.
+  3. Header row reads "Para · page label · surah".
+  4. Ruku triples and the «منزل N» footer are visible.
+  5. A 548-page PDF is delivered to the hafiz on 11-30.
 - **Events:** **G1 decision 11-19**; S2 velocity checkpoint 11-30.
 
 ### S3 — 12-01 → 12-14 · P1 · cap 10.8 · plan 11.0
