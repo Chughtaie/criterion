@@ -14,7 +14,7 @@
   - LeakCanary 2.14 (debug only), Kover 0.9.11
 
   We use fakes, not mocks (r07 §2.7).
-- **Content is tested like code (D-06, D-07, D-10, D-11).** 23 content invariants (INV-01…INV-23) run twice: in the Python pipeline (doc 08) and again in Kotlin against the exact asset the APK ships. CI also opens a **no-`room_master_table` copy** of the content DB to force Room's `onValidateSchema` (g04 §2.4).
+- **Content is tested like code (D-06, D-07, D-10, D-11).** Doc 08's validation invariants (V-C, V-M, V-P, V-T, V-X) run twice: in the Python pipeline and again in Kotlin, through the app's own read path, against the LFS-committed assets exactly as packaged. CI also opens a **no-`room_master_table` copy** of the content DB to force Room's `onValidateSchema` (g04 §2.4).
 - **The mushaf renderer is guarded by golden images (D-05).**
   - Roborazzi 1.76.0 on Robolectric NATIVE graphics, with zero pixel tolerance on mushaf pages.
   - A ≈60-page core set runs on every PR. All 548 pages run nightly when the renderer or content changes.
@@ -29,7 +29,7 @@
   - a runtime-dependency group allowlist (no GMS, Firebase, ads or analytics in v1);
   - a block on non-commercial content in any monetized build;
   - a block on PENDING-licence audio in public catalogues.
-- **CI/CD runs on GitHub Actions** (checkout v7, setup-java v6 with Temurin 21, gradle/actions v6, upload-artifact v7; r07 §2.7). There are five workflows. Releases are signed with the **Play App Signing upload key** held in a protected `release` environment. AAB uploads to Play stay manual through P2.
+- **CI/CD runs on GitHub Actions** (checkout v7, setup-java v6 with Temurin 21, gradle/actions v6, upload-artifact v7; r07 §2.7). Six workflows: this doc owns `android.yml`, `nightly.yml` and `release.yml`; doc 08 owns `tools.yml`, `upstream-drift.yml` and `verify-live.yml`. The Ed25519 content-signing key never enters CI (doc 08). Releases are signed with the **Play App Signing upload key** held in a protected `release` environment. AAB uploads to Play stay manual through P2.
 - **Monitoring = Play Console Android vitals + pre-launch reports only in v1 (D-20).** Opt-in ACRA arrives in v1.1 (F-PL-09). No SDK telemetry.
 - **Device QA is weighted to the Pakistani OEM mix** (r08 §2.3.5):
   - Transsion (Infinix/Tecno/itel) 25.5%, Samsung 17.3%, Oppo/realme 14.1%, Vivo 11.9%, Xiaomi 10.6%;
@@ -78,7 +78,7 @@ flowchart TB
   L5["L5 Instrumented on GMD emulators API 24/30/36 (nightly): on-device Room/FTS5, width drift, Compose E2E"]
   L4["L4 Golden screenshots (Roborazzi, Robolectric NATIVE): mushaf pages + UI components (PR core set, nightly full)"]
   L3["L3 Robolectric integration: Room 3 + bundled SQLite, DataStore, Media3 fake player, WorkManager, alarms, Hilt, Compose UI (PR)"]
-  L2["L2 Content invariants INV-01..23: Python in pipeline + Kotlin over the shipped asset (PR)"]
+  L2["L2 Content invariants (doc 08 V-C/M/P/T/X): Python in tools.yml + Kotlin app-side mirror over the packaged assets (PR)"]
   L1["L1 Pure-Kotlin unit tests: model/domain/common, PlanExpander, planners, normalizers, Hijri, verifiers (PR)"]
   L0["L0 Static: Spotless/ktlint/compose-rules, Lint + Slack compose-lint, dependency-analysis, module/manifest/dependency guards, licence checks (PR)"]
   L7 --- L6 --- L5 --- L4 --- L3 --- L2 --- L1 --- L0
@@ -129,8 +129,8 @@ Module names follow r07 §2.10; doc 04 owns the final list.
 | `:core:network` | ✅ verifiers | | ✅ MockWebServer | | | `SignedIndexVerifierTest` (Ed25519), `MirrorFailoverTest`, `CatalogueParserTest` |
 | `:core:download` | ✅ state machine | | ✅ MockWebServer, work-testing, JobScheduler shadow | | Manual MQ-DL | `RangeResumeTest`, `ChecksumTest`, `ZipInstallTest`, `HostSelectionTest` (UIDT vs Worker) |
 | `:core:data` | ✅ with fakes | | ✅ | | | `*RepositoryTest`, `PackRepositoryTest` (licence flags, kill-switch) |
-| `:core:audio` | ✅ | INV-22 consumer | ✅ ExoPlayer on Robolectric, MediaSession | | L6 `AudioStartBenchmark` | `PlaybackStateHubTest`, `ResolvingDataSourceTest`, `BasmalaStrategyTest`, `TimingGuardTest`, `AudioFocusPolicyTest` |
-| `:core:mushaf-render` | ✅ geometry | INV-14/15 | ✅ NATIVE graphics | ✅ **mushaf goldens** | L5 `WidthDriftTest`; L6 `PageTurnBenchmark` | `LineGeometryTest`, `HitTestTest`, `GeometryParityTest`, `MushafGoldenTest`, `KashidaNativeGraphicsTest` |
+| `:core:audio` | ✅ | V-T mirror | ✅ ExoPlayer on Robolectric, MediaSession | | L6 `AudioStartBenchmark` | `PlaybackStateHubTest`, `ResolvingDataSourceTest`, `BasmalaStrategyTest`, `TimingGuardTest`, `AudioFocusPolicyTest` |
+| `:core:mushaf-render` | ✅ geometry | V-M mirror | ✅ NATIVE graphics | ✅ **mushaf goldens** | L5 `WidthDriftTest`; L6 `PageTurnBenchmark` | `LineGeometryTest`, `HitTestTest`, `GeometryParityTest`, `MushafGoldenTest`, `KashidaNativeGraphicsTest` |
 | `:core:prayer` | ✅ | | ✅ | | | `PrayerTimesGoldenTest`, `HijriTest`, `QiblaTest`, `MonthStartFeedTest` |
 | `:core:notifications` | ✅ decisions | | ✅ ShadowAlarmManager | | Soak MQ-AD | `PrayerSchedulerTest`, `RescheduleTriggersTest`, `AdhanModeDecisionTest`, `ChannelsTest` |
 | `:core:location` | ✅ | | ✅ | | | `CityDbTest` (cities15000 Urdu names), `CoarseLocationFlowTest` |
@@ -196,7 +196,7 @@ Module names follow r07 §2.10; doc 04 owns the final list.
 | Suite | Cases |
 |---|---|
 | `ArabicNormalizerTest` | The r05 §2.7.5 spec: (1) ZW* and BOM become a space and PUA is dropped. (2) Harakat and Quranic marks are dropped, with **U+0670 dropped, not mapped**. (3) The letter folds. (4) NFKC, then whitespace collapse. |
-| `NormalizerParityTest` | Runs the Kotlin normalizer over `normalizer_vectors.json` (generated by the pipeline: ≥ 500 hand-picked vectors plus a SHA-256 of the normalized text of all 6,236 ayahs × 3 columns). Output must be **byte-identical** to the Python normalizer (INV-17). |
+| `NormalizerParityTest` | Runs the Kotlin normalizer over `normalization_vectors.json` (generated by the pipeline: ≥ 500 hand-picked vectors plus a SHA-256 of the normalized text of all 6,236 ayahs × 3 columns). Output must be **byte-identical** to the Python normalizer (V-C19). |
 | `UrduNormalizerTest` | Folds ي ى → ی, ك → ک, ه ة ۃ → ہ, Urdu digits → ASCII. **ے and ھ stay distinct**: کی ≠ کے, بھ ≠ بہ (D-11). |
 | `EnglishNormalizerTest` | Allāh → allah; ʿ and ʾ are removed; lowercase; ASCII fold. |
 | `AliasTest` (F-SR-03) | Folding: aa→a, ee→i, oo→u; drop `'`, `-` and spaces. yasin, yaseen, ya-sin, یس → 36. rahman, rehman → 55. mulk, tabarak → 67. ayatul kursi, آیت الکرسی → 2:255. "last 2 of baqarah" → 2:285–286. "manzil dua" → playlist. |
@@ -218,8 +218,8 @@ Module names follow r07 §2.10; doc 04 owns the final list.
 | Suite | Cases |
 |---|---|
 | `SignedIndexVerifierTest` (D-10) | `index.json` and `catalogue.json` Ed25519 signatures verify against the pinned public key. A tampered sha256, size or licence field fails. The kill-switch entry removes the pack from the UI and blocks its use. |
-| `PackEligibilityTest` (D-17) | A pack with `commercialOk=false` (e.g. Tanzil Jalandhari) is hidden when `BuildConfig.MONETIZED = true`. Build-eligibility flags `personal`/`beta`/`public` are honoured per flavor/channel. |
-| `CatalogueEligibilityTest` (D-12) | A public channel never lists `licenceStatus = PENDING` recitations (Shamshad Ali Khan, Husary Muallim, Qari Sadaqat Ali). Reads 74 and 53 never carry timing. Timing host = audio host for every recitation. |
+| `PackEligibilityTest` (D-17) | A pack with `commercialOk=false` (e.g. Tanzil Jalandhari) is hidden when `BuildConfig.PROFILE == "public_monetized"`. Eligibility flags for the profiles `personal`/`public`/`public_monetized` (doc 08 §8.4) are honoured per flavor/channel. |
+| `CatalogueEligibilityTest` (D-12) | A `public*`-profile catalogue never lists permission-pending recitations (Shamshad Ali Khan, Husary Muallim, Qari Sadaqat Ali). Reads 74 and 53 never carry timing. Timing host = audio host for every recitation. |
 
 ---
 
@@ -407,7 +407,7 @@ Limitation (g04 §4): Robolectric's native runtime is **one** HarfBuzz 2.6.4 / I
 
 ### 7.2 Golden page set
 
-The pipeline emits `golden_pages.json` from rules, so the set follows the data. The list is frozen per content version and reviewed whenever it changes.
+The pipeline emits `golden_pages.json` from rules, so the set follows the data. The list is frozen per `build_id` and reviewed whenever it changes.
 
 | Group | Pages (label = index + 1) | Why |
 |---|---|---|
@@ -458,7 +458,7 @@ That is ≈ 60 pages, which form the **PR core set**. Nightly runs **all 548 pag
 Settings:
 - `RoborazziOptions(compareOptions = CompareOptions(changeThreshold = …))`.
 - Output in `src/test/snapshots/` (core set committed, PNG-optimized; ≈ 6–8 MB in total *[inferred]*).
-- The **full 548-page baseline** is not committed. The nightly stores it as a release asset `goldens-<contentVersion>-<rendererVersion>.zip`, regenerated when either version changes and compared on later nightlies.
+- The **full 548-page baseline** is not committed. The nightly stores it as a release asset `goldens-<build_id>-<rendererVersion>.zip`, regenerated when either version changes and compared on later nightlies.
 - Tasks:
   - `./gradlew :core:mushaf-render:verifyRoborazziDebug -ProboSdks=36` (PR);
   - `recordRoborazziDebug` (local or `workflow_dispatch` only, never automatic on PR);
@@ -788,17 +788,17 @@ flowchart LR
 ### 10.4 Translation and audio content QA
 
 - **Translations (D-09).**
-  - The upstream-drift job (§12.5) detects new QuranEnc versions; QuranEnc requires keeping translations updated (r05 risk).
+  - The upstream-drift job (doc 08, §12.4) detects new QuranEnc versions; QuranEnc requires keeping translations updated (r05 risk).
   - An Urdu or English reader spot-checks 30 ayahs per pack (Fatiha, Ayatul Kursi, the 7 Para starts, the last 10 surahs, plus 10 random) before a pack is published.
-  - Text is never modified (INV-18). Errors found are reported to the source (QuranEnc's "notify the source" condition).
+  - Text is never modified (V-P02). Errors found are reported to the source (QuranEnc's "notify the source" condition).
 - **Timing packs (D-12).**
   - Packs are generated only by the pipeline rules (g03 §2.6).
   - The QB-14 listen-test runs before a recitation's highlight flag goes `enabled` in the public catalogue.
   - A failing surah → `highlight: disabled` for that surah.
 - **Report-text-error inbox (F-PL-05).**
   - Triage acknowledges within ≤ 48 h.
-  - S1 (text or marks) is confirmed by a hafiz. Then either a hotfix content version within 7 days, or the per-page / per-pack kill-switch is flipped remotely within 24 h, which shows a banner on the affected page.
-  - Every report and its resolution is logged in `content-qa/issues.csv`.
+  - S1 (text or marks) is confirmed by a hafiz. Within 24 h of confirmation an **advisory** goes out through the signed index (doc 08 §14), showing a banner on the affected page or pack. The fixed content ships in a hotfix release within 7 days.
+  - Every report and its resolution is logged in `data/curated/errata/<layout>.csv` (doc 08).
 
 ---
 
@@ -838,7 +838,8 @@ flowchart LR
 | `verify16kAlignment` | `zipalign -c -P 16 -v 4` on the release APKs (r07 §2.8) | Any `.so` is misaligned. Mandatory for updates from 2027-02-01 |
 | `verifyAppSize` | `bundletool build-apks --device-spec=ci/arm64-v8a.json` + `get-size total` (bundletool version pinned in P0) | > 30 MB (fail) or > +500 KB vs `main` (warn), QB-09 |
 | `ForbiddenTestResourceDirCheck` | Scans test source sets | A `resources/fonts` directory exists (g04) |
-| `verifyContentLock` | Compares the packaged `quran_content.db` SHA-256 with `content/content.lock.json` | Mismatch (stale or unknown asset) |
+| `verifyLfsAssets` | Checks every `*.db`/`*.sqlite`/`*.ttf` under `*/src/main/assets/` and in the built APK/AAB | A file starts with `version https://git-lfs` (an LFS pointer, not the binary), or the SQLite header or font magic is missing |
+| `verifyPackagedBuildIds` (release only) | Reads `content_meta.build_id` and the pack `build_id`s from the assets inside the built AAB | They differ from the IDs `crit validate all` validated in the same release run (§12.6) |
 | `verifyLanguageSplitsDisabled` | Reads the bundle config | `bundle.language.enableSplit != false` (D-21) |
 
 ### 11.4 Licence checks
@@ -1216,7 +1217,7 @@ jobs:
 
 **Feedback channels (no SDKs, D-20):**
 - In-app **Send feedback**: an email intent pre-filled with app version, device model, Android version and locale, shown to the user before sending.
-- In-app **Report text error** (F-PL-05): page label, line, ayah key, chosen category and free text, sent by email or opening a prefilled GitHub-issue form. It goes into `content-qa/issues.csv` triage.
+- In-app **Report text error** (F-PL-05): page label, line, ayah key, chosen category and free text, sent by email or opening a prefilled GitHub-issue form. It goes into `data/curated/errata/<layout>.csv` triage.
 - A beta WhatsApp group, with a pinned message on how to report and the weekly known-issues list.
 - Play closed-test private feedback and pre-launch report findings.
 
@@ -1251,7 +1252,7 @@ jobs:
 | Startup time, slow and frozen frames | Vitals (performance) | Weekly | Regression > 20% vs previous release → investigate with benchmarks |
 | Pre-launch report | Play (every testing-track upload) | Each RC | Crash or accessibility errors → fix before promoting |
 | Ratings and reviews (en/ur) | Play Console | Twice weekly | Text-error or adhan complaints → triage S1/S2 |
-| Upstream health | `upstream-drift.yml` | Weekly | §12.5 |
+| Upstream health | `upstream-drift.yml`, `verify-live.yml` (doc 08) | Weekly / daily | §12.4 |
 | Ops feeds | PK month-start feed published? (monthly), R2 objects reachable | Monthly (feed), weekly (R2) | Feed not updated by the 30th evening → ops reminder issue (r08 §2.7) |
 
 **Staged rollout** (exact percentages in doc 11): 5% → 20% → 50% → 100%, at least 24 h per stage, gated by the table above. Halt with the Console's "halt rollout". The fix ships as a new versionCode. Content issues use the remote kill-switch and need no app release.
@@ -1273,9 +1274,9 @@ Effort is solo owner + AI agents (D-25). Each item maps to doc 09 epics by featu
 | Phase | Item | Est. (h) | Done when |
 |---|---|---|---|
 | **P0** (→ 2026-11-02) | Toolchain PR with `verifyToolchain`; `build-logic` conventions incl. `criterion.android.robolectric`, `criterion.spotless`, `criterion.android.lint`, `criterion.root` | 8 | Green `pr.yml` on the module skeleton |
-| | `pr.yml`, branch protection, Gradle verification metadata, retries, Renovate | 4 | Required check enforced |
-| | `:core:testing` skeleton; `ContentInvariantsTest` INV-01/06/07/16/20 on DB v0; `PrepackagedSchemaTest` incl. **no-master** | 6 | Runs on PR with the locked DB |
-| | FTS5 golden baseline captured and frozen (INV-16) | 1 | Committed `expected.json` |
+| | `android.yml`, branch protection, Gradle verification metadata, retries, LFS cache, Renovate | 4 | Required check enforced |
+| | `:core:testing` skeleton; app-side mirror of V-C01/V-C10/V-C11/V-C18/V-C20 on DB v0; `PrepackagedSchemaTest` incl. **no-master** | 6 | Runs on PR against the LFS asset |
+| | FTS5 query-vector counts confirmed through the app's query builder (V-C18 mirror); any deviation from the r05 FTS4 counts reviewed with doc 08 | 1 | `SearchInvariantsTest` green |
 | | **Device smoke test** (g04 rec 10): API 24/25 + API 26/27, real or GMD with KVM: `getRunAdvance` 2060/2847/4384, bundled FTS5 loads, desugared `java.time` via adhan2 | 2 | Result recorded in doc 12 (closes the kashida device risk) |
 | | Guards: manifest, dependency allowlist, module graph, fonts-dir, 16 KB, DebugProbes | 4 | Guards in `check` |
 | **P1** (→ 2026-12-21) | Roborazzi + NATIVE golden infra; core golden set; `GeometryParityTest`; `LocaleInvarianceTest` | 10 | Core set verified on PR |
@@ -1285,18 +1286,18 @@ Effort is solo owner + AI agents (D-25). Each item maps to doc 09 epics by featu
 | | user.db migration harness (v1 schema baseline) + backup rules test | 3 | Green |
 | | Compose UI tests (§8.1, P1 features) + component goldens | 8 | Green |
 | | `:baselineprofile`: profile generator + 6 benchmarks; first real-device run on Ref-high/Ref-low | 8 | Profile shipped in the 12-21 build; QB-03..06 measured |
-| | `nightly.yml` (goldens full, GMD, bench trend) + `data-pipeline.yml` | 6 | Nightly green 3 nights running |
+| | `nightly.yml` (goldens full, GMD, bench trend); `tools.yml` runner/LFS conventions agreed with doc 08 | 6 | Nightly green 3 nights running |
 | | Manual: MQ-RD, MQ-AU, MQ-DL, MQ-UR on Tier A before 2026-12-21 | 6 | Run logs in `qa/runs/` |
 | **P2** (→ ~2027-02-01) | Alarm and scheduler suites (§8.4), companion L1 suites (§3.4), widget tests | 10 | Green |
 | | **MQ-AD 7-day soak**: start **≤ 2027-01-04** on ≥ 4 OEM devices (so it finishes before the closed test fills); repeat on the RC | 6 (+7 calendar days) | QB-11 met |
-| | Proofreading: packet, Pass 1 (hafiz 15–20 h), fixes, Pass 2, certificate (G5) — **target signed by 2027-01-15** | 8 owner + hafiz time | `certificates.yml` matches the hashes |
+| | Proofreading: packet, Pass 1 (hafiz 15–20 h), fixes, Pass 2, certificate (G5) — **target signed by 2027-01-15** | 8 owner + hafiz time | V-M19 passes for the release `build_id` |
 | | `release.yml`, `upstream-drift.yml`, licence checks, release gates | 8 | Dry-run tag `v0.9.0-rc.1` produces a signed draft release |
 | | MQ-A11Y, MQ-CP, MQ-REL; closed-test management and triage | 12 | §13 exit criteria |
 | **P3** | ACRA opt-in (F-PL-09); golden sets + certificates for 15-line and 13-line (F-RD-11); spread goldens (F-RD-10); Android Auto tests (F-AU-11); hifz suites (F-CP-12); automated Play upload | — | Planned in doc 09 |
 
 **Definition of Done**
 - **Per PR:**
-  - `pr.yml` is green;
+  - `android.yml` (and `tools.yml` when triggered) is green;
   - new logic has L1/L3 tests;
   - UI changes have goldens (re-recorded with the `goldens-approved` label);
   - mushaf pixel changes link a render-diff report;
@@ -1304,7 +1305,7 @@ Effort is solo owner + AI agents (D-25). Each item maps to doc 09 epics by featu
   - a guard or allowlist change carries a rationale in the PR body.
 - **Per feature (F-ID):** acceptance criteria from doc 01 are automated where feasible; the relevant MQ items are added to the checklist; the a11y labels exist.
 - **Per release:**
-  - the §12.6 gates for the channel pass;
+  - the §12.6 gates for the build profile pass;
   - MQ-REL passes;
   - for public releases: real-device QB-03..QB-10 JSON attached, the MQ-AD log attached, and the G5 certificate matching the hashes.
 
@@ -1318,7 +1319,7 @@ Effort is solo owner + AI agents (D-25). Each item maps to doc 09 epics by featu
 | Device farm | Owner devices + GMD + Play pre-launch | Firebase Test Lab paid; BrowserStack | Cost. Pakistani OEMs (Transsion, Vivo) are under-represented in farms [inferred]. Real devices are needed for the adhan soak anyway |
 | Crash reporting v1 | Play vitals only | Crashlytics; Sentry | Breaks "no data collected" and needs GMS (Crashlytics is forbidden on F-Droid); r09 §2.7 |
 | Mocking | Fakes (`:core:testing`) | MockK everywhere | Fakes are reusable, fast and refactor-safe (NiA pattern, r07) |
-| Content DB in git | Lock file + private R2 | Commit DB / Git LFS | QUL-derived data must not enter git history before G1, given a possible public repo at G4. Binary churn |
+| Generated assets | Git LFS-committed, rebuilt + reproducibility-checked by `tools.yml` (doc 08) | Lock file + download from private R2 at build time | LFS lets Android Studio build without Python and keeps CI simple. The history concern is in open issue 10 |
 | Play upload | Manual through P2 | Gradle Play Publisher / API now | Low release frequency; avoids an unverified plugin on AGP 9.4 and an early service-account key |
 | Static analysis | ktlint + Lint + compose rules | detekt 2.0 alpha | Not stable on Kotlin 2.4 (r07) |
 
@@ -1332,6 +1333,8 @@ Effort is solo owner + AI agents (D-25). Each item maps to doc 09 epics by featu
 4. **Exact Gradle and AboutLibraries DSL names** (GMD `localDevices`/groups in AGP 9.4; AboutLibraries 15.3.0 strict-mode licence allowlist; bundletool version) are sketched, not compiled. Verify in P0.
 5. **R8 mapping in AAB metadata** for Play deobfuscation is [unverified]. Check on the first internal upload.
 6. **Hafiz reviewers.** Not yet sourced. G5 by 2027-01-15 is on the critical path for the Ramadan launch. Doc 12 should carry this as a risk; doc 09 owns the scope-cut ladder.
-7. **FTS5 golden counts.** The r05 hit counts were measured under FTS4 over 3 columns. INV-16's FTS5 numbers are frozen from DB v0 in P0, so the first freeze must be reviewed by a human, not just accepted.
-8. **Closed test before G1.** Whether QUL-derived layout data may go to ≥ 15 closed testers before Tarteel's written permission is a doc 11 / doc 12 decision. The `beta` gate in §12.6 enforces whatever they decide.
+7. **FTS5 query-vector counts.** The r05 hit counts were measured under FTS4 over 3 columns; doc 08 V-C18 asserts the same counts under FTS5. If DB v0 deviates, the re-baseline must be reviewed by a human, not just accepted.
+8. **Closed test before G1.** Whether QUL-derived layout data may go to ≥ 15 closed testers before Tarteel's written permission is a doc 11 / doc 12 decision. The profile choice per track (§12.5) and the gates in §12.6 enforce whatever they decide.
 9. **Play vitals thresholds** (1.09% / 0.47%) are quoted from memory [unverified]. QB-01/02 stand on their own regardless.
+10. **QUL-derived data in git history.** Doc 08 commits generated assets through Git LFS. If G1 is refused and the repo is later made public at G4, LFS history would hold QUL-derived layout data. Before any public repo, either purge LFS objects and history (`git lfs migrate` / a fresh repo), or keep the repo private. This is for doc 12 to record as a risk.
+11. **Module names.** This doc uses r07's `:core:mushaf-render`; doc 08's asset table writes `core/mushaf`. Doc 04 decides. Test locations follow whichever name doc 04 picks.

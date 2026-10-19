@@ -1081,7 +1081,7 @@ The adhan player (doc 07, D-16) is a **separate** service with `USAGE_ALARM`. It
 | Download Para / Manzil | **Gapless:** every surah the range **touches**, whole. The UI says so ("Para 2 needs the whole of Al-Baqarah"). **Gapped:** per-surah units with ayah sub-ranges (`ayah_from..ayah_to`) for the partial edge surahs. |
 | Ayah range (gapped only) | Per-ayah files of that range |
 | Full recitation | 114 units, priority BULK |
-| Popular pack | Kahf, Yaseen, Rahman, Waqiah, Mulk (+ Fatiha, Mulk-night reminders) — 79.7 MB Alafasy 128 gapped (r06 §2.6) |
+| Popular pack | Kahf, Yaseen, Rahman, Waqiah, Mulk — 79.7 MB Alafasy 128 gapped (r06 §2.6) |
 
 **Method per unit:**
 - `FILE`: a gapless `SSS.mp3`.
