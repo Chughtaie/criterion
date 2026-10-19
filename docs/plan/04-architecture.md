@@ -86,8 +86,8 @@ flowchart TB
     FS[":feature:search [P1]"]
     FB[":feature:bookmarks [P1]<br/>bookmarks, collections; P2 notes, khatam, stats"]
     FST[":feature:settings [P1]<br/>settings, onboarding, packs, credits"]
-    FP[":feature:prayer [P2]<br/>times, adhan, health check, qibla, hijri"]
-    FC[":feature:companion [P2]<br/>tasbeeh, azkar, ramadan"]
+    FP[":feature:prayer [P2]<br/>times, hijri, ramadan (v1.0);<br/>adhan, health check, qibla (v1.1)"]
+    FC[":feature:companion [P2]<br/>tasbeeh (v1.0-stretch), azkar (v1.1)"]
   end
   subgraph CoreUI["UI-side core"]
     DS[":core:designsystem [P0]<br/>theme, typography, components, model-bound composables"]
@@ -145,7 +145,7 @@ flowchart TB
 | `:core:mushaf-render` | android.library.compose | Canvas renderer, hit-testing, highlight layer ([05](05-mushaf-rendering-engine.md)) | `MushafPage(...)` composable, `HitTester` | model, designsystem | P1 |
 | `:core:testing` | android.library | Fakes for every §6 interface, `MainDispatcherRule`, a fixture content DB (Fatiha + Baqarah 1–20 + p.1–3 layout), `TestDispatchers` | Test helpers | domain, model | P0 |
 | `:feature:*` | `criterion.android.feature` | Screens, ViewModels, `EntryProviderScope.<feature>Entries(navigator)` | One entry-provider extension per feature | domain, model, designsystem, navigation (+ reader → mushaf-render) | P1/P2 |
-| `:app` | `criterion.android.application(.compose)` + `.flavors` + hilt + aboutlibraries | Wiring, `CriterionApp` (`Configuration.Provider`), `MainActivity : AppCompatActivity`, Glance widgets (P2), flavor modules | — | everything | P0 |
+| `:app` | `criterion.android.application(.compose)` + `.flavors` + hilt + aboutlibraries | Wiring, `CriterionApp` (`Configuration.Provider`), `MainActivity : AppCompatActivity`, Glance widgets (P2, ships v1.1), launcher shortcuts (v1.1), flavor modules | — | everything | P0 |
 | `:baselineprofile` | `criterion.android.test` + baselineprofile | Profile generator and macrobenchmarks (§13) | — | app | P1 |
 
 **Counts.** 9 modules in P0 (`app`, `model`, `domain`, `content`, `database`, `data`, `designsystem`, `navigation`, `testing`). 19 at P1 (adds `remote`, `mushaf-render`, `audio`, six features and `baselineprofile`). 22 at v1.0 (adds `prayer`, `feature:prayer`, `feature:companion`). That matches D-03's 15–22 target.
@@ -718,6 +718,8 @@ sealed interface PlaybackEvent {
 ```
 
 Consumers: the reader paints `highlight` and owns auto page-turn, using `ayahStartMs`/`ayahEndMs`/`positionMs`/`speed`/`isPlaying` (doc 05). The player UI reads the repeat and sleep fields. Doc 07 uses `AyahCompleted` for stats and hifz. The listening pointer (Home "Continue listening" card, `onPlaybackResumption`) is doc 06's `DataStore<PlaybackResume>`, not a user.db table.
+
+#### 6.2 Downloads, packs, settings and companion interfaces
 
 ```kotlin
 interface DownloadManager {                                           // impl :core:remote; NOT android.app.DownloadManager
@@ -1713,7 +1715,7 @@ The flavor dimension `tier` says **which source set** is packaged. `BuildConfig.
 | `public` | default | `BETA` | Internal and closed testing. Shows the "proofreading in progress" notice (Home card + reader-chrome chip, never over Quran text) until G5 |
 | `public` | `-Pcriterion.release=production` | `PUBLIC` | Production track. `verifyContentEligibility` also demands G1 and G5 evidence |
 
-`BuildConfig.MONETIZED` is `true` only with `-Pcriterion.monetized=true`, which is allowed only for `play` + `public` from v1.5 (F-PL-08). Any other combination fails configuration.
+`BuildConfig.MONETIZED` is `true` only with `-Pcriterion.monetized=true`, which is allowed only for `play` + `public` from v1.5 (F-PL-08). `verifyContentEligibility` fails any other variant built with it, and any personal-tier variant built with `-Pcriterion.release=production`.
 
 ```kotlin
 // build-logic: criterion.android.application.flavors
@@ -1739,8 +1741,7 @@ android {
         release { optimization { enable = true } }        // AGP 9.3+ DSL; R8 full mode
     }
     defaultConfig {
-        buildConfigField("boolean", "MONETIZED", monetized.toString())   // validated in androidComponents.onVariants:
-                                                                         // only playPublic*, never with personal/foss
+        buildConfigField("boolean", "MONETIZED", monetized.toString())   // honoured only for playPublic*; see below
         buildConfigField("String", "CDN_BASE_URL", "\"${providers.gradleProperty("criterion.cdn").getOrElse("https://cdn.example.invalid")}\"")
         buildConfigField("String", "TRUSTED_KEYS", "\"${providers.gradleProperty("criterion.trustedKeys").get()}\"") // 2 hex keys, comma-sep
     }
@@ -1750,18 +1751,19 @@ android {
 }
 androidComponents {
     beforeVariants(selector().withFlavor("distribution" to "play").withFlavor("tier" to "personal")) { it.enable = false }
-    onVariants { v -> if (release != null) check(v.productFlavors.contains("tier" to "public")) { "production needs tier=public" } }
+    // verifyContentEligibility<Variant> (criterion.content.eligibility) fails a personal-tier variant when release != null,
+    // and any non-playPublic variant when monetized == true, so misuse fails the build, not just configuration.
 }
 ```
 
-`BuildInfo` maps the strings to `enum class ContentTier { PERSONAL, BETA, PUBLIC }` once, in `:app`.
+`enum class ContentTier { PERSONAL, BETA, PUBLIC }` lives in `:core:model`. `BuildInfo` maps the `BuildConfig` strings to it once, in `:app`.
 
 | Variant | Goes to | `CONTENT_TIER` | Content allowed (§11.2) |
 |---|---|---|---|
 | `playPublicRelease` | Play internal / closed testing | BETA | Items with BETA in `eligibleTiers`. Mushaf layout only if G1-cleared or clean-room. PENDING recitations allowed |
 | `playPublicRelease -Pcriterion.release=production` | Play production (staged rollout) | PUBLIC | Items with PUBLIC in `eligibleTiers`; no PENDING or PERSONAL_ONLY; G1 + G5 evidence; with `MONETIZED` (v1.5+) also `commercialOk` |
 | `fossPublicRelease` | Optional APK / F-Droid later (G4) | BETA or PUBLIC (same rule) | As above, plus `fossOk`; never monetized |
-| `fossPersonalRelease` | Owner's phone (sideload, CI artifact), `com.chughtai.criterion.personal` | PERSONAL | Everything with PERSONAL in `eligibleTiers`, including PENDING and PERSONAL_ONLY items (QUL-derived layout before G1, Shamshad Ali Khan voice, Husary Muallim, Qari Sadaqat Ali, gapped everyayah, D-12) |
+| `fossPersonalRelease` | Owner's phone (sideload), `com.chughtai.criterion.personal`; built on the owner's machine only (`personalCheck`) | PERSONAL | Everything with PERSONAL in `eligibleTiers`, including PENDING and PERSONAL_ONLY items (QUL-derived layout before G1, Shamshad Ali Khan voice, Husary Muallim, Qari Sadaqat Ali, gapped everyayah, D-12) |
 | `playPersonal*` | Disabled | — | — |
 | `*Debug` | Developer devices | Same as the tier | Same as the tier |
 
@@ -1825,7 +1827,7 @@ Other gates:
 | Malicious ZIP | Zip-slip guard, entry-count and size caps, staging dir, atomic rename |
 | Secrets in the APK | **None exist.** All endpoints are public and read-only. R2 write tokens live only in GitHub Actions secrets / the owner's machine; signing keys are offline. The QF client (P3) is a PKCE public client with no secret (D-20). `google-services.json` (P3, play flavor) is not secret |
 | Transport | HTTPS only (`usesCleartextTraffic=false` plus a network-security-config `cleartextTrafficPermitted="false"`); system trust store. **No certificate pinning.** Content integrity comes from signatures, and pinning third-party CDNs would break on rotation |
-| Exported components | `MainActivity` (launcher + `criterion://`), `PlaybackService` (Media3 validates controllers; `onConnect` allows only own UI, system UI, and in v1.x Auto/Wear), Glance receivers, and the idempotent `SystemEventsReceiver`. Everything else is `exported=false`. Every PendingIntent uses `FLAG_IMMUTABLE` |
+| Exported components | `MainActivity` (launcher + `criterion://`), `QuranPlaybackService` (Media3 validates controllers; `onConnect` allows only own UI, system UI, and in v1.x Auto/Wear), `MediaButtonReceiver`, Glance receivers (v1.1), and the idempotent `SystemEventsReceiver` (v1.1). Everything else is `exported=false`. Every PendingIntent uses `FLAG_IMMUTABLE` |
 | Deep-link abuse | Pure parser with range validation; never autoplay from external intents; no file or URL loading from links |
 | Privacy leakage | No SDKs; no device IDs in UA or requests; location rounded to 0.01° and stored only in settings; logs contain no ayah-level reading history; diagnostics are shared only through a user-initiated share sheet showing the zip contents (D-20) |
 | Supply chain | Version catalogue pins; Gradle dependency verification (`gradle/verification-metadata.xml`, sha256) enabled in P1; the `dependency-analysis` plugin |
@@ -2191,7 +2193,7 @@ The root `build.gradle.kts` applies every plugin alias with `apply false`, inclu
 | `criterion.spotless` | Spotless + ktlint 1.8.0 + compose-rules 0.6.8; licence-header check (Apache headers on ported files) |
 | `criterion.content.eligibility` | `verifyContentEligibility<Variant>` (§11.3), using the shared `ContentPolicy`; G1/G5 checks for PUBLIC |
 | `criterion.android.test` | `com.android.test` + baselineprofile for `:baselineprofile` |
-| `criterion.root` | Guard tasks `checkModuleBoundaries` (rules in §3.4) and `verifyKotlinGradlePlugin` (asserts `buildEnvironment` resolves `kotlin-gradle-plugin` to 2.4.21, g04 rec. 1); aggregate `kover`. **Root aggregate tasks** (library modules have no flavors, so CI calls these instead of per-module names; exact membership owned by doc 10 §…"quickCheck / prCheck"): `quickCheck` = `spotlessCheck` + guard tasks + every library `testDebugUnitTest` + Roborazzi verify + `:app:testPlayPublicDebugUnitTest` + `:app:testFossPersonalDebugUnitTest` (code paths only; the personal packs folder is empty in CI). `prCheck` = `quickCheck` + library `lintDebug` + `:app:lintPlayPublicDebug` + `:app:lintFossPersonalDebug` + guards incl. `verifyContentEligibility` for `playPublicRelease` and `fossPublicRelease` + `:app:assemblePlayPublicDebug :app:assembleFossPublicDebug`. CI assembles and eligibility-checks the **public tier only**. `personalCheck` (owner's machine only) = `copyPersonalAssets` + `verifyContentEligibilityFossPersonalRelease` + `:app:assembleFossPersonalRelease`. The required GitHub status is `ci/check` |
+| `criterion.root` | Guard tasks `checkModuleBoundaries` (rules in §3.4) and `verifyKotlinGradlePlugin` (asserts `buildEnvironment` resolves `kotlin-gradle-plugin` to 2.4.21, g04 rec. 1); aggregate `kover`. **Root aggregate tasks** (library modules have no flavors, so CI calls these instead of per-module names; exact membership owned by [10](10-quality-testing-ci.md), which this row mirrors): `quickCheck` = `spotlessCheck` + guard tasks + every library `testDebugUnitTest` + Roborazzi verify + `:app:testPlayPublicDebugUnitTest` + `:app:testFossPersonalDebugUnitTest` (code paths only; the personal packs folder is empty in CI). `prCheck` = `quickCheck` + library `lintDebug` + `:app:lintPlayPublicDebug` + `:app:lintFossPersonalDebug` + guards incl. `verifyContentEligibility` for `playPublicRelease` and `fossPublicRelease` + `:app:assemblePlayPublicDebug :app:assembleFossPublicDebug`. CI assembles and eligibility-checks the **public tier only**. `personalCheck` (owner's machine only) = `copyPersonalAssets` + `verifyContentEligibilityFossPersonalRelease` + `:app:assembleFossPersonalRelease`. The required GitHub status is `ci/check` |
 
 ---
 
@@ -2231,4 +2233,4 @@ The root `build.gradle.kts` applies every plugin alias with `apply false`, inclu
 7. **`SystemEventsReceiver` exported.** Accepted, because the handler is idempotent. Re-check when targeting API 37.
 8. **No backend in v1.0** means the kill-switch latency is the refresh interval (≤ 24 h, plus on foreground). That fits the text-error SLA (§14.2: signed notice ≤ 48 h). The v1.1 crash-report Worker (D-32) is write-only and does not change this.
 9. **Hijri implementation choice.** r07 recommends ICU `IslamicCalendar`, but the register mandates `java.time.HijrahDate` via desugaring (D-15, D-27). HijrahDate on API 24–25 is unverified, so the P0 device smoke test compares both on 5 reference dates. Both sit behind `HijriCalendarProvider`, and the ICU implementation is the fallback.
-10. **Personal assets outside git.** The personal build depends on `~/criterion-data`. A fresh clone cannot build `fossPersonal*` until the owner restores that folder; CI builds the personal artifact from the private R2 bucket (doc 08) or skips it.
+10. **Personal assets outside git.** The personal build depends on `~/criterion-data`. A fresh clone cannot assemble `fossPersonal*` until the owner restores that folder. CI never assembles a personal build; the owner runs `personalCheck` locally before each sideload build.

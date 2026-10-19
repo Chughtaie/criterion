@@ -470,7 +470,7 @@ If companion features are cut from v1.0, frame 7 becomes the bookmarks/khatam pl
 | Result shown on listing | "No data collected · No data shared" | — |
 
 Engineering conditions that keep the v1 answer true. They are release-blocking and tested in [CI](10-quality-testing-ci.md):
-1. **No third-party SDK** that transmits data. The `play` flavor's only Play libraries are in-app review (F-PL-10) and in-app update, which run through the Play Store app.
+1. **No third-party SDK** that transmits data. The `play` flavor's only Play library is in-app review (F-PL-10), which runs through the Play Store app; the update nudge simply opens the store listing.
 2. **Requests carry no identifiers:**
    - no installation ID, advertising ID or device ID;
    - no account or user-specific query parameters;
@@ -903,7 +903,7 @@ Every report is logged in `ops/text-errors.csv`. A report is "confirmed" only af
 | A recitation (reciter × host) | `catalogue.json` → `recitations[].enabled=false` ([Audio engine](06-audio-engine.md)), or a `notices.json` notice `{target.type: recitation, action: disable}` | Hidden from pickers; streaming blocked; downloaded files kept but unplayable with a notice; the user may delete them | Next catalogue refresh (on app start + every 24 h) |
 | Highlight for one surah of a recitation | `catalogue.json` → `recitations[].highlightDisabledSurahs[]` (D-12, doc 06), or a notice `{target.type: surahHighlight, action: disable}` | Audio plays; no highlight or auto page-turn | Same |
 | A pack (translation, tafsir, layout, timing, font) | `index.json` → `packs[].enabled=false`, or a notice `{target.type: pack, action: disable}` | Pack disabled; the user is shown why; the bundled default is used instead | Same |
-| Text-error and takedown notices | `notices.json` → `notices[] {id, target{type = page \| surahHighlight \| pack \| recitation \| feature, …}, action = warn \| disable, message{en,ur}, until}` per [Architecture](04-architecture.md) §14.3, plus a top-level `minVersion` update nudge (F-PL-11; doc 04 to add the field) | Reader-chrome info chip and a Home card (doc 02), never over the Quran text; an "update available" nudge (the play flavor uses in-app update) | Same |
+| Text-error and takedown notices | `notices.json` → `notices[] {id, target{type = page \| surahHighlight \| pack \| recitation \| feature, …}, action = warn \| disable, message{en,ur}, until}` per [Architecture](04-architecture.md) §14.3, plus a top-level `minVersion` update nudge (F-PL-11; doc 04 to add the field) | Reader-chrome info chip and a Home card (doc 02), never over the Quran text; an "update available" nudge (the play flavor opens the store listing; foss opens the release page) | Same |
 
 **Takedown policy:** on a rights-holder request (reciter, label, publisher, translator):
 1. Flip the kill-switch within **24 h**.

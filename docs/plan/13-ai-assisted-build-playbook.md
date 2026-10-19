@@ -139,7 +139,7 @@ adhan2 0.0.7. NO Ktor. AGP > 9.4 does not sync in stable Android Studio (Rabbit 
 - `:app` → `:feature:*` → `:core:*`. Features NEVER depend on features (`criterion.root`'s `checkModuleBoundaries` fails the build; rules in doc 04 §3.4).
 - All `NavKey`s live in `:core:navigation`. Cross-feature navigation = NavKeys only.
 - `:core:model` and `:core:domain` are pure Kotlin (`criterion.jvm.library`), no Android, no DI annotations.
-  Interfaces (repositories, `PlaybackController`, `PlaybackStateHub`, `HijriCalendar`) live in `:core:domain`;
+  Interfaces (repositories, `PlaybackController`, `PlaybackStateHub`, `HijriCalendarProvider`) live in `:core:domain`;
   implementations live in `:core:data`, `:core:audio`, `:core:prayer`, …
 - Each core module exposes interfaces; implementations are `internal`, bound in that module's Hilt module.
   `QuranContentDb` and all Room types stay `internal` to their module (no `api(room3-runtime)` leaks).
@@ -752,7 +752,7 @@ CONSTRAINTS:
   Dhuhr 12:18, Asr 16:24, Maghrib 18:02, Isha 19:18 PKT (g04 §1 item 9).
 - HijrahDate check: HijrahDate.from(LocalDate) for a fixed set of 2026–2027 dates (incl. 1448 Ramadan
   start/end) must equal the same calls on the JVM (host java.time Umm al-Qura data); record the result for
-  D-27. A failure is a STOP-and-report (the ICU IslamicCalendar fallback behind HijriCalendar is the
+  D-27. A failure is a STOP-and-report (the ICU IslamicCalendar fallback behind HijriCalendarProvider is the
   owner's call), not a silent switch.
 - Screen is only in the debug build type; no release code path.
 ACCEPTANCE: Instrumented test passes on the API 24/26 AVDs (if host has KVM); diagnostics screen
@@ -1078,14 +1078,14 @@ VERIFICATION: (A) V2 + V4. (B) V2 + V4; V5 owner 7-day OEM run (§5.4).
 ### AP-21 — Hijri and Ramadan core (v1.0); tasbeeh, Manzil dua, azkar, Qibla (later)
 
 ```text
-CONTEXT: Spec: doc 07, doc 04 (HijriCalendar interface, :core:prayer, :feature:companion), D-15, D-27,
+CONTEXT: Spec: doc 07, doc 04 (HijriCalendarProvider interface, :core:prayer, :feature:companion), D-15, D-27,
 F-CP-04 + F-CP-07 core (v1.0 Tier A, S6), F-CP-05 tasbeeh + F-CP-06 Manzil-dua playlist (v1.0-stretch,
 ladder L3/L4), F-CP-03 Qibla + F-CP-06 azkar + Ramadan extras (v1.1). Run one story per session, and only
 the parts doc 09 schedules.
 GOAL (v1.0): Hijri date with the PK month-start feed, and Ramadan core (30-day Sehri/Iftar timetable,
 home countdown, Taraweeh khatam preset) for the Ramadan launch.
 CONSTRAINTS:
-- Hijri = java.time HijrahDate (Umm al-Qura) via desugaring behind doc 04's HijriCalendar interface
+- Hijri = java.time HijrahDate (Umm al-Qura) via desugaring behind doc 04's HijriCalendarProvider interface
   (D-27) + user ±2-day offset + Maghrib rollover + the signed `feeds/hijri-pk.json` (detached .sig,
   fetched by AP-16's SignedFileFetcher). r08 §1.6 verified that the desugaring table lists HijrahDate as
   "Fully implemented"; what is missing is an on-device run on API 24–25 (AP-06 does it). If AP-06 or this
@@ -1478,7 +1478,7 @@ The **first ten working days** run as doc 09's day-by-day checklist (§7), with 
    - Ruling applied here: `criterion.root` registers `quickCheck` and `prCheck` (§2.1), which include the libraries' `testDebugUnitTest` and `verifyRoborazziDebug` plus the app's `FossPersonal`/`PlayPublic` tasks, and the required status is `ci/check`.
    - Doc 10's `android.yml` must call `prCheck` and use the two-dimension task names; doc 04 §16.2 must list `quickCheck`/`prCheck` under `criterion.root`. Doc 10's guard names (`verifyToolchain`, `verifyModuleGraph`) and doc 04's (`verifyKotlinGradlePlugin`, `checkModuleBoundaries`) must converge; this doc uses doc 04's.
 2. **D-07 Para-page formula.** The register said Para n (1–28) starts at page_index 18n−16, which gives index 2 for Para 1. Ruling (g01 §2.8): Para 1 starts at index 1 (the sarlauh), and 18n−16 holds only for n = 2…28; P29 = 508, P30 = 528. AP-05 follows this; doc 12's register wording is being corrected.
-3. **Hijri API (D-15/D-27 vs r07).** r07 recommended ICU `IslamicCalendar` (`ISLAMIC_UMALQURA`, native from API 24); the register picks `java.time.HijrahDate` via desugaring, behind an interface. r08 §1.6 verified that the desugaring support table lists `HijrahChronology`/`HijrahDate` as "Fully implemented", but no report has run it on an API 24–25 device, and the Umm al-Qura validity range (~1300–1600 AH) is unverified. AP-06 runs the device check in P0 and AP-21 repeats it as a stop-and-report check; switching to the ICU implementation behind the same interface is the owner's call under D-27's revisit trigger. Doc 04 calls the interface `HijriCalendar` and doc 12 calls it `HijriCalendarProvider`; this doc uses doc 04's name.
+3. **Hijri API (D-15/D-27 vs r07).** r07 recommended ICU `IslamicCalendar` (`ISLAMIC_UMALQURA`, native from API 24); the register picks `java.time.HijrahDate` via desugaring, behind an interface. r08 §1.6 verified that the desugaring support table lists `HijrahChronology`/`HijrahDate` as "Fully implemented", but no report has run it on an API 24–25 device, and the Umm al-Qura validity range (~1300–1600 AH) is unverified. AP-06 runs the device check in P0 and AP-21 repeats it as a stop-and-report check; switching to the ICU implementation behind the same interface is the owner's call under D-27's revisit trigger. Doc 04 calls the interface `HijriCalendarProvider` and doc 12 calls it `HijriCalendarProvider`; this doc uses doc 04's name.
 4. **Committing the generated content DB.** Resolved by doc 08 §2: generated assets (`*.db`, `*.sqlite`, `*.ttf` under module asset dirs) are committed through Git LFS so Android Studio builds need no Python, and `tools.yml` rebuilds them and checks reproducibility. AP-03 checks out with `lfs: true`; AP-04 adds the `.gitattributes` rules.
 5. **The spike still contains Ktor** (spike TOML lines 30 and 79–82). AP-01 removes it per D-02/D-26. Doc 04's catalog must not reintroduce it.
 6. **Story-ID format.** Doc 09's story IDs are `E-xx-Syy`. Commits and prompts use them verbatim; branch names lower-case them and drop the first hyphen (`E-05-S03` → `e05-s03-<slug>`).

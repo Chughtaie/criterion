@@ -154,7 +154,7 @@ data/
     azkar/categories.csv  azkar/dhikr.csv  azkar/dhikr_translation.csv   # v1.1 (F-CP-06)
     taj16_empty_slots.csv  taj16_text_overrides.csv  skeleton_whitelist_qul.csv
     skeleton_whitelist_tanzil.csv  reciters.yaml  content_registry.yaml  ummalqura_months.csv
-    errata/taj16.csv
+    errata/indopak16_taj.csv
   notices/*.yml                       # one file per notice (F-PL-11); source of notices.json (§8.3)
   keys/content-signing-<kid>.pub      # public keys only
   legal/permissions.yml               # machine-readable grant status per dataset (drives CI gates)
@@ -299,7 +299,7 @@ All CSVs are UTF-8 with a header row, LF line endings, and are sorted. Each has 
 | `skeleton_whitelist_tanzil.csv` | `verse_key, dk_skel, tanzil_skel, reviewed_by` | frozen at P0 | Generated once from the first full run, reviewed, then frozen. New diffs fail CI |
 | `reciters.yaml` | per recitation: id (doc 06 format, e.g. `alafasy.murattal.mp3q123`), timing `packId` (doc 06, e.g. `timing.alafasy.mp3q123`), reciter names (en/ar/ur), style, riwayah, layout, host, read id / folder, basmala strategy, attribution, `licenceStatus`, `basis`, `commercialOk`, `fossOk`, expected `highlightDisabledSurahs`, blocklists (`eligibleTiers` is derived, §8.6) | ~30 | D-12 shortlist; ids and fields per doc 06 §3.2 and §4 |
 | `content_registry.yaml` | per dataset: id (doc 03 `DS-xx`), title, source_url, licence, attribution id + strings (en/ur, `ATTR-xx`), credits `section`/`sort`, notice, `licenceStatus` (`PERMITTED`/`HOST_GRANT`/`PENDING`/`PERSONAL_ONLY`/`REVOKED`), `basis` (free text, e.g. `open_licence`, `host_grant`, `written_permission PERM-01`, `clean-room`), `eligibleTiers` (subset of `PERSONAL`, `BETA`, `PUBLIC`), `commercialOk`, `fossOk`, `requiredGates` (e.g. `[G1, G5]`), `permission_ref` | all | Owned by doc 03 (`LicenceInfo`, doc 03 §4.1). The pipeline copies it into packs (`pack_info`), the index, the catalogue, `bundled.json`, and the content-DB `source` + `attribution` tables |
-| `errata/taj16.csv` | `report_id, page_label, slot, word, issue, reviewer, status, resolution, build_id` | grows | Proofreading loop (§14) |
+| `errata/indopak16_taj.csv` | `report_id, page_label, slot, word, issue, reviewer, status, resolution, build_id` | grows | Proofreading loop (§14) |
 | `ummalqura_months.csv` | `hijri_month, civil_start` | 180 (1446–1460 AH) | Exported from `java.time` `HijrahDate` by a JVM test; sanity bound for the PK feed (§9.2) |
 
 `data/legal/permissions.yml` (machine-readable, from doc 03/11):
@@ -891,7 +891,7 @@ target: {type: page, mushaf: indopak16_taj, page: 412}     # page | surahHighlig
 action: warn                                                # warn | disable
 message: {en: "A possible text issue on this page is under review.", ur: "…"}
 until: 2027-03-31T00:00:00Z
-evidence: errata/taj16.csv#R-0007                           # internal; stripped from the output
+evidence: errata/indopak16_taj.csv#R-0007                           # internal; stripped from the output
 ```
 
 **Build (`build_notices.py`, `--channel beta|public`).**
@@ -1118,50 +1118,55 @@ Failing any **hard** check fails the build. **Warn** checks are posted in the CI
 | V-C02 | Tanzil inputs match pins; `text_uthmani`/`text_imlaei` byte-equal to the parsed source (verbatim, D-08) | hard |
 | V-C03 | DK stream: 83,669 tokens = 77,433 words + 6,236 ends; 118 U+08E2; 558 U+08D6 and 15 U+08DB, all on end tokens; 114 headers + 112 basmala lines skipped; 0 standalone-mark tokens | hard |
 | V-C04 | 84 distinct code points in the DK text | warn |
-| V-C05 | Per-surah numbered ends 1..n = Tanzil counts (after the Fatiha rewrite); each ayah has ≥ 1 word + exactly 1 end; `pos` contiguous | hard |
-| V-C06 | `ayah_marker`: 6,354 rows; `is_kufan_end` XOR `disputed_end`; 6,236 + 118; `display_number = ayah` on Kufan rows, NULL on disputed rows; 1:7:4 disputed present; 0 U+202E in `word.text` | hard |
+| V-C05 | Per-surah numbered ends 1..n = Tanzil counts; each ayah has ≥ 1 word + exactly 1 end; `word.position` contiguous; `ayah.first_word_index..last_word_index` contiguous and ending on an `is_end` token; `qul_position` follows the DK→QUL rule | hard |
+| V-C06 | `ayah_marker`: 6,354 rows; `is_kufan_end` XOR `disputed_end`; 6,236 + 118; `display_number` = Kufan `verse_ayah` on Kufan rows (including 1:1..1:7 = 1..7), NULL on disputed rows; `has_ruku_sign` on 558 rows and `has_sajda_sign` on 15; 1:7:4 disputed present; 0 U+202E in `word.text` | hard |
 | V-C07 | DK↔QUL map (if `qul.res565`): 83,668 QUL positions all mapped; the only many-to-one is 72:16 | hard |
 | V-C08 | DK vs QUL skeleton diffs ⊆ {4:112:3, 18:19:34, 59:13:1} | hard |
 | V-C09 | DK vs Tanzil per-ayah skeleton diffs == frozen whitelist (new → fail; removed → warn) | hard |
 | V-C10 | Para: 30 rows, contiguous cover; starts = `paras.csv`; differs from Tanzil juz at exactly {3:92, 5:83, 9:94, 15:2, 27:60, 29:45, 36:22} | hard |
 | V-C11 | Manzil: 7 starts at 1:1, 5:1, 10:1, 17:1, 26:1, 37:1, 50:1 = Tanzil | hard |
-| V-C12 | Ruku: 558; contiguous; within surahs; surah counts 26=11, 28=9, 31=4; by-end Para counts = D-07 list (sum 557 + Fatiha); Fatiha `para_ruku` NULL; ⊇ 29 print triples; ends = DK U+08D6 | hard |
-| V-C13 | Sajda: 15 rows = DK U+08DB set; `print_no` 1..14 in mushaf order; 22:77 `shafii_only`, `print_no` NULL; 38:24 numbered | hard |
+| V-C12 | Ruku: 558; contiguous; within surahs; surah counts 26=11, 28=9, 31=4; by-end Para counts = D-07 list (sum 557 + Fatiha) = `paras.csv` `ruku_count_by_end`; Fatiha `ruku_in_para` NULL; ⊇ 29 print triples; ends = DK U+08D6 | hard |
+| V-C13 | Sajda: 15 rows = DK U+08DB set; 14 `hanafi` with `number` 1..14 in mushaf order; 22:77 `shafii_only`, `number` NULL; 38:24 numbered | hard |
 | V-C14 | Quarters: 90 = 30 × {1,2,3}; strictly increasing; inside their Para; anchors exist (6:73 w10 carries U+08E2); the 3 corrections present | hard |
-| V-C15 | Quarters `verified_source` non-null for all 90 | hard in `public*`, warn in `personal` |
+| V-C15 | Quarters `verified_source` non-null for all 90 (the 53 unverified marks are a closed-test blocker, doc 03) | hard for BETA and PUBLIC; warn for PERSONAL |
 | V-C16 | Aliases: targets exist; no normalised term maps to conflicting targets | hard |
-| V-C17 | Surah headers: 114 `taj` rows; each contains its `name_ar`; ruku phrase omitted iff ruku_count = 1 | hard; wording proofed manually |
+| V-C17 | `surah_headers.csv`: 114 rows for `indopak16_taj`; each contains its `name_ar`; ruku phrase omitted iff `ruku_count` = 1. The rows load into the pack's `surah_header` table | hard; wording proofed manually (39 headers still to verify before BETA, doc 03) |
 | V-C18 | FTS: 6,236 docs in each FTS table; the r05 query vectors give: الصلاة 55, الصلوة 55, السماوات 180, السموت 180, يأيها الذين آمنوا 90, ابرهيم 40, إبراهيم 56, مالك يوم الدين 1, ملك يوم الدين 1, إِيَّاكَ نَعْبُدُ 1 (any column). Any change needs a reviewed re-baseline | hard |
 | V-C19 | Normaliser vectors: Python passes all; file regenerated (the Kotlin side runs in doc 10's unit tests) | hard |
 | V-C20 | Room: identity hash in `room_master_table` = schema JSON; `user_version` = schema version; `--no-master` copy produced; `PRAGMA integrity_check` = ok | hard |
 | V-C21 | Content changed ⇒ `user_version` bumped (vs committed asset) | hard |
 | V-C22 | Hygiene: no PUA / bidi controls / ZW chars in `text_uthmani`, `text_imlaei`, `norm_*` | hard |
 | V-C23 | Size: `quran_content.db` ≤ 14 MB raw | warn > 12 MB, hard > 14 MB |
-| V-C24 | `attribution` has a row for every dataset used, with en+ur notices | hard |
+| V-C24 | Every dataset in the DB has a `source` row whose `licence_json` parses as doc 03 `LicenceInfo` and whose `licenceStatus` is not `REVOKED`; `attribution` has a row for every credit string, with en+ur notices and a valid `section` | hard |
+| V-C25 | Passages: every `passage_range` valid and ordered; `manzil_dua` = 18 ranges / 79 ayahs; quick-access passages have en+ur titles; every alias `target_id` exists for its `target_type` | hard |
+| V-C26 | `daily_ayah`: 0 rows (v1.0) or exactly 366 (v1.1); valid Kufan ranges; `reviewed_by` non-empty in the CSV for BETA/PUBLIC | hard |
 
 ### 11.2 Mushaf pack (V-M)
 
 | ID | Check | Kind |
 |---|---|---|
-| V-M01 | 548 pages × 16 slots = 8,768 line rows; before template: 8,598 AYAH, 114 header (incl. 80 with basmala), 32 BASMALA, 24 EMPTY | hard |
+| V-M01 | 548 pages × 16 slots = 8,768 `line` rows: 8,598 AYAH, 114 SURAH_HEADER (80 `THREE_PART`), 32 BASMALA, 18 OPENING_PANEL (indices 1–2, slots 1–9), 6 EMPTY (index 548, slots 11–16) | hard |
 | V-M02 | Each DK token exactly once per layout, in order: AYAH ranges contiguous and cover 1..83,669 | hard |
 | V-M03 | First/last word skeletons match QUL on every AYAH line, except p.493 slot 13 (59:13) | hard |
 | V-M04 | `page_label_offset = 1` → labels 2..549 | hard |
 | V-M05 | Para starts: P1 p.1; Pn (n = 2..28) on page 18n−16 at slot 1 or its header slot; P29 p.508 (slot 3), P30 p.528 | hard |
 | V-M06 | Manzil starts at QUL (page, line) (1,2), (96,3), (187,4), (254,2), (330,5), (401,14), (466,7) (pre-remap) | hard |
-| V-M07 | `footer_manzil`/`header_para` = values for the page's last ayah; `outer_margin` from label parity; `header_surahs` non-empty | hard |
-| V-M08 | Templates: index 1–2 `sarlauh`, p.1 remapped (slots 10/11/12–16), slots 1–9 EMPTY; others `regular` | hard |
+| V-M07 | `page.manzil_id`/`page.para_id` = values for the page's last ayah (content DB); `outer_side` from label parity; `surah_ids` non-empty; `page_label = page_index + 1` | hard |
+| V-M08 | Templates: indices 1–2 `SARLAUH`, slots 1–9 `OPENING_PANEL`, slot 10 `SARLAUH_TITLE`, slot 11 BASMALA, slots 12–16 AYAH (index 1 remapped); others `REGULAR` | hard |
 | V-M09 | p.529: surah 79 header precedes its basmala | hard |
-| V-M10 | Markers: 558 RUKU (Fatiha `n3` NULL), 90 QUARTER, 15 SAJDA, 6 MANZIL_START, 29 PARA_START; each on a line that contains its `anchor_word` | hard |
-| V-M11 | `ayah_display_override` = {1:1..1:7 → 0} for taj16 | hard |
+| V-M10 | `margin_marker`: 558 RUKU (Fatiha `n3` NULL), 90 QUARTER, 14 SAJDA + 1 SAJDA_SHAFII, 6 MANZIL_START, 29 PARA_START; each on the slot containing its `anchor_word_index`; no overlap at `pitch_min` (doc 05 §4.4) | hard |
+| V-M11 | `ayah_display_override` = exactly {ayah_id 1..7 → `show_number` 0} for `indopak16_taj` | hard |
 | V-M12 | Zero `.notdef` after shaping every token (as rendered), header and basmala strings, and digits 0–9 in both digit blocks | hard |
-| V-M13 | Justified lines: words ordered RTL, non-overlapping; Σwidth + gaps spans [0, 1] ± 1e-6; every gap ≥ `gap_min`; `cv01` ∈ 1..3 only on non-marker words; `line_scale` ≥ 1 − `line_shrink_max` | hard |
+| V-M13 | Justified lines, both variants (doc 05 §4.3 / FC-6): words ordered RTL and non-overlapping; first word in reading order has `x1` = 100,000 and the last reaches 0 within ±1 unit; every gap ≥ `G_MIN`; `kashida` ∈ 1..3 only on non-marker, stretchable words; ≤ `KMAX_WORDS` stretched words per line; `scale` ≥ `SCALE_FLOOR`; `scale < 1` on ≤ 1 % of lines | hard |
 | V-M14 | Gap > 0.5 em on a justified line | warn (list for review) |
 | V-M15 | Stretched words get strictly increasing widths per step (catches a cv-less font) | hard |
 | V-M16 | Font: glyf only, `cv01` lookup 7→3, advances = source OTF, width vectors (§5.2) | hard |
 | V-M17 | `ayah_page`: 6,236 rows, `page_start ≤ page_end`, monotonic | hard |
-| V-M18 | `page_hash` deterministic (two runs equal); `proof-manifest.json` covers 548 pages | hard |
-| V-M19 | Release gate: every page's current `page_hash` has an `OK` sign-off row and a certificate for this `build_id` family (G5) | hard in `public*` |
+| V-M18 | `page.page_hash` recomputes per doc 05 §3.5 and is deterministic (two runs equal); `proof-manifest.json` covers 548 pages | hard |
+| V-M19 | G5 release gate: `pack_info.proof_certificate_id` set and every page's current `page_hash` listed in `certified_pages.json` (§14) | hard for PUBLIC |
+| V-M20 | Pack ↔ content DB agreement: every content-DB `ayah_marker` token has a placed `word` row; `word.ayah_id`/`pos`/`is_end` equal the content DB; every `word_override` row has `reason` + `approved_by` and its `text` equals `word.text`; the pack has no `ayah_marker` table | hard |
+| V-M21 | Furniture: zero `.notdef` in every `furniture_run` string; `pitch_min` ≤ `pitch_nominal` ≤ `pitch_max`; `furniture_digits` recorded | hard |
+| V-M22 | Page-diff report vs the previous pack version exists and lists every page whose `page_hash` changed (input to the hafiz delta review) | hard |
 
 ### 11.3 Translation / tafsir packs (V-P)
 
@@ -1169,38 +1174,45 @@ Failing any **hard** check fails the build. **Warn** checks are posted in the CI
 |---|---|---|
 | V-P01 | 6,236 rows (translation), non-empty text, keys = Kufan set | hard |
 | V-P02 | Verbatim: sha256 over the concatenated source rows = over the stored `text`/`footnotes` | hard |
-| V-P03 | `pack_info` complete (licence, attribution en/ur, upstream + pack version, source sha, eligibility, `min_content_version`) | hard |
-| V-P04 | FTS doc count = 6,236; Urdu vectors keep ے/ھ distinct (کی ≠ کے, بھ ≠ بہ) | hard |
+| V-P03 | `pack_info` complete (licence, attribution en/ur, upstream + pack version, source sha, `licence_status`, `basis`, `eligible_tiers`, `commercial_ok`, `foss_ok`, `min_content_version`); `id` matches doc 04's id pattern | hard |
+| V-P04 | `translation_fts` and `translation_fts_tri` each hold 6,236 docs (every pack, every language); Urdu vectors keep ے/ھ distinct (کی ≠ کے, بھ ≠ بہ) | hard |
 | V-P05 | Upstream version = QuranEnc `translations/list` version at build time | hard |
 | V-P06 | PUA/control chars present in the source text | warn (app strips at copy/share) |
+| V-P07 | Azkar pack (v1.1): every `dhikr` has `reference`, `licence`, `source_dataset`; `quran_ranges` parse to valid Kufan ranges; BETA/PUBLIC builds contain no row with NULL `reviewed_by`; every `dhikr_translation` has a parent `dhikr` | hard |
 
 ### 11.4 Timing packs (V-T)
 
 | ID | Check | Kind |
 |---|---|---|
-| V-T01 | Enabled surahs: rows for ayahs 1..n exactly (plus optional 0) | hard |
+| V-T01 | `ayah_timing` rows only for surahs with `audio_file.highlight_ok = 1`, each with ayahs 1..n exactly (plus optional 0); `recitation_id` constant and equal to `pack_info.recitation_id` | hard |
 | V-T02 | `start_ms` strictly increasing; `end_ms > start_ms`; `end_i ≤ start_{i+1}` | hard |
 | V-T03 | Last `end_ms ≤ duration_ms + 100` | hard |
-| V-T04 | `audio_file` for 114 surahs: `content_length`, `etag`, `duration_ms`; CBR confirmed; `sha256` when onset-snapped | hard |
+| V-T04 | `audio_file` has 114 rows with `url`, `content_length`, `etag`, `duration_ms`, `bitrate_kbps`, `sample_rate_hz`, `cbr` = 1 for timed surahs, and `disabled_reason` set iff `highlight_ok = 0` | hard |
 | V-T05 | Relabels only with gain ≥ 0.25 and r ≥ 0.6; logged | hard |
-| V-T06 | Per-read disabled-surah set = `reciters.yaml` expectation (g03 list) | hard |
+| V-T06 | Per-read disabled-surah set = `reciters.yaml` expectation (g03 list; Minshawi 112 = {9, 52, 53}, Husary 118 = {1, 21}) | hard |
 | V-T07 | Read ids 74 and 53 never produce timing | hard |
 | V-T08 | Timing host = audio primary host; mirrors byte-identical or highlight off | hard |
 | V-T09 | Letter-rate outliers (≥ 10-letter ayahs, > 3× read median) listed | warn |
-| V-T10 | Gapped manifest: 6,236 ayah rows (+ basmala/isti'adha files) with md5 | hard |
+| V-T10 | Gapped recitations: no timing pack; the catalogue `checksums` manifest (everyayah MD5 or our SHA-256) covers 6,236 ayah files + basmala | hard |
+| V-T11 | Catalogue `highlightDisabledSurahs` = the pack's `highlight_ok = 0` set at build time; later catalogue-only edits may add surahs, never remove them | hard |
+| V-T12 | Timing pack DDL byte-equals doc 06 §5.1 (`timing-v1.sql`); no `room_master_table`; `pack_info` has every required key | hard |
 
 ### 11.5 Catalogue / index / feeds / geo (V-X)
 
 | ID | Check | Kind |
 |---|---|---|
-| V-X01 | JSON Schema valid (`tools/catalogue/schemas/*.json`) | hard |
-| V-X02 | Envelope verifies with a committed public key; `sequence` > live | hard |
+| V-X01 | JSON Schema valid (`tools/catalogue/schemas/*.json`: doc 04 §7.6 index, §14.3 notices, §11.2 `bundled.json`; doc 06 §3.2 catalogue; r08 Hijri feed) | hard |
+| V-X02 | Detached `.sig` verifies over the exact bytes with a committed public key; `kid` names a committed key; `sequence` > live; `generatedAt` present; `expiresAt` in the future; no envelope fields | hard |
 | V-X03 | Every URL resolves (HEAD 200); bytes + sha256 match the object | hard at publish, weekly live |
-| V-X04 | Every entry has licence, attribution (en/ur) and eligibility; profile gate (§8.4) passes for bundled and listed items | hard |
-| V-X05 | `public_monetized` contains no non-commercial items (D-17) | hard |
-| V-X06 | Personal-only recitations absent from `public*` catalogues | hard |
+| V-X04 | Every entry has licence, attribution (en/ur), `licenceStatus` (5-value), `basis`, `eligibleTiers`, `commercialOk`, `fossOk`; the tier gate (§8.6) passes for every bundled and listed item | hard |
+| V-X05 | `--monetized` outputs contain no `commercialOk = false` item (D-17) | hard |
+| V-X06 | No `PERSONAL_ONLY` item in any BETA/PUBLIC file; no `PENDING` item in PUBLIC; nothing under a `personal` prefix in R2; BETA/PUBLIC mirror hosts on the allowlist (never quranicaudio, QF/QDC, Tarteel audio hosts, archive.org; D-28) | hard |
 | V-X07 | Geo: pinned row count, PK = 372, PK tz = Asia/Karachi, Urdu lookups resolve | hard |
 | V-X08 | Hijri feed contiguity and ±2-day sanity | hard |
+| V-X09 | `notices.json`: every target resolves (page 1..548 for the mushaf code, known recitation + surah, known pack, known feature id); en+ur message for `warn`; expired notices dropped; no unknown keys | hard |
+| V-X10 | `bundled.json` lists every file under the source set's `assets/packs/` and `assets/audio/`; sha256s match; every item is eligible for the tier it was generated for | hard |
+| V-X11 | `certified_pages.json` covers all 548 `page_hash`es of the bundled public layout pack, matches the sign-off sheet's `OK` rows, and names a certificate whose hash is in `data/legal/evidence/` | hard for PUBLIC |
+| V-X12 | `channel` field equals the publish path; the public catalogue/index ⊆ the beta one | hard |
 
 ---
 
@@ -1208,17 +1220,17 @@ Failing any **hard** check fails the build. **Warn** checks are posted in the CI
 
 | Workflow | Trigger | Steps | Secrets |
 |---|---|---|---|
-| `tools.yml` | PR/push touching `tools/**`, `data/**`, `core/*/schemas/**` | `setup-uv` (version from `.uv-version`) → `uv sync --frozen` → `ruff` → `pytest` → `crit fetch all` (cache keyed by `pins.lock` hash; private inputs from `criterion-private`) → build all stages → `crit validate all` → **repro**: rebuild twice, compare logical dumps (hard) and bytes (soft); compare with the LFS-committed assets (must match, or the PR must include the updated assets) → size report → upload artifacts (reports, `delta-*.pdf` and PNG diffs of changed pages, `normalization_vectors.json`) → PR comment with the summary table | `R2_PRIVATE_RO` (read-only, private bucket) |
+| `tools.yml` | PR/push touching `tools/**`, `data/**`, `core/*/schemas/**` | `setup-uv` (version from `.uv-version`) → `uv sync --frozen` → `ruff` → `pytest` → `crit fetch all` (cache keyed by `pins.lock` hash; private inputs from `criterion-private`) → build all stages → `crit validate all --tier BETA` and `--tier PERSONAL` → **repro**: rebuild twice, compare logical dumps (hard) and bytes (soft); compare with the LFS-committed public-eligible assets (must match, or the PR must include the updated assets). QUL-derived/personal outputs are compared by sha256 only, against `data/private/manifest.json`, and are never uploaded as artifacts → size report → upload artifacts (reports, page-diff report, `normalization_vectors.json`; delta PDFs only for clean-room/G1-cleared layouts) → PR comment with the summary table | `R2_PRIVATE_RO` (read-only, private bucket) |
 | `android.yml` (doc 10) | always | Includes the Robolectric opens of `quran_content.db` **and** `quran_content.nomaster.db` (forces `onValidateSchema`), plus a pack open test per pack type | — |
 | `upstream-drift.yml` | weekly, Monday 02:17 UTC; manual | Tanzil (3 files: hash); QuranEnc `translations/list/{ur,en,…}` versions + `last_update` for every shipped key ("keep updated" condition); mp3quran: `ayat_timing/reads` hash, per-surah timing JSON hash and **HEAD every audio file** of every catalogue read (ETag/Content-Length, ≈ 1,400 requests per read; g03 Rec 10); everyayah `000_checksum.md5` per gapped folder; DK repo HEAD vs pinned commit; GeoNames (monthly). Any change opens or updates a GitHub issue "Upstream drift: <id>" with a diff, and builds candidate packs as artifacts. **It never publishes** | none |
-| `verify-live.yml` | daily | Fetch every live envelope, verify the signature and expiry, HEAD a random 5 % of URLs (all URLs weekly), compare sha256 for small objects | none |
-| `release-gate` (job in doc 11's release workflow) | release tags | `crit validate all --profile public` (V-C15, V-M19, V-X04–X06, permissions gate) | none |
+| `verify-live.yml` | daily | For each channel (`beta`, `public`) and `feeds/`: fetch every live `X.json` + `X.json.sig`, verify the detached signature against `data/keys/*.pub`, check that `sequence` never decreased and that `expiresAt` is more than 14 days away (warn) or in the future (hard). HEAD a random 5 % of URLs (all URLs weekly) and compare sha256 for small objects. Also asserts that no `v1/personal/` key exists | none |
+| `release-gate` (job in doc 10's `release.yml`) | release tags with `-Pcriterion.release=production` | `crit install-assets --tier PUBLIC` → `crit validate all --tier PUBLIC` (V-C15, V-M19, V-X04–X06, V-X10, V-X11, permissions gate) → `verifyContentEligibility` (doc 04 §11.3). The same job runs with `--monetized` for monetized builds (v1.5+) | none |
 
-There is no CI job with the signing key or a write token. Publishing is `just sign && just publish --go` on the owner's machine after `tools.yml` is green (§8.3, §10).
+There is no CI job with the signing key or an R2 write token. Publishing is `just sign && just publish --channel beta|public --go` on the owner's machine after `tools.yml` is green (§8.4, §10). The CLI flag everywhere is `--tier PERSONAL|BETA|PUBLIC [--monetized]`; the old `--profile` flag is removed.
 
 **Drift response.**
-1. **QuranEnc version bump:** rebuild the pack, review the diff, bump `pack_version`, re-sign the index; bundled packs are refreshed in the next app release.
-2. **mp3quran ETag/length change:** the app already disables highlighting for that surah via the guard. The pipeline rebuilds the timing pack. Publish if `V-T*` passes and the decode check passes on the changed surahs.
+1. **QuranEnc version bump:** rebuild the pack, review the diff and bump the pack `version`. Bundled packs are refreshed in the next app release; from v1.1, the downloadable copy is re-published through the signed index.
+2. **mp3quran ETag/length change:** the app already disables highlighting for that surah via the guard. The pipeline rebuilds the timing pack. If `V-T*` and the decode check pass on the changed surahs, ship the new pack in the next app release (v1.0) or through the index (v1.1+). Until then, a catalogue `highlightDisabledSurahs` edit or a `surahHighlight` notice turns the surah off explicitly.
 3. **DK commit change:** report only. Adopting a change is a deliberate re-pin and requires §5.6 re-review of the affected pages.
 4. **QUL** cannot be polled (login). The owner keeps QUL update e-mails on and re-exports manually, and `align.py` diffs before adoption (g01 Rec 9).
 
@@ -1228,49 +1240,66 @@ There is no CI job with the signing key or a write token. Publishing is `just si
 
 | Artifact | Raw | Compressed | Where | Basis |
 |---|---|---|---|---|
-| `quran_content.db` | ≈ 10–13 MB (budget ≤ 14) | ≈ 4 MB in APK | APK | r05 §2.7.4 (9–11 MB) + trigram ≈ 1.2 MB (g04) + `word` table [estimate] |
+| `quran_content.db` | ≈ 11–14 MB (budget ≤ 14) | ≈ 4 MB in APK | APK | r05 §2.7.4 (9–11 MB) + 3-column trigram ≈ 3.6 MB (g04: ≈ 1.2 MB/column; doc 04 S-4 may narrow it) + `word` table [estimate] |
 | `criterion_indopak.ttf` | 1.63 MB | 0.34 MB | APK | r04 §2.9, g04 |
-| `mushaf.taj16.sqlite` | ≈ 1.5–2.5 MB | ≈ 0.6–0.9 MB | APK | 8,768 lines + 83,669 `word_pos` rows [estimate; r04 "0.35 MB packed"] |
-| `tr.ur.junagarhi.qe.sqlite` (+ footnotes, FTS) | ≈ 8–9 MB | ≈ 2.5 MB | APK | 6.16 MB source + FTS [estimate] |
-| `tr.en.saheeh.qe.sqlite` (+ FTS) | ≈ 2 MB | ≈ 0.7 MB | APK | 1.25 MB source + FTS [estimate] |
-| `timing.<rec>.sqlite` | ≈ 150–250 KB | ≈ 60–100 KB | APK (default reciter) / CDN | 6,350 rows + 114 file rows [estimate] |
-| gapped manifest pack | ≈ 300 KB | ≈ 150 KB | CDN | 6,350 md5 rows [estimate] |
-| `catalogue.json` envelope | ≈ 30–60 KB | — | APK + CDN | ~20 recitations × 114 sizes |
-| `index.json` envelope | ≈ 10–20 KB | — | APK + CDN | |
-| `geo.cities15000.sqlite` (P2) | 3.14 MB | 1.49 MB | APK | r08 §2.5 (measured) |
-| Proof set (per build) | ≈ 548 PDFs merged into 30, ~50–150 MB | — | CI artifact / owner drive, **never shipped** | [estimate] |
+| `mushaf.indopak16_taj.dk@<ver>.db` | ≈ 3–3.5 MB | ≈ 1 MB | APK (per tier) | doc 05 §3.1: ~84k `word` rows with text + integer placements, 8,768 lines, furniture [estimate] |
+| `ur.junagarhi.qe@<ver>.db` (+ footnotes, both FTS) | ≈ 9–11 MB | ≈ 2.8 MB | APK (per tier) | 6.16 MB source + unicode61 + trigram FTS [estimate] |
+| `en.saheeh.qe@<ver>.db` (+ both FTS) | ≈ 2.5 MB | ≈ 0.8 MB | APK (per tier) | 1.25 MB source + FTS [estimate] |
+| Timing pack `<packId>@<ver>.db` | ≈ 0.3 MB | ≈ 60–100 KB | APK (12 PUBLIC packs, ≈ 1–4 MB in all) / CDN from v1.1 | doc 06 §5.1: ~6,300 rows + 114 file rows [estimate] |
+| `catalogue.json` + `.sig` | ≈ 30–60 KB | — | APK + CDN | ~30 recitations × 114 sizes |
+| `index.json` + `.sig` | ≈ 10–20 KB | — | APK seed + CDN (v1.1) | |
+| `notices.json` + `.sig` | < 10 KB | — | CDN | |
+| `bundled.json`, `certified_pages.json` | < 50 KB each | — | APK (per tier) / repo | |
+| `cities@<ver>.db` | 3.14 MB | 1.49 MB | APK (per tier) | r08 §2.5 (measured) |
+| `azkar.core@<ver>.db` (v1.1) | ≈ 0.5 MB [estimate] | ≈ 0.2 MB | APK or CDN (v1.1) | 345 Arabic rows + translations |
+| Proof set (per build) | ≈ 548 PDFs merged into 30, ~50–150 MB | — | `out/proof/<code>/<build_id>/` + owner drive, **never shipped**; a CI artifact only for clean-room/G1-cleared layouts | [estimate] |
 | **APK content total (P1)** | ≈ 25–30 MB on disk | ≈ 8–9 MB of download | | sum (AAB per-ABI adds ≈ 1.3 MB sqlite-bundled .so, g04) |
 
 ---
 
-## 14. Proofreading workflow (gate G5)
+## 14. Proofreading workflow (gate G5) and `certified_pages.json`
 
 ```mermaid
 sequenceDiagram
   participant P as Pipeline
   participant O as Owner
   participant H as Hafiz/Qari reviewer
-  P->>O: proof/taj16/BUILD/para-01..30.pdf + signoff.csv + certificate template
-  O->>H: PDFs (print or tablet) + sign-off sheet
+  P->>O: out/proof/indopak16_taj/BUILD/para-01..30.pdf + signoff.csv + certificate template
+  O->>H: Round 1: PDFs (print or tablet) + sign-off sheet
   H->>O: errata (page label, slot, word, issue) + OK pages
-  O->>P: data/curated/errata/taj16.csv (triaged: data-fix / font-issue / not-an-error / upstream)
-  P->>P: overrides → rebuild → delta PDF (pages whose page_hash changed)
-  P->>O: delta-BUILD.pdf
-  O->>H: re-review delta only
-  H->>O: signed certificate (layout, build_id, 548/548 pages)
-  O->>P: data/legal/proofreading/taj16-BUILD.signoff.csv (+ certificate scan stored privately, hash committed)
-  P->>P: V-M19 passes → G5 cleared for this layout build family
+  O->>P: data/curated/errata/indopak16_taj.csv (triaged: data-fix / font-issue / not-an-error / upstream)
+  P->>P: build-time overrides → rebuild → word_override rows → new page_hash → delta PDF + page-diff report
+  P->>O: delta-BUILD.pdf + device captures of the release-candidate build (§5.6)
+  O->>H: Round 2: changed pages + 10 % random sample + special decisions, on device captures
+  H->>O: signed certificate (layout, pack version, build_id, font sha256, 548/548 pages)
+  O->>P: data/legal/proofreading/indopak16_taj-BUILD.signoff.csv (+ certificate scan stored privately, sha256 committed)
+  P->>P: crit mushaf certify → certified_pages.json → V-M19/V-X11 pass → G5 cleared (target 2027-01-18)
 ```
 
 - **Sheet columns:** `layout, build_id, para, page_label, page_hash, reviewer, qualification, status(OK|ERRATA), errata_ref, date`.
+- **`certified_pages.json`** is built by `crit mushaf certify` and committed to `data/legal/proofreading/indopak16_taj.certified_pages.json`. `install-assets` copies it beside the pack in the public source set. Shape:
+
+  ```json
+  { "layout": "indopak16_taj", "packId": "mushaf.indopak16_taj.dk", "packVersion": 3, "buildId": "…",
+    "fontSha256": "…", "certificateId": "G5-indopak16_taj-001", "certificateSha256": "…",
+    "addenda": [ { "id": "G5-indopak16_taj-001-A1", "sha256": "…", "pages": [412] } ],
+    "pages": [ { "pageIndex": 1, "pageLabel": 2, "pageHash": "…" }, "… 548 entries …" ] }
+  ```
+
+  Consumers: the PUBLIC release gate (V-M19/V-X11 here; `verifyContentEligibility`, doc 04 §11.3; doc 11 §5.4 validity rule) and doc 05's `PageHashTest`.
+- **Changed hashes.** Any page whose `page_hash` is not in the file blocks a PUBLIC build until a certificate addendum covers it. Ornament-only changes do not change `page_hash` (§5.6), so they need no addendum.
 - **Known decisions routed to the reviewer:**
   - 59:13:1 spelling (لَاَانْتُمْ vs لَاَنْتُمْ) and 27:21;
   - Fatiha 1:7:4 «۵» + «لا» rendering;
-  - 80 embedded-basmala header bands;
+  - 80 embedded-basmala (`THREE_PART`) header bands;
   - the 53 unverified quarter marks, if they are checked on the same pass;
   - the 114 surah-header wordings;
   - header Para on pp.508/528.
-- **Triage SLA** (D-22): a data error found after release goes into `advisories` within 24 h (signed index); a fixed content DB/pack ships in the next release.
+- **Text-error SLA after release** (unified ruling, doc 12):
+  - **triage ≤ 24 h**;
+  - **signed notice or kill-switch ≤ 48 h**, via a `notices.json` `page` warn notice and the §8.3 runbook;
+  - **corrected build submitted ≤ 72 h**: errata → rebuilt pack/content DB → addendum for the changed pages → app update. Text fixes are always app updates (D-30);
+  - **reporter acknowledged ≤ 72 h**.
 - **Each layout gets its own certificate.** `hafizi15` and `taj13` repeat the whole loop.
 - The 5 owner checkpoint photos (g02 §4) are compared with the proof before the first review round, to confirm that the owner's printing matches.
 

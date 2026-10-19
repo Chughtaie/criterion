@@ -966,7 +966,7 @@ Home card                                Reader chrome (page 42)                
 | `surahHighlight` / `disable` | — | No highlight for that surah (§4.4 follow-along) | Full player `audio_no_highlight` |
 | `pack` / `disable` | Only if the pack is installed and active | — | Pack row "Unavailable" (§4.24) |
 | `feature` / `disable` | — | The feature's entry point is hidden | — |
-| `minVersion` nudge (doc 11; field to add to the doc 04 schema) | "Update available" card. [Update] opens the Play in-app update flow (play) or the release page (foss) | — | Never a blocking dialog |
+| `minVersion` nudge (doc 11; field to add to the doc 04 schema) | "Update available" card. [Update] opens the app's Play Store listing (play) or the release page (foss); no in-app-update library | — | Never a blocking dialog |
 
 - **Message.** `message.en` or `message.ur` follows the UI language. If one is missing, the other is shown with its own direction (§7). The notice sheet is a local `ModalBottomSheet`. [Open page] → `ReaderKey(page)`; [Report] → `ReportErrorKey` prefilled.
 - **Lifecycle.** A notice shows from the time the verified file arrives until its `until`. Dismissing hides the Home card only; the reader chip stays while the notice is active, because it marks the page. Dismissed ids are kept in DataStore. A new notice id shows again. Expired notices disappear without UI.

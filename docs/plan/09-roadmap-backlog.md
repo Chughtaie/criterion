@@ -635,45 +635,48 @@ The 109.75 id total includes 4.5 id of conditional work (X). Without it, the ful
 
 ### 11.2 Epic detail
 
-Each row is one story. "Scope and key tasks" lists the tasks; they become issue checklist items `E-xx-Syy-Tn`. "When" is the sprint, or L1–L4 (stretch), v1.1 (Tier B) or cond. (conditional).
+Each row is one story. "Scope and key tasks" lists the tasks; they become issue checklist items `E-xx-Syy-Tn`. "When" is the sprint, or L1–L4 / L9 (pre-cut), v1.1 (Tier B) or cond. (conditional). "S7*" means the story is in the §4.1 "Unfunded" list: lever 1 funds it, and it must merge by 01-22.
 
-#### E-01 Toolchain & project skeleton — 3.75 id (spec: doc 04)
+#### E-01 Toolchain & project skeleton — 4.75 id (spec: doc 04)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
 | E-01-S01 | Toolchain upgrade PR — copy spike `gradle/libs.versions.toml` + build files; AGP 9.4.1 / Gradle 9.8.1 wrapper; root `alias(libs.plugins.kotlin.jvm) apply false` (KGP 2.2.10→2.4.21); KSP 2.3.12; compileSdk 37 / target 36 / min 24; desugar_jdk_libs 2.1.5; R8 `optimization { enable = true }`; no Ktor | — | 0.5 | — | S0 | P0 |
-| E-01-S02 | Convention plugins in `build-logic/convention` — `criterion.android.application(.compose)`, `.library(.compose)`, `.feature`, `.jvm.library`, `.hilt`, `.room3`, `.lint`, `.spotless`, `.robolectric` (JVM flags, host sqlite .so), `.root` (fails on feature→feature deps) | — | 1 | E-01-S01 | S0 | P0 |
-| E-01-S03 | Lean module skeleton — `:app`, `:core:{model,common,domain,content,database,datastore,network,data,designsystem,ui,navigation,mushaf-render,audio,audio-api,testing}`, `:feature:{home,reader,index,audio,search,settings}`; `QuranContentDb` internal, `ContentRepository` façade; Hilt bindings | — | 0.75 | E-01-S02 | S0 | P0 |
-| E-01-S04 | Flavors, manifest & signing — `play`/`foss`; v1 permission plan incl. `tools:node="remove"` for AD_ID, FINE_LOCATION, USE_FULL_SCREEN_INTENT; upload key + Play App Signing; versionCode scheme | — | 0.25 | E-01-S03 | S0 | P0 |
-| E-01-S05 | Device smoke test (1 h + setup) — API 24/25 and 26/27 phones: `getRunAdvance(الْكِتٰبُ)` = 2060/2847/4384 at cv01 0/1/3 (textSize 1000, glyf TTF); BundledSQLiteDriver FTS5 hit; adhan2 + desugared java.time | F-RD-01 | 0.5 | E-01-S01, E-03-S03 | S0 | P0 |
-| E-01-S06 | App shell & navigation — Nav3 `NavDisplay`, all NavKeys in `:core:navigation`, top-level destinations, predictive back, edge-to-edge | — | 0.75 | E-01-S03 | S1 | P1 |
+| E-01-S02 | Convention plugins in `build-logic/convention`, IDs verbatim from doc 04 §16: `criterion.android.application(.compose/.flavors)`, `criterion.android.library(.compose)`, `criterion.android.feature`, `criterion.jvm.library`, `criterion.hilt`, `criterion.room3`, `criterion.android.robolectric` (JVM flags, host sqlite .so), `criterion.android.lint`, `criterion.spotless`, `criterion.content.eligibility` (stub), `criterion.android.test`, `criterion.root` (fails on feature→feature deps; root tasks `quickCheck`/`prCheck`), plus `criterion.android.screenshot` (doc 10) | — | 1 | E-01-S01 | S0 | P0 |
+| E-01-S03 | Lean module skeleton (doc 04 §3, A2) — the 9 P0 modules `:app`, `:core:model`, `:core:domain`, `:core:content`, `:core:database`, `:core:data`, `:core:designsystem`, `:core:navigation`, `:core:testing`. Later modules (`:core:remote`, `:core:mushaf-render`, `:core:audio`, `:feature:home` (incl. `IndexKey` index tabs), `:feature:reader`, … `:baselineprofile`) are added by the first story that needs them, using doc 04's names. `QuranContentDb` internal behind `ContentDataSource`; Hilt bindings | — | 0.75 | E-01-S02 | S0 | P0 |
+| E-01-S04 | Variants, manifest & signing — flavor dimensions `distribution` {play, foss} × `tier` {personal, public}; `playPersonal*` disabled; `fossPersonal` applicationIdSuffix `.personal` (`com.chughtai.criterion.personal`); `BuildConfig.CONTENT_TIER` {PERSONAL, BETA, PUBLIC} (personal → PERSONAL; public → BETA unless `-Pcriterion.release=production` → PUBLIC) and `MONETIZED` (`-Pcriterion.monetized=true`, v1.5+); per-tier asset dirs `src/personal|public/assets/packs/` with an empty-public guard; v1 permission plan incl. `tools:node="remove"` for AD_ID, FINE_LOCATION, USE_FULL_SCREEN_INTENT; upload key + Play App Signing; versionCode scheme (doc 10) | — | 0.5 | E-01-S03 | S0 | P0 |
+| E-01-S05 | Device smoke test + platform spikes — API 24/25 and 26/27 phones: `getRunAdvance(الْكِتٰبُ)` = 2060/2847/4384 at cv01 0/1/3 (textSize 1000, glyf TTF); BundledSQLiteDriver FTS5 hit; adhan2 + desugared java.time; doc 04 spikes S-1 (Room 3 pack DB by absolute path), S-2 (TRUNCATE journal + `bmgr` restore), S-4 (trigram index size), S-5 (UIDT on API 34+); D-27 HijrahDate vs ICU `IslamicCalendar` on 5 reference dates (API 24/25) → `HijriCalendarProvider` choice | F-RD-01 | 1 | E-01-S01, E-03-S03, E-01-S07 | S0 | P0 |
+| E-01-S06 | App shell & navigation — Nav3 `NavDisplay`, all NavKeys in `:core:navigation` (doc 04: `ReaderKey(mushaf, page, focus, mode, autoplay)`, `IndexKey`, …), top-level destinations, predictive back, edge-to-edge; doc 04 spike S-3 (assisted VM injection in Nav3) | — | 0.75 | E-01-S03 | S2 | P1 |
+| E-01-S07 | Test-device procurement (owner) — used API 24/25 phone + Transsion 3 GB Android 12–14 (Ref-low); borrow API 26/27; by 10-28 | — | 0.25 | — | S0 | ADM |
 
-#### E-02 CI & quality gates — 3.25 id (spec: doc 10)
+#### E-02 CI & quality gates — 4.25 id (spec: doc 10)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-02-S01 | PR pipeline on GitHub Actions — checkout v7, setup-java v6 (Temurin 21), gradle/actions v6 cache; build, unit tests, Lint, Spotless/ktlint + compose-rules, `assembleRelease`, `buildEnvironment` grep guard (`2.2.10 -> 2.4.21`), Maven 429 retry | — | 0.75 | E-01-S02 | S0 | P0 |
+| E-02-S01 | PR pipeline — `.github/workflows/android.yml` (doc 10 §12.2): checkout v7, setup-java v6 (Temurin 21), gradle/actions v6 cache; `./gradlew prCheck` (build, unit + Robolectric tests, Lint, Spotless/ktlint + compose-rules, both flavors assemble); required status `ci/check`; `buildEnvironment` grep guard (`2.2.10 -> 2.4.21`), Maven 429 retry | — | 0.75 | E-01-S02 | S0 | P0 |
 | E-02-S02 | Content-DB CI — run pipeline, JVM content-invariant tests, Robolectric open of the **no-`room_master_table`** copy (forces `onValidateSchema`), input SHA-256 check | — | 0.5 | E-03-S01 | S2 | P1 |
-| E-02-S03 | Mushaf golden screenshots — Roborazzi, 20 reference pages × 2 themes, NATIVE graphics one SDK per JVM, never a `fonts/` test-resource folder | F-RD-01 | 0.5 | E-04-S03 | S6 | C |
-| E-02-S04 | Licence & content gates — release fails unless `permissions.yml: qul_res_11: granted`; build-eligibility flags block NC content in monetized builds and personal-only reciters in public builds; lint forbids QF/quran.com hosts in pipeline inputs | — | 0.5 | E-09-S01 | S6 | F |
-| E-02-S05 | Baseline profile + Macrobenchmark 1.5.0 — startup, page-turn, index scroll; nightly job | — | 0.75 | E-05-S01 | S7 | F |
+| E-02-S03 | Mushaf golden infra + core set — Roborazzi + NATIVE graphics one SDK per JVM, never a `fonts/` test-resource folder; core set (pages 1–21 per doc 05 + doc 01 golden labels) × 2 themes; in place before the R1 fixes land | F-RD-01 | 0.5 | E-04-S04 | S4 | P1 |
+| E-02-S04 | Content-eligibility & licence gates — `verifyContentEligibility<Variant>` (`criterion.content.eligibility`, doc 04 §11): parses `bundled.json` + `catalogue.json`, checks sha256, CONTENT_TIER vs the 5-value `licenceStatus` + `eligibleTiers`. BETA/PUBLIC builds fail unless the public-tier layout pack is G1-cleared (`qul_res_11: granted`) **or** clean-room; PUBLIC also needs G5 `certified_pages.json` page hashes; NC content blocked when MONETIZED; lint forbids QF/quran.com hosts in pipeline inputs | — | 0.75 | E-10-S07, E-09-S01 | S5 (days 1–3) | F |
+| E-02-S05 | Baseline profile + Macrobenchmark 1.5.0 — startup, page-turn, index scroll; nightly job; profile generated on the RC (deviation from doc 10's "profile in the 12-21 build", §15) | — | 0.75 | E-05-S01 | S7 | F |
 | E-02-S06 | Release job — signed AAB, mapping archive, version bump; Console upload manual in v1 | — | 0.25 | E-22-S02 | S7 | F |
+| E-02-S07 | Full PR golden set (~60 rule-selected pages, zero tolerance) + nightly all 548 pages (doc 10) | F-RD-01 | 0.75 | E-02-S03 | S6 | C |
 
-#### E-03 Content pipeline & content DB (tools/) — 13.25 id (spec: doc 08)
+#### E-03 Content pipeline & content DB (tools/) — 15.5 id (spec: doc 08)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-03-S01 | Pipeline skeleton & pinned inputs — `tools/content-pipeline/` from spike `build_content_db.py`; inputs manifest with SHA-256 (Tanzil Uthmani + Simple-Clean + `quran-data.js`; QuranEnc `urdu_junagarhi`, `english_saheeh`); execute Room exported schema SQL verbatim; rebuild/optimize, `user_version`, VACUUM; `python3 -I` | — | 0.75 | E-01-S03 | S0 | P0 |
-| E-03-S02 | DK text & Kufan keys — pin digitalkhatt.org @4213fab (`quran_text_indopak_15.ts`, `hb/indopak.otf`); tokenise; assert 83,669 tokens / 77,433 words / 6,236 ends / 118 U+08E2 / 558 U+08D6 / 15 U+08DB; Kufan walk; `ayah_marker` 6,354 rows; Taj Fatiha override | F-RD-01 | 1.5 | E-03-S01 | S0 | P0 |
+| E-03-S01 | Pipeline skeleton & pinned inputs — doc 08 `tools/` uv workspace (Python 3.12) with stage 1 `content-db` ported from the spike's `build_content_db.py`; `data/pins.lock` with SHA-256 (Tanzil Uthmani + Simple-Clean + `quran-data.js`; QuranEnc `urdu_junagarhi`, `english_saheeh`); executes the Room-exported schema SQL verbatim; rebuild/optimize, `user_version`, VACUUM; run as `uv run --frozen python -I -m crit content build` (alias `just content`), output in `out/` | — | 0.75 | E-01-S03 | S0 | P0 |
+| E-03-S02 | DK text & Kufan keys (`crit content` stages) — pin digitalkhatt.org @4213fab (`quran_text_indopak_15.ts`, `hb/indopak.otf`); tokenise into the content-DB `word` table; assert 83,669 tokens / 77,433 words / 6,236 ends / 118 U+08E2 / 558 U+08D6 / 15 U+08DB; Kufan walk; `ayah_marker` 6,354 rows (content DB); Taj Fatiha `ayah_display_override` | F-RD-01 | 1.5 | E-03-S01 | S0 | P0 |
 | E-03-S03 | Font build — CFF2→glyf TTF (`cff2_to_glyf.py`), OFL rename, SHA pin, `.notdef` sweep over all tokens | F-RD-01 | 0.25 | E-03-S02 | S0 | P0 |
 | E-03-S04 | 16-line layout join — QUL res 11 `word_index`→`word_key`→DK token (identity except 72:16), whitelist {4:112:3, 18:19:34, 59:13:1}; p.529 fix; 80 `SURAH_NAME_WITH_BASMALA`; 16-slot grid restore; index-1 sarlauh remap; `page_label = page_index + 1` | F-RD-01 | 1.5 | E-03-S02, QUL export | S1 | P1 |
 | E-03-S05 | Indexing metadata — Indo-Pak Para table (7 differing boundaries, names, starts), 7 Manzils, 558 rukus + marker triple, sajda (14 + 22:77 shafii_only), 90 quarters (seed + 3 corrections, `word_pos`, `verified_source`), 114 surah-header strings | F-IX-01..06 | 1.5 | E-03-S04 | S1 | P1 |
 | E-03-S06 | Justification precompute — per-word x-fractions + `cv01` N ≤ 3 (`hb_widths.py`, uharfbuzz on the glyf TTF); stretch report | F-RD-01 | 1.25 | E-03-S04, E-03-S03 | S1 | P1 |
-| E-03-S07 | Validation gates & proof PDF — 548×16 slots; Para starts 18n−16 (n=2..28), 508, 528; Manzil starts [1,96,187,254,330,401,466]; every word once & in order; zero `.notdef`; render all 548 pages to PDF | F-RD-01 | 1 | E-03-S05, E-03-S06 | S2 | P1 |
+| E-03-S07 | Validation gates & proof PDF — 548×16 slots; Para 1 at index 1, Para starts 18n−16 (n=2..28), 508, 528; Manzil starts [1,96,187,254,330,401,466]; every word once & in order; zero `.notdef`; pipeline renders all 548 pages to PDF (`crit mushaf proof`) | F-RD-01 | 1 | E-03-S05, E-03-S06 | S2 | P1 |
 | E-03-S08 | Search columns — normalizers (imla'i/simple-clean, Uthmani, Indo-Pak; Urdu keeps ے/ھ; English ASCII-fold); FTS5 unicode61 + trigram (external content); alias seed; shared test-vector JSON | F-SR-01..03 | 1 | E-03-S01 | S5 | C |
-| E-03-S09 | Bundled translations — Junagarhi (+ Ahsan-ul-Bayan footnotes) and Saheeh (credit Noor International Center), verbatim, version-pinned, `content_meta.sources_json` | F-TR-01 | 0.75 | E-03-S01 | S2 | P1 |
-| E-03-S10 | Pack builder & signed `index.json` — pack SQLite + meta; sha256, size, licence, attribution, build-eligibility, kill-switch; Ed25519 (offline key) | F-TR-02, F-PL-06 | 1.25 | E-23-S01 | v1.1 | B |
-| E-03-S11 | [Conditional on G1 failure] Clean-room tooling — anchor capture, pre-break (`rebreak2` logic), correction UI (photo beside page, ←/→), 10% double-entry diff; operator is a contractor who never saw QUL/Waqar/QuranApp 16-line data | F-RD-01 | 2.5 | G1 = fail (2026-11-19) | cond. | X |
+| E-03-S09 | Two bundled translation packs — Junagarhi (+ Ahsan-ul-Bayan footnotes) and Saheeh (credit Noor International Center), each a separate pack DB with its own FTS (not in the content DB, doc 08); verbatim, version-pinned, attribution + `licenceStatus` + `basis` | F-TR-01 | 0.75 | E-03-S01 | S2 | P1 |
+| E-03-S10 | Downloadable-pack publishing & signed `index.json` — sha256, size, `licenceStatus`, attribution, `eligibleTiers`, kill-switch; detached Ed25519 `.sig` (offline key) | F-TR-02, F-PL-06 | 1.25 | E-23-S01 | v1.1 | B |
+| E-03-S11 | [Conditional on G1 failure] Clean-room tooling + supervision — anchor capture, pre-break (`rebreak2` logic), correction UI (photo beside page, ←/→), 10% double-entry diff (tooling 3 id); owner supervision and double-entry QA (1 id). The operator is a second-person contractor who never saw QUL/Waqar/QuranApp 16-line data; ≈ 7 weeks elapsed | F-RD-01 | 4 | G1 = fail (2026-11-19) | cond. | X |
+| E-03-S12 | Mushaf pack writer (doc 05 schema) — `pack_info`, `mushaf`, `page`, `line`, `word` (x-fractions, cv01, ink box), `ayah_page`, `surah_header`, `margin_marker`, `furniture_run`, `ornament_item`, `calibration`, build-time errata applied; Room-exported schema; output `mushaf.indopak16_taj.dk` → `src/personal/assets/packs/` (and `src/public/` only if G1-cleared or clean-room) | F-RD-01 | 0.75 | E-03-S04, E-03-S06 | S1 | P1 |
 
 #### E-04 Mushaf renderer (:core:mushaf-render) — 8.75 id (spec: doc 05)
 
@@ -685,20 +688,20 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 | E-04-S04 | Furniture & ornament layer — frame, header row (Para · page label · surah), margin markers (ruku triple, manzil, quarter, sajda) by page parity, footer «منزل N»; placeholder vectors | F-RD-01, F-IX-04, F-IX-06 | 1.25 | E-04-S03, E-03-S05 | S2 | P1 |
 | E-04-S05 | Hit-testing & highlight layer — word boxes→ayah key, selection, highlight layer under text (alpha 0.25–0.35); audio ticks invalidate highlight only | F-RD-04, F-RD-05 | 1 | E-04-S03 | S2 | P1 |
 | E-04-S06 | Mushaf themes — light/sepia/night/AMOLED tokens, ornament tint, night brightness | F-RD-03 | 0.5 | E-04-S04, E-14-S01 | S3 | P1 |
-| E-04-S07 | Width-drift guard & Fallback 1 — instrumented `getRunAdvance` vs offline widths (0.5%); runtime inter-word fitting (TextMeasurer) behind a flag | F-RD-01 | 0.75 | E-04-S03 | S6 | C |
-| E-04-S08 | Page cache & performance — ±3-page LRU, prefetch, 2 GB-device target, no page bitmaps | F-RD-01 | 0.5 | E-04-S03 | S7 | C |
-| E-04-S09 | Final ornament integration — designer SVG→ImageVector; embedded-basmala header band; sarlauh panel | F-RD-01 | 0.75 | E-14-S02 | S7 | F |
+| E-04-S07 | Width-drift guard — instrumented `getRunAdvance` vs offline widths (0.5%) on the test phones (0.25 id, C). Fallback 1 runtime inter-word fitting (`Paint.getRunAdvance`, doc 05) behind a flag only if the P0 kashida check is no-go (+0.5 id, X) | F-RD-01 | 0.25 + 0.5 X | E-04-S03 | S7* | C (+X) |
+| E-04-S08 | Page cache & performance — ±3-page LRU, prefetch, 2 GB-device target, no page bitmaps | F-RD-01 | 0.5 | E-04-S03 | S7* | C |
+| E-04-S09 | Final ornament integration — designer SVG→ImageVector; embedded-basmala header band; sarlauh panel. **Hard deadline 01-04**, so hafiz R2 sees the shipping look | F-RD-01 | 0.75 | E-14-S02 | S5 | F |
 
 #### E-05 Reader UX — 6.5 id (spec: doc 02)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
 | E-05-S01 | RTL pager — 548 pages, labels 2–549, deep link to page/ayah | F-RD-01 | 0.5 | E-04-S03 | S2 | P1 |
-| E-05-S02 | Reader chrome — toolbar "Para N · Page L · Surah", immersive tap-to-toggle, keep-screen-on, bookmark/night/lock icons | F-RD-02 | 0.75 | E-05-S01 | S3 | P1 |
+| E-05-S02 | Reader chrome — toolbar "Para N · Page L · Surah", immersive tap-to-toggle, keep-screen-on, bookmark/night/lock icons, page scrubber (RTL), page-turn haptics toggle (default off), signed-notice info chip slot (F-PL-11) | F-RD-02 | 0.75 | E-05-S01 | S3 | P1 |
 | E-05-S03 | Ayah action sheet — play from here, bookmark, copy/share (PUA/control stripped + attribution), translation, tafsir summary, note stub | F-RD-04 | 0.75 | E-04-S05 | S3 | P1 |
 | E-05-S04 | Follow-along — highlight from `PlaybackStateHub` + auto page-turn, suspended 8 s after pager touch | F-RD-05 | 0.75 | E-08-S04 | S3 | P1 |
 | E-05-S05 | Locks — rotation lock on phones (hidden ≥ 600dp) + page-turn lock | F-RD-07 | 0.25 | E-05-S01 | S3 | P1 |
-| E-05-S06 | Pinch zoom | F-RD-06 | 0.5 | E-05-S01 | S7 | C |
+| E-05-S06 | Pinch zoom (floor: P1 Must, never cut) | F-RD-06 | 0.5 | E-05-S01 | S6 | C |
 | E-05-S07 | Tafsir-summary sheet (Ahsan-ul-Bayan footnotes) | F-RD-13 | 0.5 | E-03-S09 | L1 | S |
 | E-05-S08 | Vertical auto-scroll mode with speed | F-RD-09 | 1.25 | E-05-S01 | v1.1 | B |
 | E-05-S09 | Page-curl animation option | F-RD-12 | 1.25 | E-05-S01 | v1.1 | B |
@@ -710,22 +713,22 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 | E-06-S01 | Surah index (Read + Play) — 114 rows, Makki/Madani, ayah count, start page label | F-IX-01 | 0.5 | E-03-S05, E-01-S06 | S2 | P1 |
 | E-06-S02 | Para index — Indo-Pak names, start page, ruku count, progress, Read + Play | F-IX-02 | 0.5 | E-06-S01 | S2 | P1 |
 | E-06-S03 | Manzil index (Read + Play) | F-IX-03 | 0.25 | E-06-S01 | S2 | P1 |
-| E-06-S04 | Go to page (labels) / surah:ayah | F-IX-05 | 0.25 | E-05-S01 | S3 | P1 |
+| E-06-S04 | Go to page (labels) / surah:ayah | F-IX-05 | 0.25 | E-05-S01 | S4 | P1 |
 | E-06-S05 | Quick access (Yaseen, Rahman, Mulk, Waqiah, Kahf, Ayatul Kursi, Manzil dua, last 2 ayat of Baqarah) | F-IX-08 | 0.25 | E-06-S01 | S4 | P1 |
-| E-06-S06 | Home — continue reading + recents | F-IX-09 | 0.5 | E-07-S02 | S3 | P1 |
-| E-06-S07 | Ruku navigation (next/prev, list per surah/Para) | F-IX-04 | 0.5 | E-06-S01 | S7 | C |
-| E-06-S08 | Sajda list | F-IX-06 | 0.25 | E-06-S01 | S7 | C |
+| E-06-S06 | Home — continue reading + Continue-listening card (`listening_position`) + recents; signed-notice card slot (F-PL-11) | F-IX-09 | 0.5 | E-07-S02 | S3 | P1 |
+| E-06-S07 | Ruku list per surah/Para + Play ruku from list; margin ع long-press → ruku sheet (Play/Repeat). Next/prev ruku stays in the chrome | F-IX-04 | 0.5 | E-06-S01 | L9 | S |
+| E-06-S08 | Sajda list | F-IX-06 | 0.25 | E-06-S01 | L9 | S |
 | E-06-S09 | Para-quarter navigation list | F-IX-07 | 0.5 | E-06-S02 | L2 | S |
 
 #### E-07 Bookmarks, last-read & user data — 3.75 id (spec: doc 04)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-07-S01 | `user.db` v1 + settings — Room 3 schema keyed by Kufan verse key / mushafId+page_index, exported schema JSON, migration-test harness; typed `DataStore<UserSettings>` | — | 0.75 | E-01-S03 | S2 | P1 |
+| E-07-S01 | `user.db` v1 + settings — Room 3 schema per doc 04 §7.4 (P1 **and** P2 tables, frozen 12-21; P3 = v2), keyed by Kufan `VerseKey` / `MushafId` + page index, exported schema JSON, migration-test harness; typed `DataStore<UserSettings>` | — | 0.75 | E-01-S03 | S2 | P1 |
 | E-07-S02 | Auto last-read pointer (per mushaf, separate from bookmarks) | F-BM-01 | 0.25 | E-07-S01 | S3 | P1 |
-| E-07-S03 | Ayah & page bookmarks + list screen | F-BM-02 | 0.5 | E-07-S01 | S4 | P1 |
+| E-07-S03 | Ayah & page bookmarks + list screen + undo | F-BM-02 | 0.75 | E-07-S01 | S4 | P1 |
 | E-07-S04 | Auto Backup rules (user.db + settings only) | F-BM-06 | 0.25 | E-07-S01 | S4 | P1 |
-| E-07-S05 | Bookmark collections/colours + undo | F-BM-02 | 0.5 | E-07-S03 | S7 | C |
+| E-07-S05 | Bookmark collections/colours (floor: part of the F-BM-02 Must) | F-BM-02 | 0.25 | E-07-S03 | S7 | C |
 | E-07-S06 | Notes | F-BM-03 | 0.75 | E-07-S03 | v1.1 | B |
 | E-07-S07 | JSON export/import via SAF | F-BM-06 | 0.75 | E-07-S01 | v1.1 | B |
 
@@ -734,44 +737,45 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
 | E-08-S01 | Audio spike — `MediaLibraryService` + ExoPlayer streaming mp3quran Alafasy (read 123); `ClippingConfiguration` ayah range from timing rows; PlayerMessages per ayah; CBR seeking flag; seek-accuracy log | F-AU-03 | 1 | E-01-S03 | S1 | P1 |
-| E-08-S02 | Playback service & session — notification, lock screen, headset, USAGE_MEDIA + CONTENT_TYPE_SPEECH (pause, no duck), start only from user action | F-AU-07 | 1 | E-08-S01 | S2 | P1 |
-| E-08-S03 | `PlanExpander` — scopes Surah / Para (Indo-Pak) / Manzil / Ruku / Page / AyahRange / Ayah / play-from-here; basmala strategies; unit tests per scope | F-AU-02 | 1.25 | E-08-S01, E-03-S05 | S3 | P1 |
+| E-08-S02 | Playback service & session — notification, lock screen, headset, USAGE_MEDIA + CONTENT_TYPE_SPEECH (pause, no duck), start only from user action; `ResumeStore` + `onPlaybackResumption` (doc 06 §10.3) | F-AU-07 | 1 | E-08-S01 | S3 | P1 |
+| E-08-S03 | `PlanExpander` — doc 04 `PlayScope`s Surah / Para (Indo-Pak) / Manzil / Ruku / Page / Range / Ayah / FromHere (`Until.CONTINUOUS` default) / Passage / Quran; basmala strategies; unit tests per scope | F-AU-02 | 1.25 | E-08-S01, E-03-S05 | S3 | P1 |
 | E-08-S04 | Gapless timing + `PlaybackStateHub` — binary search after seek, per-surah highlight kill-switch, ETag/length guard, per-ayah MediaMetadata | F-AU-03 | 1 | E-08-S03, E-09-S02 | S3 | P1 |
-| E-08-S05 | Speed 0.5–2× + sleep timer (minutes / end of ayah, surah, Para; fade-out) | F-AU-06 | 0.5 | E-08-S02 | S4 | P1 |
+| E-08-S05 | Speed 0.5–2× + sleep timer (minutes / end of ayah, surah, Para; fade-out) | F-AU-06 | 0.5 | E-08-S02 | S7* | C |
 | E-08-S06 | Player UI — mini + full player, scope picker sheet, reciter switch | F-AU-02 | 1 | E-08-S03 | S3 | P1 |
 | E-08-S07 | Streaming cache — SimpleCache LRU 256 MB | F-AU-09 | 0.25 | E-08-S02 | S3 | P1 |
-| E-08-S08 | Repeat ayah×N, range×M/∞, pause-after-ayah (fixed/proportional); gapless re-expansion to per-ayah clips | F-AU-05 | 1 | E-08-S03 | S5 | C |
-| E-08-S09 | Gapped verse-by-verse mode (everyayah / islamic.network; `licenceStatus=PENDING` → personal/beta builds) | F-AU-04 | 0.75 | E-08-S03 | S7 | C |
+| E-08-S08 | Repeat ayah×N, range×M/∞, pause-after-ayah (fixed/proportional); gapless re-expansion to per-ayah clips | F-AU-05 | 1 | E-08-S03 | S7 | C |
+| E-08-S09 | Gapped verse-by-verse mode (islamic.network first, everyayah second; `licenceStatus=PENDING` → PERSONAL and BETA builds only, never PUBLIC) | F-AU-04 | 0.75 | E-08-S03 | L9 | S |
 | E-08-S10 | Arabic + Urdu translation-audio interleave (personal build only) | F-AU-10 | 1 | E-08-S09 | v1.1 | B |
 
 #### E-09 Reciter catalogue & timing packs — 3.75 id (spec: doc 06)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-09-S01 | Catalogue — `catalogue.json` schema (read id, host, mirrors, bitrate, licenceStatus, attribution, enabled, highlight-disabled surahs, build eligibility); bundled shortlist; no reciter photos | F-AU-01 | 0.5 | E-01-S03 | S2 | P1 |
+| E-09-S01 | Catalogue — `catalogue.json` schema per doc 06 (recitation IDs in doc 06 format, host, mirrors, bitrate, 5-value `licenceStatus` + `basis`, attribution, enabled, `highlight_disabled_surahs`, `eligibleTiers`); bundled per-tier shortlist; no reciter photos | F-AU-01 | 0.5 | E-01-S03 | S2 | P1 |
 | E-09-S02 | Timing pipeline — mp3quran `ayat_timing` for 12 reads; `normalise()` (label shift, intro→ayah 0, set check, monotonic, clamp ≤ 1 s / disable > 1 s, CBR check); guard (length, ETag, duration); bundled timing tables | F-AU-03 | 1.25 | E-03-S01 | S1 | P1 |
 | E-09-S03 | Reciter list + favourite qari (preview, favourite) | F-AU-01 | 0.5 | E-09-S01 | S4 | P1 |
 | E-09-S04 | Decoded-audio checks for structural-only reads 54, 4, 89, 109, 159 (3 surahs each) + one listening pass per reciter | F-AU-03 | 0.5 | E-09-S02 | S5 | C |
 | E-09-S05 | Weekly re-validation job (ETag/length diff → rebuild) | F-AU-03 | 0.25 | E-09-S02, E-02-S01 | S7 | F |
-| E-09-S06 | Speech-onset snapping (±1.5 s; Mujawwad lead fix) | F-AU-03 | 0.75 | E-09-S02 | v1.1 | B |
+| E-09-S06 | Speech-onset snapping (±1.5 s; Mujawwad lead fix). If not pulled in, Abdul Basit Mujawwad (read 51) ships in v1.0 with highlighting off | F-AU-03 | 0.75 | E-09-S02 | v1.1 | B |
 
-#### E-10 Downloads, storage & packs — 5.25 id (spec: doc 06)
+#### E-10 Downloads, storage & packs — 6.25 id (spec: doc 06)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
 | E-10-S01 | Downloader core — OkHttp Range resume, `.part` + atomic rename, MD5/SHA-256, per-surah ZIP, `getExternalFilesDirs` + `.nomedia`, Wi-Fi-only default | F-AU-08 | 1 | E-01-S03 | S3 | P1 |
 | E-10-S02 | WorkManager long-running `dataSync` worker (all APIs in P1; API ≤ 33 from v1.0) | F-AU-08 | 0.75 | E-10-S01 | S3 | P1 |
-| E-10-S03 | Download UI (surah / Para / full; progress; cancel) + offline-first resolution in player | F-AU-08 | 0.75 | E-10-S01 | S4 | P1 |
-| E-10-S04 | Storage manager (usage per reciter, delete, SD card) | F-PL-06 | 0.5 | E-10-S03 | S5 | C |
-| E-10-S05 | UIDT job on API 34+ (`RUN_USER_INITIATED_JOBS`, no Jetpack wrapper) | F-AU-08 | 1.5 | E-10-S01 | S5 | F |
-| E-10-S06 | Pack installer — verify signed index, sha256, atomic install, kill-switch | F-PL-06 | 0.75 | E-03-S10, E-23-S02 | v1.1 | B |
+| E-10-S03 | Download UI (surah / Para / Manzil / full / popular pack; progress; cancel) + offline-first resolution in player | F-AU-08 | 0.75 | E-10-S01 | S4 | P1 |
+| E-10-S04 | Storage manager (usage per reciter, delete, SD card) | F-PL-06 | 0.5 | E-10-S03 | S7* | C |
+| E-10-S05 | UIDT job on API 34+ (`AudioDownloadJobService`, `RUN_USER_INITIATED_JOBS`, no Jetpack wrapper); required before any PUBLIC build | F-AU-08 | 1.5 | E-10-S01 | S7 | F |
+| E-10-S06 | Downloadable-pack installer — verify signed index, sha256, atomic install, kill-switch | F-PL-06 | 0.75 | E-03-S10, E-23-S02, E-10-S07 | v1.1 | B |
+| E-10-S07 | Bundled packs per tier & registry — `PackManager.ensureBundledInstalled()`, `bundled.json` (id, type, sha256, eligibility, `licenceStatus`), `installed_pack` rows, copy from `src/{personal,public}/assets/packs/` to `files/packs/<type>/<id>/<ver>/pack.db`; opens mushaf, translation and timing packs (timing packs = plain SQLite via androidx.sqlite) | F-PL-06, F-RD-01 | 1 | E-03-S12, E-01-S04 | S2 | P1 |
 
 #### E-11 Translation view & packs — 2.5 id (spec: doc 03)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-11-S01 | Translation view — Arabic + translation ayah list, position synced with mushaf | F-RD-08, F-TR-01 | 1 | E-03-S09 | S3 | P1 |
-| E-11-S02 | Translation display settings (Urdu / English / both, size) | F-TR-01 | 0.25 | E-11-S01 | S4 | P1 |
+| E-11-S01 | Translation view — Arabic + translation ayah list, position synced with mushaf | F-RD-08, F-TR-01 | 1 | E-03-S09, E-10-S07 | S4 | P1 |
+| E-11-S02 | Translation display settings (Urdu / English / both, size) | F-TR-01 | 0.25 | E-11-S01 | S7* | C |
 | E-11-S03 | Downloadable translation packs + translator choice per language | F-TR-02, F-TR-03 | 1.25 | E-10-S06 | v1.1 | B |
 
 #### E-12 Search — 1.75 id (spec: doc 04)
@@ -782,24 +786,26 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 | E-12-S02 | Search UI — grouped Arabic/Urdu/English results, snippet highlight, jump to ayah | F-SR-02 | 0.75 | E-12-S01 | S5 | C |
 | E-12-S03 | Alias search (Yaseen, Ayatul Kursi, Manzil dua …) | F-SR-03 | 0.25 | E-12-S01 | S5 | C |
 
-#### E-13 Onboarding, settings, Urdu UI & accessibility — 3.25 id (spec: doc 02)
+#### E-13 Onboarding, settings, Urdu UI, accessibility & platform touches — 4.25 id (spec: doc 02)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
 | E-13-S01 | i18n infra — `AppCompatDelegate.setApplicationLocales`, `generateLocaleConfig`, language splits off, Noto Nastaliq Urdu, RTL checks, hard-coded-string lint | F-PL-03 | 0.75 | E-01-S03 | S2 | P1 |
-| E-13-S02 | Urdu UI strings (owner translates, reviewer checks), pseudo-locale run | F-PL-03 | 0.5 | E-13-S01 | S5 | C |
-| E-13-S03 | Onboarding — UI language, mushaf, favourite qari (location step added with E-15) | F-PL-01 | 0.5 | E-09-S03 | S6 | C |
-| E-13-S04 | Settings screen (reader, audio, downloads, language, theme, about) | F-PL-02 | 0.75 | E-07-S01 | S4 | P1 |
-| E-13-S05 | Accessibility baseline — ayah semantics, custom "Play recitation" action, 200% font on non-mushaf UI, contrast, TalkBack pass | F-PL-07 | 0.75 | E-05-S03 | S6 | C |
+| E-13-S02 | Urdu UI strings complete — owner translates; native-speaker + scholar reviewer (engaged by 12-07) checks UI strings and the ur-PK listing copy in one pass (12-28 → 01-06); pseudo-locale run | F-PL-03 | 1 | E-13-S01 | S5 | C |
+| E-13-S03 | Onboarding — UI language, mushaf, favourite qari (location + Asr step added with E-15) | F-PL-01 | 0.5 | E-09-S03 | S6 | C |
+| E-13-S04 | Settings screen (reader, audio, downloads, language, theme, about) | F-PL-02 | 0.75 | E-07-S01 | S7* | C |
+| E-13-S05 | Accessibility baseline — ayah semantics, custom "Play recitation" action, 200% font on non-mushaf UI, contrast, TalkBack pass | F-PL-07 | 0.75 | E-05-S03 | S7 | C |
+| E-13-S06 | Gentle in-app review prompt — Play In-App Review (review-ktx, play flavor only), once after a milestone (e.g. first khatam or 30 days of use) | F-PL-10 | 0.25 | — | v1.1 | B |
+| E-13-S07 | Launcher app shortcuts — Continue reading, Play favourite qari, Qibla, Tasbeeh (static + dynamic) | F-PL-12 | 0.25 | E-01-S06 | v1.1 | B |
 
 #### E-14 Design system & ornaments (freelance designer) — 2.25 id (spec: doc 02)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-14-S01 | Design tokens & theme — M3 1.4.0, typography (Nastaliq UI), colour schemes; wrapper seam for M3 Expressive 1.5 | — | 0.75 | E-01-S03 | S2 | P1 |
+| E-14-S01 | Design tokens & theme — M3 1.4.0, typography (Nastaliq UI), colour schemes; wrapper seam for M3 Expressive 1.5 | — | 0.75 | E-01-S03 | S3 | P1 |
 | E-14-S02 | Designer engagement (owner) — brief, hire, 2 review rounds, licence assignment; deliverables: frame, header bar, surah cartouche (incl. embedded-basmala variant), sarlauh panel, «ع»/manzil/quarter/sajda badges, app icon, feature graphic | — | 0.5 | — | S0 | ADM |
-| E-14-S03 | Core components — SurahRow, ParaBadge, AyahNumber, DownloadButton, player bar, empty/error states | — | 0.75 | E-14-S01 | S3 | P1 |
-| E-14-S04 | Icon & store-graphic integration (adaptive + monochrome icon, splash) | — | 0.25 | G3, E-14-S02 | S7 | F |
+| E-14-S03 | Core components consolidation — SurahRow, ParaBadge, AyahNumber, DownloadButton, player bar, empty/error states (first versions are built inside the screen stories) | — | 0.75 | E-14-S01 | S7* | C |
+| E-14-S04 | Icon & store-graphic integration (adaptive + monochrome icon, splash); final icon due 01-04 | — | 0.25 | G3, E-14-S02 | S6 | F |
 
 #### E-15 Prayer times, notifications & adhan — 7.25 id (spec: doc 07)
 
@@ -807,7 +813,7 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 |---|---|---|---|---|---|---|
 | E-15-S01 | `:core:prayer` — adhan2 wrapper (KARACHI + HANAFI, offsets, region presets, high-latitude rule); golden vectors (Karachi 2026-10-19: 05:16 / 06:32 / 12:18 / 16:24 / 18:02 / 19:18) | F-CP-01 | 0.75 | E-01-S03 | S6 | A |
 | E-15-S02 | Location — coarse one-shot `LocationManagerCompat` + GeoNames cities15000 SQLite (Urdu names, pipeline-built) | F-CP-01 | 1.25 | E-15-S01, E-03-S01 | S6 | A |
-| E-15-S03 | Prayer-times screen — today/tomorrow/monthly table, Sehri/Iftar labels; Asr choice in onboarding | F-CP-01 | 1 | E-15-S02 | S6 | A |
+| E-15-S03 | Prayer-times screen — **display only** in v1.0 (no alarms): today/tomorrow/monthly table, Sehri/Iftar labels; Asr choice in onboarding | F-CP-01 | 1 | E-15-S02 | S6 | A |
 | E-15-S04 | Prayer/Sehri/Iftar notifications — SCHEDULE_EXACT_ALARM explainer, `setAlarmClock`/`setExactAndAllowWhileIdle`, inexact fallback banner, reschedule on boot/time/tz/permission, daily Work safety net, POST_NOTIFICATIONS in context, short adhan via channel sound | F-CP-02 | 1.5 | E-15-S03 | v1.1 | B |
 | E-15-S05 | Full adhan — `mediaPlayback` FGS with USAGE_ALARM, app-enforced silent/DND respect, Stop; commissioned + CC0 audio | F-CP-02 | 1 | E-15-S04 | v1.1 | B |
 | E-15-S06 | Adhan health check + OEM guidance (DontKillMyApp, CC-BY), test adhan, lateness log | F-CP-02 | 1 | E-15-S04 | v1.1 | B |
@@ -817,13 +823,13 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-16-S01 | Hijri — HijrahDate (Umm al-Qura) + ±2 offset + Maghrib rollover + signed PK month-start feed; monthly ops runbook | F-CP-04 | 1 | E-23-S02 | S7 | A |
+| E-16-S01 | Hijri — `HijriCalendarProvider` (HijrahDate Umm al-Qura primary, ICU `IslamicCalendar` fallback chosen by the P0 device result, D-27) + ±2 offset + Maghrib rollover + signed PK month-start feed (`feeds/hijri-pk.json` + `.sig`); monthly ops runbook | F-CP-04 | 1 | E-23-S02, E-01-S05 | S6 | A |
 | E-16-S02 | Tasbeeh — haptics, presets, targets, volume keys, history | F-CP-05 | 0.5 | — | L3 | S |
-| E-16-S03 | Ramadan core — 30-day Sehri/Iftar timetable, home countdown, Taraweeh khatam preset | F-CP-07 | 0.75 | E-15-S03, E-18-S01 | S7 | A |
+| E-16-S03 | Ramadan core — 30-day Sehri/Iftar timetable, home countdown, Taraweeh khatam preset (no alarms; Sehri alarm is E-16-S04, v1.1) | F-CP-07 | 0.75 | E-15-S03, E-18-S01 | S6 | A |
 | E-16-S04 | Ramadan extras — timetable share image, sourced duas, Sehri alarm | F-CP-07 | 0.75 | E-16-S03, E-15-S04 | v1.1 | B |
-| E-16-S05 | Manzil dua — 33-verse non-contiguous playlist + reader entry | F-CP-06 | 0.5 | E-08-S03 | L4 | S |
-| E-16-S06 | Morning/evening azkar — dataset (osamayy/azkar-db Arabic, fitrahive English, Urdu by commission/permission), counter | F-CP-06 | 1.75 | Urdu azkar content | v1.1 | B |
-| E-16-S07 | Qibla — adhan2 bearing + TYPE_ROTATION_VECTOR (+ fallbacks) + GeomagneticField; calibration/interference UX | F-CP-03 | 1 | E-15-S02 | v1.1 | B |
+| E-16-S05 | Manzil dua — `PlayScope.Passage` playlist of 18 ranges / 79 ayahs + reader entry | F-CP-06 | 0.5 | E-08-S03 | L4 | S |
+| E-16-S06 | Morning/evening azkar — `azkar` pack (doc 04 pack type; osamayy/azkar-db Arabic, fitrahive English, Urdu by commission/permission), counter | F-CP-06 | 1.75 | Urdu azkar content | v1.1 | B |
+| E-16-S07 | Qibla — adhan2 bearing + TYPE_ROTATION_VECTOR (+ fallbacks) + GeomagneticField; calibration/interference UX (sun mode / Rasd al-Qibla in P3, E-28) | F-CP-03 | 1 | E-15-S02 | v1.1 | B |
 
 #### E-17 Widgets, reminders & share — 4 id (spec: doc 07)
 
@@ -842,14 +848,15 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 | E-18-S01 | Khatam planner & tracker — multiple khatams, presets (30-day Ramadan, 1 Para/day, custom), Para checklist, catch-up, ruku snap | F-BM-04 | 1.75 | E-07-S01, E-03-S05 | S6 | A |
 | E-18-S02 | Private streaks & stats (freeze days) | F-BM-05 | 0.75 | E-18-S01 | v1.1 | B |
 
-#### E-19 Credits, compliance & governance — 2 id (spec: doc 11)
+#### E-19 Credits, compliance & governance — 2.5 id (spec: doc 11)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
 | E-19-S01 | Sources & Credits — `content_meta.sources_json` + catalogue attribution + AboutLibraries + proofreading certificate block | F-PL-04 | 0.75 | E-03-S09, E-09-S01 | S6 | F |
-| E-19-S02 | Report text error — prefilled email/form (ayah key, page label, mushaf + content version); kill-switch handling | F-PL-05 | 0.75 | E-23-S02 | S6 | F |
-| E-19-S03 | Privacy policy page, in-app links, Data-safety answers, SDK inventory | — | 0.25 | E-23-S01 | S6 | F |
+| E-19-S02 | Report text error — prefilled email intent (ayah key, page label, mushaf + content version); SLA: triage ≤ 24 h, signed notice ≤ 48 h, corrected build submitted ≤ 72 h (text fixes are app updates) | F-PL-05 | 0.75 | E-23-S02 | S6 | F |
+| E-19-S03 | Privacy policy page (neutral domain), in-app links, Data-safety answers, SDK inventory — before the first closed-test release | — | 0.25 | E-23-S03 | S5 | F |
 | E-19-S04 | Content-governance policy + provenance log (`docs/legal/`) | — | 0.25 | — | S5 | ADM |
+| E-19-S05 | Signed notices (F-PL-11) — consume `notices.json` (+ detached `.sig`): dismissible Home card + reader-chrome info chip (never a banner over Quran text), text-error/takedown notices, minVersion nudge, per-notice expiry; end-to-end test on R2 (doc 10) | F-PL-11 | 0.5 | E-23-S02, E-06-S06 | S5 | F |
 
 #### E-20 Proofreading (hafiz engagement, G5) — 1.25 id (spec: doc 11)
 
@@ -857,36 +864,38 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 |---|---|---|---|---|---|---|
 | E-20-S01 | Recruit & contract hafiz/qari — credentials, scope (548 pp + Fatiha display + 59:13 & 27:21 + 90 quarters + 114 headers + Para names), fee, certificate wording | — | 0.25 | — | S1 | ADM |
 | E-20-S02 | Round-1 package & triage — PDF + checklist, issue log, pipeline fixes | F-RD-01 | 0.75 | E-03-S07, E-04-S04 | S5 | F |
-| E-20-S03 | Round 2 on changed pages + signed certificate (G5) | — | 0.25 | E-20-S02 | S7 | F |
+| E-20-S03 | Round 2 (01-05 → 01-15): automated device-capture diff vs the R1-approved PDF; every changed page re-read in full; headers, ayah markers and margin furniture checked on all 548 pages; signed certificate (G5, bound to `certified_pages.json`) shown in Credits | — | 0.25 | E-20-S02, E-04-S09 | S7 | F |
 
 #### E-21 Permission outreach & legal (G1, G2, G3, G4, G6) — 2 id (spec: doc 03)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-21-S01 | G1 — emails (Tarteel/QUL cc Naveed; DK author; optional QuranWBW) + GitHub issue; follow-ups 11-03, 11-12; decision 11-19; `docs/legal/data-permissions.md` + `permissions.yml` | — | 0.25 | — | S0 | ADM |
+| E-21-S01 | G1 — emails (Tarteel/QUL cc Naveed; DK author; optional QuranWBW) + GitHub issue; follow-ups 11-02, 11-12; decision 11-19; `docs/legal/data-permissions.md` + `permissions.yml` | — | 0.25 | — | S0 | ADM |
 | E-21-S02 | G2 — emails (Alafasy Berhad, QF developers@quran.com, King Fahd Complex); archive mp3quran /eng/privacy + /eng/contact-us (PDF + SHA-256 + date); courtesy form | — | 0.25 | — | S0 | ADM |
 | E-21-S03 | King Fahd Complex ZIPs downloaded by owner from Pakistan (Huthaify, Maher, Ayyub, Muhanna, Akhdar) + licence page PDF | — | 0.25 | — | S1 | ADM |
 | E-21-S04 | Translation & azkar permission emails (Maududi, Taqi Usmani, Tahir-ul-Qadri, Israr Ahmad, Clear Quran, QuranWBW, Ibn Kathir/Ma'ariful Qur'an publishers, HadeethEnc) | — | 0.25 | — | S1 | ADM |
 | E-21-S05 | G3 — trademark self-search (IPO-Pakistan, WIPO, USPTO) + Play search; brand decision | — | 0.5 | — | S2 | ADM |
-| E-21-S06 | G6 — engage Pakistani lawyer (Punjab Act 2011 / Quran Board; Taj pagination; entity & tax) | — | 0.25 | — | S2 | ADM |
+| E-21-S06 | G6 — engage Pakistani lawyer by 11-16 (latest 11-30) (Punjab Act 2011 / Quran Board; Taj pagination; entity & tax) | — | 0.25 | — | S2 | ADM |
 | E-21-S07 | G4 — code-licence decision memo (GPL-3.0-or-later vs proprietary); QF OAuth client application for F-BM-07 | — | 0.25 | — | S6 | ADM |
 
-#### E-22 Play account, store listing & release — 3 id (spec: doc 11)
+#### E-22 Play account, store listing & release — 3.25 id (spec: doc 11)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-22-S01 | Developer account — entity + D-U-N-S + Organization account; fallback personal account by 12-15 | — | 0.5 | — | S0 | ADM |
-| E-22-S02 | Play Console setup — app record, App content (13+, ads No, Data safety, rating), FGS declarations + videos (mediaPlayback, dataSync), internal track | — | 0.5 | E-22-S01 | S5 | F |
-| E-22-S03 | Store listing en + ur-PK — "<Brand>: Quran 16 Line & Audio", copy, screenshots, feature graphic | — | 1 | G3, E-14-S04 | S7 | F |
-| E-22-S04 | Closed test — 15–20 testers, start ≤ 2027-01-11, 14 days continuous, feedback loop | — | 0.5 | E-22-S02 | S6 | F |
-| E-22-S05 | Production — release checklist, staged rollout 10%→50%→100%, vitals watch, Ramadan hotfix policy | — | 0.5 | E-22-S04, gates | S7 | F |
+| E-22-S01 | Developer account — entity + D-U-N-S + Organization account; **decision 11-23**: if the entity and D-U-N-S are not both in hand, create a personal account that day | — | 0.5 | — | S0 | ADM |
+| E-22-S02 | Play Console setup — app record, App content (13+, ads No, Data safety, content rating), FGS declarations + videos (mediaPlayback, dataSync), internal track; **first closed-track upload by 12-24 (12-28 opening) or ≤ 01-07** to absorb first-review latency | — | 0.5 | E-22-S01, E-19-S03 | S5 | F |
+| E-22-S03 | Final store listing en + ur-PK — "<Brand>: Quran 16 Line & Audio", copy (v1.0 features only: no adhan/Qibla/azkar/widget claims), screenshots, feature graphic | — | 1 | G3, E-14-S04, E-22-S06 | S7 | F |
+| E-22-S04 | Closed test — 15–20 testers; opens 2026-12-28 if G1 granted and the build is ready, otherwise ≤ 2027-01-11; 14 days continuous; BETA builds only (G1-cleared or clean-room mushaf data); feedback loop | — | 0.5 | E-22-S02, E-22-S06, E-02-S04 | S5–S6 | F |
+| E-22-S05 | Production — release checklist, production-access application (personal account: day 15 of the closed test), staged rollout 10%→50%→100% (or managed publishing at 100%), halt on crash > 0.5% or ANR > 0.2%, Ramadan hotfix policy | — | 0.5 | E-22-S04, gates | S7 | F |
+| E-22-S06 | Closed-test store listing — G3 name, interim/final icon, feature graphic, ≥ 4 phone screenshots, en descriptions (+ ur draft), content rating, Data safety, privacy URL; complete before the first closed-test release | — | 0.25 | G3, E-19-S03 | S5 | F |
 
-#### E-23 Hosting & signed static files (R2) — 1.5 id (spec: doc 04)
+#### E-23 Hosting, domain & signed static files (R2) — 1.75 id (spec: doc 04)
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-23-S01 | R2 bucket + custom domain + offline Ed25519 key + publish script (catalogue override, PK feed) | — | 0.75 | — | S5 | F |
-| E-23-S02 | App-side signed fetcher — Ed25519 verify, cache/staleness, kill-switch application | — | 0.75 | E-23-S01 | S5 | F |
+| E-23-S01 | R2 bucket + custom (neutral) domain; generate **two** offline Ed25519 key pairs (primary + backup) on 2 encrypted offline media, never in CI; embed both public keys; doc 08 publish script with detached `.sig` over exact file bytes and `kid` / `sequence` / `expires` in the JSON (`index`, `catalogue`, `notices`, `feeds/hijri-pk`); channels beta/public only (personal never uploaded) | — | 0.75 | E-23-S03 | S5 | F |
+| E-23-S02 | App-side signed fetcher (`:core:remote`) — Ed25519 verify (vendored TweetNaCl port, RFC 8032 + Wycheproof vectors), anti-rollback `sequence`, `expires`, cache/staleness, kill-switch application; `notices.json` data side | F-PL-11 | 0.75 | E-23-S01 | S5 | F |
+| E-23-S03 | Neutral company/CDN domain (not the brand) + Cloudflare Email Routing (`support@`, `privacy@`) — needed for org verification and the compiled-in `CDN_BASE_URL` | — | 0.25 | — | S0 | ADM |
 
 #### E-24 Hardening & release readiness — 2.5 id (spec: doc 10)
 

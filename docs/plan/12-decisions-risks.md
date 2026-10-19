@@ -6,7 +6,7 @@
 
 **Key decisions in this doc**
 - Confirms D-01…D-25 exactly as in the Decision Register. Statuses, evidence and revisit triggers are recorded per ADR (§2).
-- Adds **D-26** OkHttp 5.5.0 everywhere, no Ktor in v1. **D-27** Hijri via `java.time.chrono.HijrahDate` behind doc 04's `HijriCalendar` interface, with ICU `IslamicCalendar` as the runtime fallback. **D-28** audio hosting and hotlinking policy. **D-29** content-eligibility tiers and licence enforcement. **D-30** signed static control plane and key management (Quran text is never changed remotely). **D-31** no generative religious content. **D-32** opt-in crash reports through a small Cloudflare Worker (v1.1; the one exception to "no backend"). **D-33** the shared domain types that doc 04 publishes. **D-34** v1.0 scope and the pre-agreed 2026-11-30 launch rule. **D-35** the G5 certificate binds the text layer.
+- Adds **D-26** OkHttp 5.5.0 everywhere, no Ktor in v1. **D-27** Hijri via `java.time.chrono.HijrahDate` behind doc 04's `HijriCalendarProvider` interface, with ICU `IslamicCalendar` as the runtime fallback. **D-28** audio hosting and hotlinking policy. **D-29** content-eligibility tiers and licence enforcement. **D-30** signed static control plane and key management (Quran text is never changed remotely). **D-31** no generative religious content. **D-32** opt-in crash reports through a small Cloudflare Worker (v1.1; the one exception to "no backend"). **D-33** the shared domain types that doc 04 publishes. **D-34** v1.0 scope and the pre-agreed 2026-11-30 launch rule. **D-35** the G5 certificate binds the text layer.
 - Refines D-05 (Fallback 1 measures with `Paint.getRunAdvance`) and corrects the D-07 Para-start wording (Para 1 starts at index 1).
 - Records 34 resolved research contradictions (§3).
 - Gate calendar (§4; these are doc 09's integrated dates): G1 decision **2026-11-19**; G3 **2026-12-14**; G2 catalogue freeze **2027-01-04**; G6 advice **2027-01-11**; G4 and G5 (Taj-16) **2027-01-18**; closed test opens **2026-12-28** if G1 is granted and the build is ready, otherwise **2027-01-11** at the latest; public **Go/No-Go 2027-01-25**.
@@ -785,7 +785,7 @@
   - r08 §1.6 chose `HijrahDate`, which is "Fully implemented" through desugaring on minSdk 24. Its Umm al-Qura validity is about 1300–1600 AH (unverified).
   - The spike confirmed desugaring is live: 12,243 `j$/time` references and 0 `java/time` (g04 §1.9).
 - **Decision:**
-  - `HijriCalendar` interface in `:core:domain` (doc 04 owns the name). Default implementation = `HijrahDate.from(LocalDate)` (Umm al-Qura).
+  - `HijriCalendarProvider` interface in `:core:domain` (doc 04 owns the name). Default implementation = `HijrahDate.from(LocalDate)` (Umm al-Qura).
   - Runtime fallback to ICU `android.icu.util.IslamicCalendar` (`ISLAMIC_UMALQURA`) if `HijrahDate` throws or fails the device check. The P0 device check runs on a physical API 24/25 phone (R-49).
   - `effectiveHijri = signedPkOverride ?: HijrahDate.from(civilDate + userOffset)`, with `userOffset ∈ {−2..+2}` and the day rolling over at Maghrib (computed with adhan2).
   - The signed PK month-start feed (D-30) overrides individual month starts.
@@ -1356,7 +1356,7 @@ If no answer arrives by the date shown, we proceed with the default.
   - text fixes ship as app updates.
   - The offline key is never in CI. Docs 04, 08 and 11.
 - **D-26:** no Ktor; one shared OkHttp 5.5.0 client. Docs 04 and 06.
-- **D-27:** `HijriCalendar` (doc 04's interface) with HijrahDate and a runtime ICU `IslamicCalendar` fallback. Docs 04 and 07.
+- **D-27:** `HijriCalendarProvider` (doc 04's interface) with HijrahDate and a runtime ICU `IslamicCalendar` fallback. Docs 04 and 07.
 - **D-28:** public builds never hit quranicaudio, QF/QDC or Tarteel audio hosts. Docs 06 and 10 (lint/CI).
 - **D-31:** agents never author content. Doc 13.
 - **Text-error SLA:** triage ≤ 24 h; signed notice or kill-switch ≤ 48 h; corrected build submitted ≤ 72 h; reporter acknowledged ≤ 72 h. Docs 01, 02, 03, 07, 10 and 11 (F-PL-05 flow).
