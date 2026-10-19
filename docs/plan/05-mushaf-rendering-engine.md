@@ -11,7 +11,7 @@
 |---|---|---|
 | K1 | **Typeset, never scans.** Pinned DigitalKhatt IndoPak font (OFL) shipped as glyf TTF, drawn per word with `Canvas.drawTextRun` on our own Compose canvas. | D-05 |
 | K2 | **The device never lays out or measures Quran text.** The pipeline precomputes every word's x-fractions, `cv01` kashida value and ink box. It also precomputes every furniture text run and ornament box. It emits two placement variants: *kashida* (default) and *plain* inter-word. | D-05 |
-| K3 | **Mushaf pack = one self-contained SQLite file per (layout, script, font).** The schema is defined by the Room `MushafPackDb`. The default `mushaf.taj16.dk` pack ships pre-installed in APK assets. A newer signed version from the pack index supersedes it, which gives the error fast-fix path. | D-06, D-10, D-22 |
+| K3 | **Mushaf pack = one self-contained SQLite file per (layout, script, font).** The schema is defined by the Room `MushafPackDb`. The default `mushaf.indopak16_taj.dk` pack ships pre-installed **per build tier** (`src/personal` vs `src/public` assets, never `src/main`). A layout or text correction ships as an **app update** with a new bundled pack version. The signed index and notices can only revoke or annotate, never change layout data (D-30). | D-06, D-10, D-22, D-29, D-30 |
 | K4 | Taj print rules: `page_label = page_index + 1`; sar-lauh template on indices 1–2 (index 1 remapped); header Para right · page centre · surah(s) left; footer «منزل N»; margin notes in the **outer** margin (right when the label is even); Taj-faithful Fatiha. | D-04, D-06, D-07 |
 | K5 | Four draw layers: paper → furniture/ornaments (cached) → highlight/selection (dynamic) → text (cached). Audio ticks redraw only the highlight layer. No page bitmaps in the default path. | D-05 |
 | K6 | Gestures: tap toggles the chrome, long-press selects an ayah and opens the action sheet, drag-after-long-press extends the range, pinch zooms. The page-turn lock disables user swipes only. | D-23, F-RD-04/06/07 |
@@ -54,15 +54,18 @@
 
 ## 2. Architecture overview
 
-Module names are proposed here. [Architecture](04-architecture.md) is authoritative for the module graph (D-03).
+[Architecture](04-architecture.md) owns the module graph, the identity types and the interface names (D-03). This doc uses doc 04's modules and only adds what lives inside them.
 
-| Module | Kind | Contents |
+| Module (doc 04) | Kind | Contents from this doc |
 |---|---|---|
-| `:core:model` | pure Kotlin | `AyahId` (Kufan 1..6236), `VerseKey`, `MushafCode` (shared with every feature) |
-| `:core:mushaf` | **pure Kotlin (JVM), KMP-ready** | Pack-agnostic models (`PageModel`, `LineModel`, `WordRun`, `MarginMarker`, …), `PageGeometry`, `HitTester`, highlight-rect builder, `FollowAlongPolicy`, `MushafRepository` interface |
-| `:core:content` | Android library | Room `MushafPackDb` (internal), `MushafRepositoryImpl`, pack open/verify/supersede, LRU |
-| `:core:mushaf-ui` | Android + Compose | `MushafPage`, `MushafPager`, `PageRenderer`, `PaintCache`, `MushafTypefaces`, ornament painters, `MushafTheme` tokens, semantics overlay |
-| `:feature:reader` | feature | `ReaderScreen`, `ReaderViewModel`, chrome, action-sheet wiring (UI in [UX spec](02-ux-ui-spec.md)) |
+| `:core:model` | pure Kotlin | Doc 04 identity types: `VerseKey`, `AyahId` (Kufan 1..6236), `SurahId`, `ParaId`, `ManzilId`, `RukuId`, `MushafId` (enum, code + numeric id), `PageIndex`, `PageLabel`, `MushafSpec`, `AyahRange`. Layout models whose field list this doc owns (doc 04 §5): `PageLayout`, `PageLine`, `PlacedWord`, `PageFurniture`, `MarginMarker`, plus `MushafGeometry` and `WordId` (§3.4) |
+| `:core:domain` | pure Kotlin | `MushafRepository` interface (doc 04 §6), `PlaybackStateHub` / `PlaybackState` (doc 04, consumed in §8.6) |
+| `:core:content` | Android library | Room `MushafPackDb` + DAOs (internal), opened by absolute path through `PackDbOpener` |
+| `:core:data` | Android library | `MushafRepositoryImpl` + page LRU, `PackManager` (bundled install, revocation, notices) |
+| `:core:mushaf-render` | Android + Compose | `PageGeometry`, `HitTester`, ayah-span/highlight-rect builder, `FollowAlongPolicy` (all Android-free code in package `…mushafrender.geometry`, so its tests run as plain JVM tests), `MushafPage`, `MushafPager`, `PageRenderer`, `PaintCache`, `MushafTypefaces`, ornament painters, `MushafTheme` tokens, semantics overlay |
+| `:feature:reader` | feature | `ReaderScreen`, `ReaderViewModel`, `FollowAlongController`, chrome, action-sheet wiring (UI in [UX spec](02-ux-ui-spec.md)) |
+
+If a separate pure-JVM geometry module is ever wanted (for example for KMP), doc 04 must add it to its module list first.
 
 ```mermaid
 flowchart LR
@@ -71,11 +74,11 @@ flowchart LR
     DK[DK text @4213fab] --> J
     META[Para/Ruku/Manzil/Sajda/Quarter tables] --> J
     F[indopak.otf → glyf TTF] --> HB[uharfbuzz shaping + justification]
-    J --> HB --> PK[(mushaf.taj16.dk pack .db)]
+    J --> HB --> PK[(mushaf.indopak16_taj.dk pack .db + page_hash)]
     HB --> PDF[full-book PDF proofs → hafiz G5]
   end
-  PK -->|assets/packs or signed index| REPO[MushafRepositoryImpl + LRU]
-  REPO --> PM[PageModel]
+  PK -->|per-tier bundled asset → PackManager install| REPO[MushafRepositoryImpl + LRU]
+  REPO --> PM[PageLayout]
   PM --> GEO[PageGeometry fit to viewport]
   GEO --> L1[furniture layer] & L3[text layer]
   HUB[PlaybackStateHub doc 06] --> FA[FollowAlongController] --> PAGER[MushafPager]
@@ -92,15 +95,15 @@ flowchart LR
 
 | Item | Value |
 |---|---|
-| Pack id / file | `mushaf.taj16.dk` → `mushaf-taj16-dk-v{N}.db` (SQLite, read-only after install) |
-| Stable mushaf ids (shared with `user.db`, D-10b) | `1 taj16` (548 pp), `2 hafizi15` (610), `3 taj13` (847), `4 madani15` (604) |
-| Bundled location | `app/src/main/assets/packs/mushaf-taj16-dk-v1.db`. On first launch it is copied by `createFromAsset` into `databases/` during onboarding, outside the first-page budget. |
-| Font | `app/src/main/assets/fonts/criterion_indopak.ttf`: glyf conversion of digitalkhatt.org `ClientApp/src/assets/fonts/hb/indopak.otf` @ `4213fab` (2,569,560 B CFF2, 3,999 glyphs, cv01–cv18) → about 1.63 MB TTF with identical advances (g04 §2.7). `pack_info.font_sha256` must equal the asset's SHA-256 (CI check). |
-| Superseding | A downloaded pack with the same `pack_id` and a higher `pack_version`, listed in the Ed25519-signed `index.json` (D-10c), replaces the bundled one at the next reader open. The index can also revoke a version (kill-switch, D-22). |
-| Build eligibility | `pack_info.build_eligibility ∈ {personal, public}`. A pack built from QUL res. 11 is `personal` until **G1** clears. CI fails a public release that bundles a `personal` pack or lacks a `proof_certificate_id` (**G5**). |
+| Pack id / file | `mushaf.<code>.<script>` (doc 04): `mushaf.indopak16_taj.dk`. Bundled asset `packs/mushaf_layout/mushaf.indopak16_taj.dk@<ver>.db`; installed file `files/packs/mushaf_layout/mushaf.indopak16_taj.dk/<ver>/pack.db` (SQLite, read-only after install) |
+| Mushaf identity (doc 04 `MushafId` enum, code + numeric id) | `INDOPAK_16_TAJ("indopak16_taj", 1)` 548 pp · `INDOPAK_15_HAFIZI("indopak15_hafizi", 2)` 610 · `INDOPAK_13_TAJ("indopak13_taj", 3)` 847 · `MADANI_15("madani15", 4)` 604. `user.db` stores the **code** (doc 04 §7.4). Packs store both: `mushaf.id` / `pack_info.mushaf_id` = numeric id, `mushaf.code` / `pack_info.mushaf_code` = code. |
+| Bundled location (per tier) | `app/src/personal/assets/packs/mushaf_layout/` holds the QUL-derived pack (licence status `PERSONAL_ONLY` until G1). `app/src/public/assets/packs/mushaf_layout/` holds **only** a G1-cleared pack or the clean-room pack (D-06); until then it is empty and a public-tier release fails `verifyContentEligibility` (doc 04 §11.3). The pack is **never** in `src/main/assets`. On first run (and on a content bump) `PackManager.ensureBundledInstalled()` copies it to `files/packs/mushaf_layout/…` during onboarding, outside the first-page budget. `PackDbOpener` opens it by absolute path (doc 04 §7.3). |
+| Font | `app/src/main/assets/fonts/criterion_indopak.ttf` (OFL, eligible in every tier): glyf conversion of digitalkhatt.org `ClientApp/src/assets/fonts/hb/indopak.otf` @ `4213fab` (2,569,560 B CFF2, 3,999 glyphs, cv01–cv18) → about 1.63 MB TTF with identical advances (g04 §2.7). `pack_info.font_sha256` must equal the asset's SHA-256 (CI check). |
+| Updates and revocation | A corrected layout or word (hafiz-approved, D-22) is a new `pack_info.version` **bundled in an app update** (text-error SLA: triage ≤ 24 h, signed notice ≤ 48 h, corrected build submitted ≤ 72 h). The remote control plane never changes layout data or Quran text (D-30). The Ed25519-signed `index.json` / `notices.json` (detached `.sig`, doc 04 §7.6, §14.3) can only revoke a version (kill-switch, D-22) or put a notice on a page or ayah. A revoked bundled default keeps rendering with the notice banner until the corrected app update arrives, because v1.0 has no other layout to fall back to. Downloaded mushaf packs (v1.1 pack system) only **add** further layouts (15/13-line P3, Madani P4). |
+| Eligibility (D-29) | `pack_info.licence_status` ∈ {PERMITTED, HOST_GRANT, PENDING, PERSONAL_ONLY, REVOKED}, plus `basis` (free text), `eligible_tiers` (subset of PERSONAL, BETA, PUBLIC), `commercial_ok` and `foss_ok`. A pack built from QUL res. 11 is `PERSONAL_ONLY`, `eligible_tiers = PERSONAL`, until **G1** clears. BETA (closed test) and PUBLIC may bundle only a G1-cleared or clean-room pack. PUBLIC additionally needs **G5**: `proof_certificate_id` set, and every page's `page.page_hash` listed in `certified_pages.json` (§14.5). |
 | Size (estimate) | About 3–3.5 MB raw: ~84k word rows with text and integer placements, 8,768 line rows, furniture. About 1 MB deflated in the APK (r04 §2.9: text + layout 2.64 MB raw / 0.93 MB deflated, plus metrics ~0.35 MB). |
 
-**Why one self-contained pack.** The same schema serves the default Taj-16 layout, the clean-room fallback if G1 fails (D-06), the 15/13-line packs (P3) and the Madani pack (P4). Each pack carries its own permission and proof certificate (D-04), so a pack can be revoked or replaced without bumping `quran_content.db`. Word ids are the canonical DK token ids, so they join to the content DB's `word` table and to timing packs without a cross-DB join at render time.
+**Why one self-contained pack.** The same schema serves the default Taj-16 layout, the clean-room fallback if G1 fails (D-06), the 15/13-line packs (P3) and the Madani pack (P4). Each pack carries its own permission and proof certificate (D-04), so a pack can be revoked, or replaced in an app update, without bumping `quran_content.db`. Word keys are the canonical DK token ids (`word_index`), so they join to the content DB's `word.word_index` and `ayah_marker.word_index`, and to timing packs, without a cross-DB join at render time.
 
 ### 3.2 Coordinate conventions (used by every table)
 
@@ -115,15 +118,19 @@ flowchart LR
 
 ```sql
 CREATE TABLE pack_info (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL);
--- keys: pack_id='mushaf.taj16.dk', pack_version, schema_version=1, min_content_version,
---       mushaf_id=1, script='dk-indopak', font_file, font_sha256, font_source='digitalkhatt.org@4213fab',
---       pipeline_git_sha, sources_lock_sha256, uharfbuzz_version, built_at,
---       build_eligibility ('personal'|'public'), proof_certificate_id (NULL until G5),
---       licence_json, attribution_json, fatiha_style='taj_unnumbered'
+-- doc 04 common keys: id='mushaf.indopak16_taj.dk', type='mushaf_layout', version, schema_version=1,
+--       title, licence, attribution, source_url, source_sha256, min_content_version, built_at
+-- layout keys: mushaf_id=1, mushaf_code='indopak16_taj', script='dk-indopak', build_id,
+--       font_file, font_sha256, font_source='digitalkhatt.org@4213fab',
+--       pipeline_git_sha, sources_lock_sha256, uharfbuzz_version, furniture_digits,
+--       g_min, g_max, g_nat, kmax_step, kmax_words, scale_floor, page_em_band (§4.3 tunables),
+--       licence_status (PERMITTED|HOST_GRANT|PENDING|PERSONAL_ONLY|REVOKED), basis,
+--       eligible_tiers ('PERSONAL' | 'PERSONAL,BETA,PUBLIC' …), commercial_ok, foss_ok,
+--       proof_certificate_id (NULL until G5), fatiha_style='taj_unnumbered'
 
 CREATE TABLE mushaf (
-  id                 INTEGER NOT NULL PRIMARY KEY,  -- 1 = taj16
-  code               TEXT    NOT NULL,              -- 'taj16'
+  id                 INTEGER NOT NULL PRIMARY KEY,  -- MushafId numeric id: 1 = INDOPAK_16_TAJ
+  code               TEXT    NOT NULL,              -- MushafId code: 'indopak16_taj'
   name_ur            TEXT    NOT NULL,              -- '۱۶ سطری تاج کمپنی'
   name_en            TEXT    NOT NULL,              -- 'Indo-Pak 16-line (Taj)'
   lines_per_page     INTEGER NOT NULL,              -- 16
@@ -154,8 +161,9 @@ CREATE TABLE page (
   surah_ids      TEXT    NOT NULL,              -- header-left order, e.g. '102,103,104'
   first_ayah_id  INTEGER NOT NULL,
   last_ayah_id   INTEGER NOT NULL,
-  first_word_id  INTEGER NOT NULL,
-  last_word_id   INTEGER NOT NULL
+  first_word_index INTEGER NOT NULL,
+  last_word_index  INTEGER NOT NULL,
+  page_hash      TEXT    NOT NULL               -- G5 text-layer hash (§3.5); certified_pages.json binds to it
 );
 
 CREATE TABLE line (
@@ -165,19 +173,19 @@ CREATE TABLE line (
   header_variant INTEGER NOT NULL,              -- 0 NONE 1 THREE_PART 2 TITLE 3 SARLAUH_TITLE
   centered       INTEGER NOT NULL,              -- QUL is_centered (and all header/basmala lines)
   surah_id       INTEGER,                       -- header/basmala lines
-  first_word_id  INTEGER,                       -- AYAH lines only
-  last_word_id   INTEGER,
+  first_word_index INTEGER,                     -- AYAH lines only
+  last_word_index  INTEGER,
   scale          REAL    NOT NULL,              -- 1.0, or <1 for rare overflow lines (§4.3)
   gap_em         REAL,                          -- diagnostic: final inter-word gap (kashida variant)
   PRIMARY KEY (page_index, slot)
 );
 
-CREATE TABLE word (
-  id          INTEGER NOT NULL PRIMARY KEY,     -- canonical DK token id 1..83669 (= quran_content.db word.id)
+CREATE TABLE word (                             -- layout placement of every DK token (marker tokens included)
+  word_index  INTEGER NOT NULL PRIMARY KEY,     -- canonical DK token id 1..83669 (= quran_content.db word.word_index)
   ayah_id     INTEGER NOT NULL,                 -- Kufan 1..6236 (1:1 = Fatiha basmala)
   pos         INTEGER NOT NULL,                 -- 1-based DK position in ayah (end token = last)
-  is_end      INTEGER NOT NULL,                 -- 1 = ayah-end marker token
-  text        TEXT    NOT NULL,                 -- display glyph string AFTER Taj overrides (§4.2)
+  is_end      INTEGER NOT NULL,                 -- 1 = ayah-end marker token (semantics: content DB ayah_marker)
+  text        TEXT    NOT NULL,                 -- display glyph string AFTER Taj overrides + build-time errata (§4.2)
   page_index  INTEGER NOT NULL,
   slot        INTEGER NOT NULL,
   x0          INTEGER NOT NULL,                 -- kashida variant (frac_unit, LTR)
@@ -191,19 +199,30 @@ CREATE TABLE word (
 CREATE INDEX index_word_page_index_slot ON word(page_index, slot);
 CREATE INDEX index_word_ayah_id ON word(ayah_id);
 
-CREATE TABLE ayah_marker (                      -- D-06: 6,236 Kufan ends + 118 disputed «۵» = 6,354 rows
-  word_id        INTEGER NOT NULL PRIMARY KEY,  -- end token, or the word carrying U+08E2
-  ayah_id        INTEGER NOT NULL,              -- containing Kufan verse
-  display_number INTEGER,                       -- number printed in the circle; NULL = empty circle / «۵»
-  is_kufan_end   INTEGER NOT NULL,              -- 1 ⇔ terminates ayah_id
-  disputed_end   INTEGER NOT NULL               -- 1 ⇔ U+08E2 non-Kufan end (never a boundary)
+-- No ayah_marker table here: marker semantics (6,236 Kufan ends + 118 disputed «۵», display_number
+-- = Kufan) are a property of the script and live in quran_content.db `ayah_marker` (doc 04 §7.2).
+-- The pack keeps only the marker tokens' positions (their `word` rows) and the layout-level overrides below.
+
+CREATE TABLE ayah_display_override (            -- layout-specific numbering (Taj Fatiha: 7 empty circles)
+  ayah_id     INTEGER NOT NULL PRIMARY KEY,     -- Kufan ayah whose end marker is drawn differently
+  show_number INTEGER NOT NULL                  -- 0 = bare circle (no digits); Taj-16: ayah_id 1..7 → 0
 );
+
+CREATE TABLE word_override (                    -- BUILD-TIME errata record (hafiz-approved, D-22)
+  word_index  INTEGER NOT NULL PRIMARY KEY,     -- token whose text/placement the pipeline corrected
+  text        TEXT    NOT NULL,                 -- corrected glyph string (already written to word.text)
+  x0 INTEGER, x1 INTEGER, kashida INTEGER,      -- corrected placement, NULL = unchanged
+  reason      TEXT    NOT NULL,                 -- errata ref, e.g. 'errata/indopak16_taj.csv#12'
+  approved_by TEXT    NOT NULL                  -- reviewer id from the sign-off sheet
+);
+-- The pipeline applies these rows to `word` before page_hash is computed; the app never applies them at
+-- runtime, and no remote document can add rows (D-30). The table exists for audit and for the delta proof.
 
 CREATE TABLE ayah_page (                        -- 6,236 rows; navigation + follow-along
   ayah_id     INTEGER NOT NULL PRIMARY KEY,
   page_start  INTEGER NOT NULL, slot_start INTEGER NOT NULL,
   page_end    INTEGER NOT NULL, slot_end   INTEGER NOT NULL,
-  word_first  INTEGER NOT NULL, word_last  INTEGER NOT NULL,
+  word_first  INTEGER NOT NULL, word_last  INTEGER NOT NULL,   -- word_index range
   words_on_start_page INTEGER NOT NULL          -- for proportional page turn (§8.6)
 );
 
@@ -221,7 +240,7 @@ CREATE TABLE margin_marker (                    -- semantic rows (a11y, index, t
   kind           INTEGER NOT NULL,              -- 0 RUKU 1 PARA_START 2 MANZIL_START 3 QUARTER 4 SAJDA 5 SAJDA_SHAFII 6 WAQF_NOTE(reserved)
   anchor_slot    INTEGER NOT NULL,
   y_center_slot  REAL    NOT NULL,              -- collision-resolved position (§4.4)
-  anchor_word_id INTEGER,                       -- ayah-end token, or word 10 of 6:73 for P7 ثلثة
+  anchor_word_index INTEGER,                    -- ayah-end token, or word 10 of 6:73 for P7 ثلثة
   ayah_id        INTEGER,
   n1 INTEGER, n2 INTEGER, n3 INTEGER,           -- RUKU: surah_ruku / ayah_count / para_ruku (NULL for Fatiha)
   ref_id         INTEGER                        -- para_id / manzil_id / quarter 1..3 / sajda print_no
@@ -262,14 +281,16 @@ CREATE TABLE calibration (                      -- device drift check (§15.2)
 -- seed rows include الْكِتٰبُ 2060/2847/3615/4384 (cv01 0..3) and بِسْمِ 1216/1405/1594/1783 (g04 §2.7)
 ```
 
-**Layout-independent metadata stays in `quran_content.db`** ([Content & licensing](03-content-data-licensing.md), [Data pipelines](08-data-pipelines.md)): `surah`, `ayah`, `para` (Indo-Pak, D-07), `ruku` (558), `manzil`, `sajda`, `para_quarter`, `word(id, ayah_id, pos, kind)`. The pack denormalises only what drawing and hit-testing need. The pipeline asserts that both agree.
+**Layout-independent metadata stays in `quran_content.db`** (DDL owned by [Architecture](04-architecture.md) §7.2; populated by [Data pipelines](08-data-pipelines.md)): `surah`, `ayah`, `para` (Indo-Pak, D-07), `ruku` (558), `manzil`, `sajda`, `para_quarter`, `word(word_index, ayah_id, position, qul_position, is_end, text)` and `ayah_marker(script_id, word_index, …, display_number, is_kufan_end, disputed_end)` with Kufan display numbers. The pack denormalises only what drawing and hit-testing need, plus the layout-specific `ayah_display_override`. The pipeline asserts that both agree (§4.6).
 
-### 3.4 Kotlin model (`:core:mushaf`, pure Kotlin)
+**Doc 08 builds exactly this DDL.** The pipeline writes these table and column names (from the exported `MushafPackDb` schema JSON), not a schema of its own.
+
+### 3.4 Kotlin model (`:core:model` types, field lists owned here)
+
+Identity types come from [Architecture](04-architecture.md) §5 and are not redeclared here: `VerseKey`, `AyahId` (Kufan 1..6236), `SurahId`, `ParaId`, `ManzilId`, `MushafId` (enum with `code` + numeric `id`), `PageIndex`, `PageLabel`, `AyahRange` and `MushafSpec(id: MushafId, pageCount, linesPerPage, pageLabelOffset, …)` with `labelOf(PageIndex): PageLabel` and `indexOf(PageLabel): PageIndex?`. `indexOf` returns `null` outside labels 2–549. The Go-to UI maps label 1 to label 2 with the D-04 hint and shows a "2–549" hint for anything else; nothing is silently coerced. Doc 04 names the layout classes (`PageLayout`, `PageLine`, `PlacedWord`, `PageFurniture`, `MarginMarker`); this doc owns their fields.
 
 ```kotlin
-@JvmInline value class AyahId(val value: Int)        // :core:model, Kufan 1..6236
-@JvmInline value class WordId(val value: Int)        // DK token id 1..83_669
-@JvmInline value class PageIndex(val value: Int)     // 1..pageCount (QUL index)
+@JvmInline value class WordId(val value: Int)        // DK token id = word_index 1..83_669 (doc 04 to add to §5.1)
 
 enum class PageTemplate { REGULAR, SARLAUH }
 enum class LineType { AYAH, SURAH_HEADER, BASMALA, OPENING_PANEL, EMPTY }
@@ -278,15 +299,14 @@ enum class Side { RIGHT, LEFT }
 enum class MarkerKind { RUKU, PARA_START, MANZIL_START, QUARTER, SAJDA, SAJDA_SHAFII, WAQF_NOTE }
 enum class PlacementVariant { KASHIDA, PLAIN }
 
-data class MushafSpec(
-    val id: Int, val code: String, val linesPerPage: Int, val pageCount: Int, val pageLabelOffset: Int,
+/** Layout geometry tokens, loaded from the pack's `mushaf` row (one per installed layout pack). */
+data class MushafGeometry(
     val pitchNominal: Float, val pitchMin: Float, val pitchMax: Float, val baselineOffsetEm: Float,
     val frameInset: Float, val marginOuter: Float, val marginInner: Float,
     val headerBand: Float, val footerBand: Float, val kashidaTag: String,
-) { fun label(index: PageIndex) = index.value + pageLabelOffset
-    fun indexOfLabel(label: Int) = PageIndex((label - pageLabelOffset).coerceIn(1, pageCount)) }
+)
 
-data class WordRun(
+data class PlacedWord(
     val id: WordId, val ayah: AyahId, val text: String, val isAyahEnd: Boolean,
     val x0: Float, val x1: Float, val kashida: Int,      // tw fractions (0..1), LTR
     val x0Plain: Float, val x1Plain: Float,
@@ -295,10 +315,10 @@ data class WordRun(
     fun x1(v: PlacementVariant) = if (v == PlacementVariant.KASHIDA) x1 else x1Plain
     fun cv(v: PlacementVariant) = if (v == PlacementVariant.KASHIDA) kashida else 0 }
 
-data class LineModel(
+data class PageLine(
     val slot: Int, val type: LineType, val header: HeaderVariant, val centered: Boolean,
-    val surah: Int?, val scale: Float,
-    val words: List<WordRun>,                   // sorted by x0 ascending (= reverse reading order)
+    val surah: SurahId?, val scale: Float,
+    val words: List<PlacedWord>,                // sorted by x0 ascending (= reverse reading order)
 )
 
 data class FurnitureRun(val role: Int, val band: Int, val x0: Float, val x1: Float, val y: Float,
@@ -306,30 +326,56 @@ data class FurnitureRun(val role: Int, val band: Int, val x0: Float, val x1: Flo
 data class OrnamentItem(val key: String, val band: Int, val x0: Float, val x1: Float, val y0: Float, val y1: Float)
 data class MarginMarker(val kind: MarkerKind, val anchorSlot: Int, val yCenterSlot: Float,
                         val ayah: AyahId?, val n1: Int?, val n2: Int?, val n3: Int?, val refId: Int?)
+data class PageFurniture(val runs: List<FurnitureRun>, val ornaments: List<OrnamentItem>, val markers: List<MarginMarker>)
 
-data class PageModel(
-    val spec: MushafSpec, val index: PageIndex, val label: Int, val template: PageTemplate,
-    val emRatio: Float, val outerSide: Side, val paraId: Int, val manzilId: Int, val surahIds: List<Int>,
-    val lines: List<LineModel>,                 // exactly linesPerPage, slot order
-    val furniture: List<FurnitureRun>, val ornaments: List<OrnamentItem>, val markers: List<MarginMarker>,
+data class PageLayout(                          // doc 04 §5.2 requires mushaf, page, verseRange, para, manzil, lines, furniture
+    val spec: MushafSpec, val geom: MushafGeometry, val page: PageIndex, val label: PageLabel,
+    val template: PageTemplate, val emRatio: Float, val outerSide: Side,
+    val para: ParaId, val manzil: ManzilId, val surahs: List<SurahId>,
+    val verseRange: AyahRange,                  // first..last ayah touching the page
+    val lines: List<PageLine>,                  // exactly linesPerPage, slot order
+    val furniture: PageFurniture,
     val ayahs: List<AyahId>,                    // reading order, incl. partial first/last
+    val pageHash: String,                       // §3.5
 ) {
+    val mushaf: MushafId get() = spec.id
     /** Built once at load (pure): per-ayah line spans in tw, used by highlight + semantics. */
     val ayahSpans: Map<AyahId, List<SlotSpan>> by lazy { buildAyahSpans(this) }
 }
 data class SlotSpan(val slot: Int, val x0: Float, val x1: Float)
-
-interface MushafRepository {
-    suspend fun spec(mushafId: Int): MushafSpec
-    suspend fun page(mushafId: Int, index: PageIndex): PageModel          // LRU-backed
-    suspend fun ayahSpan(mushafId: Int, ayah: AyahId): AyahPageSpan       // from ayah_page
-    suspend fun pageOf(mushafId: Int, ayah: AyahId): PageIndex
-    fun prefetch(mushafId: Int, around: PageIndex, radius: Int = 2)
-    val activePack: kotlinx.coroutines.flow.StateFlow<PackInfo>           // version, eligibility, revoked
-}
 data class AyahPageSpan(val ayah: AyahId, val pageStart: PageIndex, val pageEnd: PageIndex,
                         val wordsOnStartPage: Int, val wordCount: Int)
 ```
+
+`MushafRepository` is doc 04's interface (§6, `:core:domain`), implemented in `:core:data`: `spec(MushafId)`, `page(MushafId, PageIndex): PageLayout` (LRU-backed), `pageOf(MushafId, VerseKey)`, `verseRange(MushafId, PageIndex)`, `startPage(MushafId, IndexTarget)`, `prefetch(MushafId, center, radius)`. This doc needs three more read methods on it, all single-row queries on the pack, which doc 04 should add:
+
+```kotlin
+suspend fun ayahSpan(id: MushafId, key: VerseKey): AyahPageSpan   // ayah_page row (follow-along, khatam pos)
+suspend fun geometry(id: MushafId): MushafGeometry                // mushaf row
+suspend fun headerPage(id: MushafId, surah: SurahId): PageIndex   // page of the surah's header/basmala line
+```
+
+### 3.5 `page_hash`: what the G5 certificate binds to
+
+The G5 certificate binds to the **text layer** of each page, not to the ornament art.
+
+```text
+page_hash = sha256(canonical_json({
+  page:      page row minus page_hash,
+  lines:     its line rows (slot order),
+  words:     its word rows (word_index, ayah_id, text, slot, x0, x1, kashida, x0_plain, x1_plain),
+  markers:   its margin_marker rows,
+  furniture: its furniture_run rows (texts, roles, positions),
+  overrides: ayah_display_override + word_override rows touching the page,
+  font_sha256, mushaf geometry tokens (mushaf row)
+}))
+```
+
+- **Excluded:** `ornament_item` boxes and the designer's SVG art. Replacing placeholder ornaments with final art therefore does not invalidate the certificate. The final art must still be integrated before hafiz round 2 (end of S5, 2027-01-04), so the reviewer sees the shipping look (§7).
+- **Producer:** the pipeline computes `page_hash` and writes it into `page` and `proof-manifest.json` (doc 08 §5.6).
+- **Checkers:**
+  - `PageHashTest` (§14.2) recomputes every hash from the packaged pack.
+  - The release gate (`verifyContentEligibility` for PUBLIC, doc 04 §11.3; V-M19, doc 08) requires every hash to appear in `certified_pages.json` ([Release & compliance](11-release-compliance-business.md) §5.4).
 
 ---
 
@@ -341,7 +387,7 @@ The pipeline lives in `tools/mushaf-pipeline/` (Python 3.12, `python3 -I`, input
 
 | Input | Pin |
 |---|---|
-| QUL resource 11 SQLite (16-line Taj layout), owner's account (D-06) | SHA-256 in `sources.lock.json`. **personal** until G1. |
+| QUL resource 11 SQLite (16-line Taj layout), owner's account (D-06) | SHA-256 in `sources.lock.json`. `licence_status = PERSONAL_ONLY` (PERSONAL tier only) until G1. |
 | DK text `ClientApp/src/app/services/quran_text_indopak_15.ts` @ `4213fab` (MIT) | SHA-256 |
 | Font `ClientApp/src/assets/fonts/hb/indopak.otf` @ `4213fab` (OFL 1.1) → `cff2_to_glyf.py` (fontTools `Cu2QuPen`, `max_err=1.0`, `reverse_direction=True`) → `criterion_indopak.ttf` | Both SHA-256s. The pipeline **shapes with the converted TTF that the app ships**. Never use the QUL CDN `DigitalKhattIndoPak.otf`: it has no cv features (g04 §1.11). |
 | uharfbuzz 0.56.3 / HarfBuzz 14.6.0, fontTools 4.67 (versions measured in g04) | `requirements.lock` |
@@ -356,10 +402,11 @@ The pipeline lives in `tools/mushaf-pipeline/` (Python 3.12, `python3 -I`, input
    - rewrite the end tokens of 1:1–1:7 to a bare `۝` (U+06DD, no digits);
    - in 1:7:4, strip `U+202E ٦` so that only `U+08E2 ۙ` («۵» with «لا») remains;
    - keep U+08D6 «ع» on 1:7's end token.
-   - Set `ayah_marker.display_number = NULL` for every surah-1 row.
+   - Emit `ayah_display_override` rows `(ayah_id 1..7, show_number 0)` in the pack. The content DB's `ayah_marker` keeps Kufan `display_number`s (doc 04 §7.2) and is not changed for this layout.
    - This also removes the only U+202E in the text, which closes the g01 RLO shaping risk.
-4. All other ends: `display_number` = Kufan ayah number. The 117 other U+08E2 marks are `disputed_end = 1` with `display_number = NULL`.
-5. Basmala for non-Fatiha headers: the DK basmala words, with no end circle unless the print check says otherwise (open issue O-6).
+4. All other ends draw the content DB's `display_number` (= Kufan ayah number). The 117 other U+08E2 marks are `disputed_end = 1` in the content DB `ayah_marker`. The pack only places their tokens.
+5. **Build-time errata.** Hafiz-approved corrections from `data/curated/errata/<layout>.csv` (doc 08) are applied to `word` here and recorded in `word_override`, before placement and before `page_hash` (§3.5).
+6. Basmala for non-Fatiha headers: the DK basmala words, with no end circle unless the print check says otherwise (open issue O-6).
 
 ### 4.3 Justification algorithm (per page, per line)
 
@@ -378,7 +425,7 @@ em(p) = clamp(em_fit(p), PAGE_EM_BAND·E_ref, E_ref)
 
 # 2. lines
 for each AYAH line at page em E (L = 1/E em available):
-    if line.centered:
+    if line.centered or n == 1:                              # n = tokens on the line; a 1-token line is centred
         gaps = G_NAT; total = Σadv + (n−1)·G_NAT; place centred; kashida = 0 (both variants identical)
         continue
     scale = min(1, L / W_nat)                                # < 1 only when em was clamped up
@@ -386,13 +433,20 @@ for each AYAH line at page em E (L = 1/E em available):
     # plain variant
     g_plain = (L/scale − Σadv(w,0)) / (n−1)
     # kashida variant
-    k = {w: 0}; g = g_plain
-    cands = words sorted by adv(w,0) desc, excluding: is_end tokens, tokens that are only a U+08E2 sign,
-            words where adv(w,1) == adv(w,0) (no kashida opportunity), neighbours of an already-stretched word
+    k = {w: 0 for w in line}; g = g_plain; stretched = 0
+    gap(kk) = (L/scale − Σ adv(v, kk[v])) / (n−1)            # inter-word gap for a candidate assignment
+    cands = deque(sorted(eligible, key = −adv(w,0)))         # LONGEST first; eligible excludes is_end tokens,
+                                                             # tokens that are only a U+08E2 sign, and words
+                                                             # where adv(w,1) == adv(w,0) (no kashida opportunity)
     while g > G_MAX and stretched < KMAX_WORDS and cands:
-        w = cands.pop()
-        k[w] = smallest j in 1..3 with gap after stretching ≤ G_MAX, else 3
-        g = (L/scale − Σ adv(v, k[v])) / (n−1)
+        w = cands.popleft()                                  # longest remaining word
+        if k[prev(w)] > 0 or k[next(w)] > 0: continue        # neighbour already stretched (checked per iteration)
+        ok = [j for j in 1..KMAX_STEP if G_MIN ≤ gap(k ∪ {w: j}) ≤ G_MAX]
+        if ok: k[w] = min(ok)                                # smallest step that lands inside [G_MIN, G_MAX]
+        else:  k[w] = max([j for j in 1..KMAX_STEP if gap(k ∪ {w: j}) ≥ G_MIN], default = 0)
+                                                             # else the largest step that keeps g ≥ G_MIN
+        if k[w] == 0: continue                               # no admissible step for this word
+        stretched += 1; g = gap(k)
     # emit, RTL: reading-order word 1 is right-aligned
     x = 1.0
     for w in reading order:
@@ -442,9 +496,10 @@ Pipeline report (CI artefact): the distribution of `gap_em` per variant, the cou
 
 ### 4.6 Validation gates (fail the build)
 
-- 548 pages; 548 × 16 `line` rows; every `word.id` 1..83,669 exactly once, in reading order across pages/slots/x.
-- 6,354 `ayah_marker` rows with `is_kufan_end XOR disputed_end`. Surah 1: `display_number` is NULL.
-- Para header ids: Para *n* starts at index 18n−16 (n = 2..28), P29 at 508, P30 at 528 (D-07). Manzil footer changes at indices 96, 187, 254, 330, 401, 466 (g02 §2.7).
+- 548 pages; 548 × 16 `line` rows; every `word.word_index` 1..83,669 exactly once, in reading order across pages/slots/x, and equal (with `ayah_id`, `pos`, `is_end`) to the content DB's `word` row.
+- Every content-DB `ayah_marker` token (6,354 rows, `is_kufan_end XOR disputed_end`; checked as a content-DB invariant, doc 04 §7.2 / doc 08) has a placed `word` row in the pack. `ayah_display_override` = exactly ayah_id 1..7 → 0 for Taj-16. Every `word_override` row has `reason` and `approved_by`, and its text equals `word.text`.
+- `page.page_hash` is deterministic (two builds give the same hash) and recomputes per §3.5.
+- Para header ids: Para 1 starts at index 1; Para *n* starts at index 18n−16 for n = 2..28 only; P29 at 508, P30 at 528 (D-07). Manzil footer changes at indices 96, 187, 254, 330, 401, 466 (g02 §2.7).
 - `outer_side == (label % 2 == 0 ? RIGHT : LEFT)` on every page. Ruku triples equal the 558 table, including the straddling-para rule (D-07).
 - Zero `.notdef` (Quran text and furniture). No line overflow. No marker overlap at `pitch_min`. FC-6 thresholds met.
 - Render the **full-book vector PDF proof** from the pack (identical placements, the TTF, ornaments from the same SVGs) for the hafiz (G5), plus a per-page PNG set at 1080 px width for the device comparison (§14.4).
@@ -584,15 +639,15 @@ for (line in model.lines) if (line.type == LineType.AYAH) {
 | Cache | Key | Size | Invalidated by |
 |---|---|---|---|
 | `MushafTypefaces` (singleton) | font file | 1 typeface (~1.6 MB, loaded once) | Never. Preloaded from `Application.onCreate` on `Dispatchers.IO`. |
-| Repository `LruCache<PageIndex, PageModel>` | (mushafId, index) | 16 pages (~30 KB each, < 0.5 MB) | Pack supersede, `onTrimMemory(≥ RUNNING_LOW)` → trim to 4 |
+| Repository `LruCache<Long, PageLayout>` (`:core:data`) | (`MushafId.id`, page index) | 7–15 pages by `ActivityManager.memoryClass` (doc 04 §13; ~30 KB each, < 0.5 MB) | New pack version installed or revoked (`PackManager.installed()`), `onTrimMemory(≥ RUNNING_LOW)` → trim to 4 |
 | `PaintCache` | (sizePx rounded to 0.25, cv) | ≤ 32 paints | Typeface, ink colour |
 | Furniture / text `GraphicsLayer`s | per composed page | display lists only (≈100–300 KB) | Size, zoom commit, theme, variant, margin-notes setting |
 | Composed neighbours | `beyondViewportPageCount = 1` | ≤ 3 pages (or 3 spreads) | Pager |
 | Prefetch | ±2 page models on `settledPage` change | — | — |
 
-### 6.5 Memory budget (2 GB, API 24–27 low-end reference)
+### 6.5 Memory budget (renderer share of QB-08 on Ref-low)
 
-The default path holds no page bitmaps (r04 §2.8).
+The default path holds no page bitmaps (r04 §2.8). These are the reader's share of doc 10's QB-08 (reader PSS ≤ 150 MB on Ref-low, the 3 GB Transsion/Redmi reference in §13).
 
 | Item | Budget |
 |---|---|
@@ -629,7 +684,7 @@ The default path holds no page bitmaps (r04 §2.8).
 
 **Colour roles** (each theme defines them; §9): `ornPrimary` (rules, outlines), `ornSecondary` (band/vine fill), `ornAccent` (cartouche fill), `ornOnAccent` (text inside cartouches = `ink` unless the accent is dark), `rule` (line rules), `markerInk` (margin text and badge).
 
-**Placeholders (P1).** `OrnamentPainter` has a `Placeholder` implementation: double rule frame, rounded-rect cartouche, plain «ع» glyph badge, all drawn in code. P1 is never blocked on art. The final art lands in P2, before the closed test. Designer effort is estimated at about 25–35 h, including two revision rounds.
+**Placeholders (P1).** `OrnamentPainter` has a `Placeholder` implementation: double rule frame, rounded-rect cartouche, plain «ع» glyph badge, all drawn in code. P1 is never blocked on art. **Deadline:** the final art is integrated (E-04-S09) by the end of S5, **2027-01-04**, before hafiz round 2 starts on device-rendered captures, so the reviewer and the closed test see the shipping look. If it misses that date, round 2 and the certificate proceed on placeholder art, which then ships in v1.0; final art follows in v1.1. The G5 hash binds to the text layer only (§3.5), so that swap needs no re-certification, only a header-page review by the owner. Designer effort is estimated at about 25–35 h, including two revision rounds.
 
 ---
 
@@ -663,7 +718,7 @@ Pinch is handled by a separate detector that only consumes events when ≥ 2 poi
 ### 8.3 Hit-testing (`HitTester`, pure Kotlin)
 
 - Convert the touch to page coordinates: `u = (x − panX − textLeft)/s` (tw) and `v = (y − panY − textTop)/(pitch·s)` (slots). Then `slot = floor(v) + 1`.
-- If the slot is outside 1..L: test the margin marker boxes (`margin_strip × y_center_slot ± h/2`), else `None`.
+- If the slot is outside 1..L, **or** `u < −0.03` or `u > 1.03` (the touch is beside the text block): test the margin marker boxes (`outer margin strip × y_center_slot ± h/2`), else `None`. Margin markers sit beside body slots, so the horizontal test is what finds them.
 - `AYAH` line: words are sorted by `x0`. The **hit edges are the midpoints of the gaps** between neighbours, precomputed per line at model build (`FloatArray`). Binary search for u. The leftmost and rightmost words extend 0.03 tw past the block, which also covers centred lines → `Hit.Ayah(ayahId, wordId)`. A tap on a «۵» disputed sign selects its containing verse (g01 §2.6).
 - `SURAH_HEADER` → `Hit.Header(surah)`. `BASMALA` → `Hit.Basmala(surah)`. On index 1, slot 11 is an `AYAH` line (1:1), so a tap there is an ayah hit.
 - Cost: O(log n) per tap, ≤ 20 µs.
@@ -678,7 +733,7 @@ Copy and share use the **Tanzil text** of the range, never the DK glyph strings 
 
 ### 8.5 Highlight rendering and styles
 
-- `PageModel.ayahSpans[ayah]` holds one `SlotSpan(slot, x0, x1)` per slot the ayah touches. The span's x0/x1 is the union of the ayah's word boxes, padded by half the neighbouring gap (capped at 0.12 em).
+- `PageLayout.ayahSpans[ayah]` holds one `SlotSpan(slot, x0, x1)` per slot the ayah touches. The span's x0/x1 is the union of the ayah's word boxes, padded by half the neighbouring gap (capped at 0.12 em).
 - Spans of consecutive selected ayahs on the same slot are **merged**, so there are no seams.
 - The rect is `x ∈ [x0, x1]`, `y ∈ slot ± 0.42·pitch`, with corner radius `0.12·pitch`.
 
@@ -695,27 +750,40 @@ The underline sits at `slot bottom − 0.12·pitch` and is `0.04·pitch` thick. 
 
 ### 8.6 Follow-along and auto page-turn (D-13)
 
-Input: `PlaybackStateHub.state: StateFlow<PlaybackUiState>` from [Audio engine](06-audio-engine.md), with `ayah`, `ayahStartMs`, `ayahEndMs`, `positionMs`, `speed`, `isPlaying`, `wordId?` (v1.x).
+Input: `PlaybackStateHub.state: StateFlow<PlaybackState>` (the shared type in `:core:domain`, owned by [Architecture](04-architecture.md); semantics in [Audio engine](06-audio-engine.md)). The reader uses `status` / `isPlaying`, `segment` (`Ayah(key, rep, repOf)` …), `highlight: HighlightTarget?` (`Ayah(VerseKey)` | `BasmalaLine(SurahId)` | v1.x `Word(VerseKey, wordId)`), `highlightAvailable`, `ayahStartMs`, `ayahEndMs`, `positionMs` (sampled at emission), `rangePass`, `speed` and `seq`.
+
+**Why a narrow `distinctUntilChanged` is wrong.** Keying on `(ayah, isPlaying, speed)` misses two cases:
+- a **repeat** of an ayah that spans two pages (`ayahTimes > 1`): rep 2 restarts on `pageStart`, but the reader stays on `pageEnd`;
+- a **seek** inside the ayah: the old `pendingTurn` stays scheduled against a stale position.
+
+The controller therefore re-evaluates on **every** emission (the hub never emits on position ticks, so this is cheap) and derives the target page from the **position inside the ayah**, not from the fact that the ayah changed.
 
 ```text
-on state change (ayah A or play/pause):
+on every PlaybackState emission st:
   cancel pendingTurn
-  highlight ← A (if on a composed page)
-  if !isPlaying or !settings.followAudio: return
-  span = repo.ayahSpan(A)
-  if span.pageStart ∉ visiblePages and canAutoTurn(): turn(span.pageStart)
-  if span.pageEnd ≠ span.pageStart:                       # ayah spans two pages
-      turnAt = ayahStartMs + (span.wordsOnStartPage / span.wordCount) · (ayahEndMs − ayahStartMs)
-      # v1.x: use the word timing of the first word on pageEnd when available
+  highlight ← st.highlight (if on a composed page)
+  if st.status ≠ PLAYING or !settings.followAudio or !st.highlightAvailable: return   # doc 06: no auto-turn without timing
+  key = st.highlight as Ayah → key; BasmalaLine(s) → turn to repo.headerPage(mushaf, s) if not visible and canAutoTurn(); return
+  span   = repo.ayahSpan(mushaf, key)
+  turnAt = span.pageEnd == span.pageStart ? +∞
+         : ayahStartMs + (span.wordsOnStartPage / span.wordCount) · (ayahEndMs − ayahStartMs)
+           # v1.x: use the word timing of the first word on pageEnd when available
+  target = positionMs < turnAt ? span.pageStart : span.pageEnd     # a repeat or backward seek lands on pageStart
+  if target ∉ visiblePages and canAutoTurn(): turn(target)
+  if target == span.pageStart and turnAt < +∞:
       pendingTurn = schedule((turnAt − positionMs) / speed) { if canAutoTurn(): turn(span.pageEnd) }
 canAutoTurn() = now − lastUserPagerTouch ≥ 8 000 ms
 turn(p): animateScrollToPage if |Δ| ≤ 2 else scrollToPage; spreads: target spread = (p−1)/2
 ```
 
+- **Repeats and range passes.** A new `rep` or `rangePass` is a new emission with `positionMs ≈ ayahStartMs`, so the target is `pageStart` and the reader turns back when needed.
+- **Seeks.** The hub must re-emit (new `seq`, fresh `positionMs`) after every position discontinuity, including a seek inside the same ayah (cross-doc assumption §19.2 #4). The stale `pendingTurn` is then cancelled and rescheduled.
+- **Stale position on subscribe.** When the reader subscribes mid-ayah, the replayed `positionMs` may be older than the emission. The worst case is one turn that comes early or late within that ayah; the next emission corrects it. v1.x word timing removes the estimate.
 - **Any user pager touch** (drag start, zoom, Go-to) sets `lastUserPagerTouch`. **"Play from here" and play from an index** reset it to 0, so follow-along starts immediately.
-- While playing and the current ayah is off-screen, a **"Return to current ayah"** chip is shown (UI in [UX spec](02-ux-ui-spec.md)).
+- While playing and the current ayah is off-screen, the **"Follow recitation"** chip is shown; tapping it re-attaches and jumps (UI in [UX spec](02-ux-ui-spec.md)).
 - **Page-turn lock** (F-RD-07) disables only *user* swipes: `userScrollEnabled = false`. Audio auto-turn still works; the user turns it off with the **Follow audio** toggle.
-- Gapped mode (per-ayah items) behaves the same; `ayahEndMs` is the item's duration.
+- Gapped mode (per-ayah items) behaves the same; `ayahStartMs = 0` and `ayahEndMs` is the item's duration.
+- Doc 06 §9.3 must adopt this proportional rule, replacing "the turn happens at the next ayah's start".
 
 ### 8.7 Rotation lock and keep-screen-on
 
@@ -726,7 +794,7 @@ turn(p): animateScrollToPage if |Δ| ≤ 2 else scrollToPage; spreads: target sp
 
 ## 9. Themes (F-RD-03)
 
-Mushaf tokens live in `MushafTheme` (`:core:mushaf-ui`). The app-chrome themes belong to the [UX spec](02-ux-ui-spec.md). The base paper/ink values come from r04 §2.8. Highlights are drawn at the given alpha over paper.
+Mushaf tokens live in `MushafTheme` (`:core:mushaf-render`). The app-chrome themes belong to the [UX spec](02-ux-ui-spec.md). The base paper/ink values come from r04 §2.8. Highlights are drawn at the given alpha over paper.
 
 | Token | Light | Sepia | Night | AMOLED |
 |---|---|---|---|---|
@@ -753,10 +821,10 @@ Mushaf tokens live in `MushafTheme` (`:core:mushaf-ui`). The app-chrome themes b
 
 - **Pinch:**
   - During the gesture, apply `graphicsLayer { scaleX = scaleY = z; transformOrigin = centroid }` (a transform only, no offscreen buffer).
-  - On release, **commit**: set `zoom.scale = clamp(z·old, 1.0, 2.5)`, recompute `PageGeometry` at the new `s`, and re-record both cached layers. The result is crisp because everything is vector.
+  - On release, **commit**: set `zoom.scale = clamp(z·old, 1.0, 2.0)` (doc 01 range 1.0–2.0×), recompute `PageGeometry` at the new `s`, and re-record both cached layers. The result is crisp because everything is vector.
 - **Pan:** `panX/panY` are clamped to the page bounds. When zoomed with horizontal pan room left, the pager's `userScrollEnabled = false`. A drag past the edge by more than 48 dp triggers `animateScrollToPage(±1)`; the new page starts at the matching edge with `panY = 0`.
-- **Persistence:** zoom is stored per mushaf in DataStore (`reader.zoom.taj16`) and applied to every page. Pan resets per page.
-- **Large glyphs:** hwui draws very large text as paths, which is slower (r04 §2.8; threshold unverified). The `ZoomBenchmark` (§13) checks 2.5× on the low-end reference device. If frames exceed the budget, cap zoom at 2.0 on that device class.
+- **Persistence:** zoom is stored per mushaf in `user.db` `pref_kv(namespace = 'mushaf_view', key = 'zoom.<code>.<orientation>')`, e.g. `zoom.indopak16_taj.portrait` (doc 04 §7.4; per orientation as doc 01 F-RD-06 requires), and applied to every page. Pan resets per page.
+- **Large glyphs:** hwui draws very large text as paths, which is slower (r04 §2.8; threshold unverified). The `ZoomBenchmark` (§13) checks 2.0× on Ref-low. If frames exceed the budget, cap zoom at 1.6 on that device class. A 2.5× maximum is allowed only if `ZoomBenchmark` passes at 2.5× on Ref-low and doc 01 F-RD-06 is updated.
 - **"Large text" reflow (P3).**
   - Offered by a chip when zoom > 1.6.
   - Ayah-flow layout of the same DK glyph strings at a user font size (24–56 sp, following the system font scale).
@@ -784,16 +852,25 @@ CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {   
 }
 ```
 
-- **Navigation entry:** `ReaderKey(mushafId, target: ReaderTarget)` with `ReaderTarget = Resume | Page(label) | Ayah(AyahId) | Para(n) | Manzil(n) | Ruku(id)`. NavKeys live in `:core:navigation` (D-03). Go-to-page accepts **labels 2–549**; label 1 is clamped to 2 with a hint (D-04).
+- **Navigation entry:** doc 04's `ReaderKey(mushaf: MushafId? = null, page: PageIndex? = null, focus: VerseKey? = null, mode: ReaderMode = MUSHAF, autoplay: Boolean = false)` in `:core:navigation` (D-03). Callers map their intent onto it:
+
+  | Intent | `ReaderKey` |
+  |---|---|
+  | Resume | all fields null → the reader opens `ReadingProgressRepository.lastRead(mushaf)` |
+  | Page by label L | `page = spec.indexOf(PageLabel(L))`; `null` (outside 2–549) never navigates, and the Go-to UI shows the hint (label 1 → label 2 with the D-04 hint) |
+  | Ayah | `focus = key`; the reader resolves `page = MushafRepository.pageOf(mushaf, key)` |
+  | Para / Manzil / Ruku / Surah | the caller resolves the first ayah through `IndexRepository` (or `MushafRepository.startPage(mushaf, IndexTarget)` for the page) and passes `focus` (+ `page`) |
+
+  Every page number the user sees is a **label**, converted in one place (`MushafSpec.labelOf` / `indexOf`).
 - **State restoration:** `ReaderViewModel` keeps `currentIndex` in `SavedStateHandle` and restores it after process death.
 - **On `settledPage`:**
-  - update the toolbar ("Para N · Page L · Surah", F-RD-02) from `PageModel`;
-  - emit a `PageSettled(mushafId, index, firstAyah)` event, which drives the last-read pointer (F-BM-01) after a 2 s dwell (owned by [Architecture](04-architecture.md));
+  - update the toolbar ("Para N · Page L · Surah", F-RD-02) from `PageLayout`;
+  - emit a `PageSettled(mushaf, page, firstAyah)` event. `LastReadTracker` (`:feature:reader`, owned by [Architecture](04-architecture.md)) turns it into the last-read pointer (F-BM-01) after a **4 s** dwell. The renderer never writes `user.db`;
   - prefetch ±2 pages.
 - **Jumps:** `animateScrollToPage` for |Δ| ≤ 2, `scrollToPage` for longer jumps.
-- **Placeholder:** while a `PageModel` is loading, draw only the paper + frame (no spinner). This should only happen on cold-start jumps.
+- **Placeholder:** while a `PageLayout` is loading, draw only the paper + frame (no spinner). This should only happen on cold-start jumps.
 
-### 11.2 Page transition styles (F-RD-12, P2)
+### 11.2 Page transition styles (F-RD-12, v1.1)
 
 The setting is **Slide** (default) / **Book** / **Curl**. Book and Curl apply a `graphicsLayer` transform per page from `pagerState.getOffsetDistanceInPages(page)`.
 - **Book:** `rotationY` (0 → ±90°) around the spine edge, `cameraDistance = 12·density`, plus a shadow gradient overlay.
@@ -801,7 +878,7 @@ The setting is **Slide** (default) / **Book** / **Curl**. Book and Curl apply a 
 
 The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04 §2.8) is **not adopted**: it is unmaintained and replaces the pager. An AGSL mesh curl on API 33+ can be evaluated in P3.
 
-### 11.3 Vertical auto-scroll mode (F-RD-09, P2)
+### 11.3 Vertical auto-scroll mode (F-RD-09, v1.1)
 
 - A `LazyColumn` of `MushafPage`s, each fitted to width at `pitch_nominal` (no stretch).
 - Auto-scroll uses `withFrameNanos` + `scrollBy(speed·dt)`; speed runs 5–60 dp/s in 12 steps.
@@ -835,21 +912,25 @@ The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04
 
 ## 13. Performance budgets and benchmarks
 
-**Reference devices:**
-- **Mid-range:** 4 GB RAM, Snapdragon 680 / Helio G85-class, API 33–35.
-- **Low-end:** 2 GB RAM, API 24–27, a 2016–17 Pakistani-market phone such as a Samsung J-series or QMobile (g04 open q. 4). The owner supplies a physical one in P0.
+**Reference devices** (defined by [Quality & CI](10-quality-testing-ci.md) §2, which owns the app-level budgets QB-01..16):
+- **Ref-high:** a Pixel 6a-class phone.
+- **Ref-low:** a 3 GB Transsion (Infinix/Tecno) or Redmi phone on Android 12–14 with a Helio G-class SoC.
+- **Old-API device** (compatibility, not a performance reference): a physical API 24/25 phone, which the owner supplies in P0. It runs `KashidaDeviceTest`, `DrawTextRunOriginTest` and `ReaderSmokeTest` (§14.4).
 
-| Metric | Mid-range | Low-end | How measured |
+The rows marked QB are doc 10's gates, quoted here. The other rows are renderer micro-budgets owned by this doc; they keep the reader inside QB-04/05/08.
+
+| Metric | Ref-high | Ref-low | How measured |
 |---|---|---|---|
 | Record the text + furniture layers for one page (≈170 `drawTextRun`) | **≤ 8 ms** | ≤ 16 ms | `Trace` sections `Mushaf.recordText` / `recordFurniture` → Macrobenchmark `TraceSectionMetric` |
 | Highlight redraw on an ayah change | ≤ 1 ms | ≤ 2 ms | `Mushaf.drawHighlight` |
-| `PageModel` load (5 queries + build) off main | ≤ 15 ms | ≤ 40 ms | Microbenchmark `PageLoadBenchmark` |
+| `PageLayout` load (5 queries + build) off main | ≤ 15 ms | ≤ 40 ms | Microbenchmark `PageLoadBenchmark` |
 | `PageGeometry.fit` + `HitTester.hit` | ≤ 0.5 ms / ≤ 20 µs | ×3 | Microbenchmark |
-| **First page drawn after reader open, cold process** | **< 300 ms** | < 700 ms | `ReportDrawnWhen { firstPageRecorded }`; Macrobenchmark `ReaderColdStart` (`StartupTimingMetric`, start destination = Resume). Excludes the one-time asset copy during onboarding. |
-| Cold app start → resumed page fully drawn | ≤ 1.2 s | ≤ 2.5 s | Same benchmark |
-| Swipe 30 pages | P50 frame CPU ≤ 6 ms, P95 ≤ 12 ms, 0 frozen | P95 ≤ 20 ms | `FrameTimingMetric` in `PageSwipeBenchmark` |
-| Pinch to 2.5×, pan | P95 ≤ 16 ms | P95 ≤ 24 ms, else cap 2.0× | `ZoomBenchmark` |
-| Reader memory delta | ≤ 25 MB PSS | ≤ 25 MB PSS | `dumpsys meminfo` in `MemoryBenchmark` |
+| First page drawn after reader open (process already warm) | **< 300 ms** | < 700 ms | `ReportDrawnWhen { firstPageRecorded }`; trace section `Mushaf.firstPage`. Excludes the one-time bundled-pack install during onboarding. |
+| **QB-04** Cold app start → last-read page fully drawn | **≤ 800 ms** | **≤ 2,000 ms** | doc 10 `ReaderOpenBenchmark` (`reportFullyDrawn`, start destination = Resume) |
+| **QB-05** Page-turn smoothness (swipe 20 pages) | p90 frame ≤ 16 ms, p99 ≤ 32 ms, janky < 5% | same, janky < 10% | doc 10 `PageTurnBenchmark` (`FrameTimingMetric`) |
+| Renderer share of a swipe (micro-budget) | P50 frame CPU ≤ 6 ms, P95 ≤ 12 ms, 0 frozen | P95 ≤ 20 ms | Same benchmark, renderer trace sections |
+| Pinch to 2.0×, pan | P95 ≤ 16 ms | P95 ≤ 24 ms, else cap 1.6× | `ZoomBenchmark` |
+| Reader memory delta (within **QB-08**, reader PSS ≤ 150 MB on Ref-low, 0 page bitmaps) | ≤ 25 MB PSS | ≤ 25 MB PSS | `dumpsys meminfo` in `MemoryBenchmark` |
 
 **Optimisations (in order).**
 1. A **Baseline Profile** covering the reader path ([Quality & CI](10-quality-testing-ci.md)).
@@ -862,7 +943,7 @@ The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04
 
 ## 14. Testing
 
-### 14.1 Pure-Kotlin unit tests (`:core:mushaf`, JVM)
+### 14.1 Pure-Kotlin unit tests (`:core:mushaf-render` geometry package, plain JVM)
 
 - `PageGeometryTest`: fit modes, the worked example in §6.1, the parity → margin side mapping, zoom and pan clamps.
 - `HitTesterTest`, a property test over all words of 30 fixture pages:
@@ -870,14 +951,16 @@ The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04
   - the midpoint edges are monotonic;
   - margin and header hits are correct.
 - `AyahSpansTest`: merge and no-seam rules, a 3-line ayah, a page-crossing ayah.
-- `FollowAlongPolicyTest`: the 8 s suspension, proportional turn time with speed 0.5/2×, reset on play-from-here, locked pager.
-- `LabelTest`: label = index + 1; Go-to label 1 → index 1 (label 2) plus a hint.
+- `FollowAlongPolicyTest`: the 8 s suspension; proportional turn time with speed 0.5/2×; reset on play-from-here; locked pager; **rep 2 of a page-spanning ayah turns back to `pageStart`**; a seek inside the ayah (re-emission with a new `positionMs`) reschedules the turn; an unrelated emission (sleep-timer change) after the turn does **not** turn back; `highlightAvailable = false` never turns.
+- `LabelTest`: label = index + 1; `indexOf(PageLabel(1))` and `indexOf(PageLabel(550))` are `null`; Go-to maps label 1 → label 2 with the D-04 hint and shows the "2–549" hint otherwise.
 
 ### 14.2 Pack tests (Robolectric, `:core:content`)
 
 - Open the bundled pack through Room. Assert the identity hash, then also open a no-`room_master_table` copy to force `onValidateSchema` (g04 Rec. 4).
-- Assert the pipeline invariants (§4.6) again, from the app side.
+- Assert the pipeline invariants (§4.6) again, from the app side, including the join to `quran_content.db` (`word.word_index`, `ayah_marker`).
 - `font_sha256` equals the asset.
+- `PageHashTest`: recompute every page's `page_hash` (§3.5) from the packaged pack and compare with `page.page_hash`. In a PUBLIC build, also require every hash to be in `certified_pages.json`. The release gate runs the same check on the asset inside the AAB (doc 04 §11.3, doc 10 `verifyPackagedBuildIds`).
+- `PackEligibilityTest`: the bundled pack's `eligible_tiers` contains `BuildConfig.CONTENT_TIER`, and the pack is never present under `src/main/assets`.
 
 ### 14.3 Screenshot goldens (Roborazzi on Robolectric NATIVE graphics)
 
@@ -886,6 +969,8 @@ The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04
 - one SDK per JVM;
 - never name a test-resource folder `fonts/`;
 - the native runtime is a single HarfBuzz 2.6.4 build, so goldens catch **our** regressions, not OEM shaping differences.
+
+**Relation to doc 10.** [Quality & CI](10-quality-testing-ci.md) §7.2 owns the golden set: about 60 rule-selected pages per PR (zero tolerance) and all 548 pages nightly, picked by `GoldenPageSelector` into `golden_pages.json`. The 23 pages below are the renderer's **required subset** of that set. Most are reached by doc 10's rule groups. Labels 5, 8 and 160 and the first `scale < 1` page are not, so doc 10's selector must add them as a "renderer specifics" group.
 
 | # | Page (index → label) | Covers |
 |---|---|---|
@@ -909,14 +994,11 @@ The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04
 | 21 | First page with `scale < 1` (pipeline report) | Overflow handling |
 | 22–23 | 69 → 70, 123 → 124 (P2, when quarter data lands) | 3:198 ثلثة; mid-ayah 6:73 w10 |
 
-**Matrix.**
-- All pages in Light at 411 × 914 dp.
-- Pages 1, 3, 8, 14, 16 also in Sepia, Night and AMOLED.
-- Pages 3 and 16 at 360 × 800, 600 × 960 and phone-landscape fit-width.
-- Pages 3 and 8 at zoom 2.0.
-- Pages 3 and 6 with highlight states: audio fill, a 3-line selection, underline style.
-- Plain-variant goldens for pages 1, 3, 8.
-- Spread goldens added in P3.
+**Matrix.** Doc 10 §7.2's sizes and theme axes apply (default `w360dp-h800dp-xxhdpi`; four themes on its 6-page subset). The renderer adds:
+- labels 5 and 8 at zoom 2.0;
+- labels 5 and 39 with highlight states (audio fill, a 3-line selection, underline style);
+- plain-variant goldens for labels 2, 5 and 8;
+- spread goldens in P3.
 
 ### 14.4 Device tests (instrumented)
 
@@ -924,13 +1006,13 @@ The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04
 |---|---|---|
 | `KashidaDeviceTest` (P0, before the reader sprint) | Physical API 24/25 + emulators API 26, 30, 35 (KVM CI runner) | `getRunAdvance` at `textSize = 1000` with the shipped TTF: الْكِتٰبُ = 2060 / 2847 / 3615 / 4384 (cv01 0..3) and بِسْمِ = 1216 / 1405 / 1594 / 1783, within ±0.5% (g04 §2.7) |
 | `DrawTextRunOriginTest` | Same | The ink of a run drawn at x with `Align.LEFT`, RTL starts ≥ x and ends ≤ x + advance |
-| `FullBookCaptureTest` (debug build, nightly + release) | API 30 emulator + the physical low-end device | Renders all 548 pages offscreen at 1080 px text-block width with `pitch_nominal`, the same geometry as the pipeline PNGs. Perceptual diff (SSIM ≥ 0.98) against the pipeline's PNG proofs. Pages below the threshold are listed for human review. This closes the gap between the proof the hafiz signs and what users see (FC-8). |
+| `FullBookCaptureTest` (debug build, nightly + release) | API 30 emulator + a physical Ref-low phone | Renders all 548 pages offscreen at 1080 px text-block width with `pitch_nominal`, the same geometry as the pipeline PNGs. Perceptual diff (SSIM ≥ 0.98) against the pipeline's PNG proofs. Pages below the threshold are listed for human review. Each capture is stamped with its label and `page_hash[:8]`. The captures from the release candidate are the page images for **hafiz round 2**, so the certificate covers device-rendered pages, not only the pipeline PDF. This closes the gap between the proof the hafiz signs and what users see (FC-8). |
 | `ReaderSmokeTest` | API 24, 30, 35 | Open → swipe 10 → long-press → sheet → play from here → auto page-turn within 1 s of the ayah boundary |
 
 ### 14.5 Pipeline-level proofs ([Data pipelines](08-data-pipelines.md))
 
 - A **full-book vector PDF** per pack build: 548 pages with margins, furniture and ornaments, page labels, and a pipeline-version footer.
-- The **hafiz proofreading certificate** per layout (G5, D-22) references `pack_version` + `font_sha256`. A pack is `public` only with a certificate id.
+- The **hafiz proofreading certificate** per layout (G5, D-22) references `pack_info.version`, `build_id` and `font_sha256`, and lists the certified per-page `page_hash`es (§3.5) in `certified_pages.json` ([Release & compliance](11-release-compliance-business.md) §5.4). A pack is PUBLIC-eligible only with a certificate id **and** every current `page_hash` in `certified_pages.json`. A page whose hash changed blocks the PUBLIC build until a certificate addendum covers it.
 - A diff-proof (changed pages only, red overlay) for every pack revision after certification, so re-review covers only what changed.
 
 ---
@@ -954,8 +1036,8 @@ The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04
 | T2: Runtime calibration drift. At first reader open per app version, measure the 24 `calibration` rows. Any mismatch > 0.5%, or cv01 not changing the advance. | `CalibrationCheck` (≈ 2 ms), result in DataStore | Mismatch only on cv rows → L0′. Mismatch on cv0 rows → **L1** for this device. The result is shown in the local diagnostics screen (no telemetry, D-20). |
 | T3: Glyph or mark defects found in the hafiz proof that the font can't fix | G5 review | Patch the font in the pipeline (OFL allows modified versions) and rebuild. If it can't be fixed within 2 weeks: alternate font pack (KFGQPC Nastaleeq, **unmodified**, plain variant only, its own script and pack; r04 §2.4) as a v1.x option |
 | T4: `FullBookCaptureTest` shows pages below SSIM 0.98 on a device class *and* a human confirms they are wrong | Nightly device run | Fix the cause (pipeline/renderer). If it is device-specific and unfixable → L1 on that class. |
-| T5: Performance budget missed on the low-end reference after the §13 optimisations (record > 16 ms P90 or swipe P95 > 20 ms) | Benchmarks | Offer **L2** as an opt-in download on that device class |
-| T6: Field reports of broken rendering (≥ 3 independent "Report text error" reports naming the same device model + page with a non-text cause) | F-PL-05 inbox | Investigate; L1 or L2 for the model via a signed config flag in `index.json` |
+| T5: Performance budget missed on Ref-low after the §13 optimisations (record > 16 ms P90 or swipe P95 > 20 ms) | Benchmarks | Offer **L2** as an opt-in download on that device class |
+| T6: Field reports of broken rendering (≥ 3 independent "Report text error" reports naming the same device model + page with a non-text cause) | F-PL-05 inbox | Investigate; L1 (or offer L2) for that model via a signed `notices.json` entry `{"target": {"type": "feature", "id": "renderFallback", "device": "<Build.MODEL>"}, "action": "L1" \| "L2"}` (doc 04 §14.3 must add the `device` field). This switches the drawing path only, never layout data (D-30). |
 
 **G1 is not a rendering trigger.** If Tarteel/QUL refuses (G1, 2026-11-19), the clean-room Taj-16 layout (D-06) is produced in the **same pack schema**, so the engine is unaffected. Alternatively the 15-line DK layout (MIT) can ship first (g01 §4).
 
@@ -963,13 +1045,13 @@ The third-party `pagecurl` 1.5.1 library (Apache-2.0, last release Feb 2024; r04
 
 ## 16. Kotlin skeletons
 
-### 16.1 `PageGeometry` (`:core:mushaf`)
+### 16.1 `PageGeometry` (`:core:mushaf-render`, Android-free)
 
 ```kotlin
 enum class FitMode { AUTO, FIT_WIDTH_SCROLL }
 
 class PageGeometry private constructor(
-    val model: PageModel, val s: Float, val pitchTw: Float,
+    val model: PageLayout, val s: Float, val pitchTw: Float,
     val pageLeft: Float, val pageTop: Float, val pageW: Float, val pageH: Float,
     val textLeft: Float, val textTop: Float, val marginsShown: Boolean,
 ) {
@@ -980,46 +1062,46 @@ class PageGeometry private constructor(
     fun slotTop(slot: Int) = textTop + (slot - 1) * pitchPx
     fun slotY(slotUnits: Float) = textTop + (slotUnits - 1f) * pitchPx      // slot k spans [k, k+1)
     fun baseline(slot: Int, scale: Float) =
-        slotTop(slot) + pitchPx / 2f + model.spec.baselineOffsetEm * fontPx * scale
+        slotTop(slot) + pitchPx / 2f + model.geom.baselineOffsetEm * fontPx * scale
     fun spanRect(span: SlotSpan, inset: Float = 0.08f) = Box(
         x(span.x0), slotTop(span.slot) + inset * pitchPx, x(span.x1), slotTop(span.slot + 1) - inset * pitchPx)
 
     companion object {
-        fun fit(m: PageModel, vw: Float, vh: Float, zoom: Float = 1f,
+        fun fit(m: PageLayout, vw: Float, vh: Float, zoom: Float = 1f,
                 mode: FitMode = FitMode.AUTO, marginsShown: Boolean = true): PageGeometry {
-            val sp = m.spec; val L = sp.linesPerPage
-            val mOut = if (marginsShown) sp.marginOuter else sp.marginInner
-            val pageWTw = 1f + 2 * sp.frameInset + mOut + sp.marginInner
-            val fixedH = sp.headerBand + sp.footerBand + 2 * sp.frameInset
+            val g = m.geom; val L = m.spec.linesPerPage
+            val mOut = if (marginsShown) g.marginOuter else g.marginInner
+            val pageWTw = 1f + 2 * g.frameInset + mOut + g.marginInner
+            val fixedH = g.headerBand + g.footerBand + 2 * g.frameInset
             val sW = vw / pageWTw
             val pitchW = (vh / sW - fixedH) / L
             var (s, pitch) = when {
-                mode == FitMode.FIT_WIDTH_SCROLL -> sW to sp.pitchNominal
-                pitchW >= sp.pitchMin -> sW to minOf(pitchW, sp.pitchMax)
-                else -> (vh / (fixedH + L * sp.pitchNominal)) to sp.pitchNominal
+                mode == FitMode.FIT_WIDTH_SCROLL -> sW to g.pitchNominal
+                pitchW >= g.pitchMin -> sW to minOf(pitchW, g.pitchMax)
+                else -> (vh / (fixedH + L * g.pitchNominal)) to g.pitchNominal
             }
             s *= zoom
             val pw = pageWTw * s; val ph = (fixedH + L * pitch) * s
             val left = if (zoom > 1f) 0f else (vw - pw) / 2f
             val top = if (zoom > 1f || mode == FitMode.FIT_WIDTH_SCROLL) 0f else (vh - ph) / 2f
-            val leftMarginTw = if (m.outerSide == Side.LEFT) mOut else sp.marginInner
+            val leftMarginTw = if (m.outerSide == Side.LEFT) mOut else g.marginInner
             return PageGeometry(m, s, pitch, left, top, pw, ph,
-                textLeft = left + (leftMarginTw + sp.frameInset) * s,
-                textTop = top + (sp.headerBand + sp.frameInset) * s, marginsShown = marginsShown)
+                textLeft = left + (leftMarginTw + g.frameInset) * s,
+                textTop = top + (g.headerBand + g.frameInset) * s, marginsShown = marginsShown)
         }
     }
 }
 data class Box(val l: Float, val t: Float, val r: Float, val b: Float)
 ```
 
-### 16.2 `HitTester` (`:core:mushaf`)
+### 16.2 `HitTester` (`:core:mushaf-render`, Android-free)
 
 ```kotlin
 class HitTester(private val geo: PageGeometry) {
     sealed interface Hit {
         data class Ayah(val ayah: AyahId, val word: WordId) : Hit
-        data class Header(val surah: Int) : Hit
-        data class Basmala(val surah: Int) : Hit
+        data class Header(val surah: SurahId) : Hit
+        data class Basmala(val surah: SurahId) : Hit
         data class Marker(val marker: MarginMarker) : Hit
         data object None : Hit
     }
@@ -1049,7 +1131,7 @@ class HitTester(private val geo: PageGeometry) {
             else -> Hit.None
         }
     }
-    private fun markerAt(u: Float, v: Float): Hit = geo.model.markers.firstOrNull { m ->
+    private fun markerAt(u: Float, v: Float): Hit = geo.model.furniture.markers.firstOrNull { m ->
         isInOuterMargin(u) && kotlin.math.abs((v + 1f) - m.yCenterSlot) < markerHalfHeight(m.kind)   // v+1 = slot units
     }?.let { Hit.Marker(it) } ?: Hit.None
     private fun isInOuterMargin(u: Float) = if (geo.model.outerSide == Side.RIGHT) u > 1f else u < 0f
@@ -1059,7 +1141,7 @@ class HitTester(private val geo: PageGeometry) {
 }
 ```
 
-### 16.3 `PaintCache` and `MushafTypefaces` (`:core:mushaf-ui`)
+### 16.3 `PaintCache` and `MushafTypefaces` (`:core:mushaf-render`)
 
 ```kotlin
 @Singleton class MushafTypefaces @Inject constructor(@ApplicationContext ctx: Context, @IoDispatcher io: CoroutineDispatcher) {
@@ -1083,7 +1165,7 @@ class PaintCache(private val typeface: Typeface, @ColorInt private val ink: Int,
 }
 ```
 
-### 16.4 `PageRenderer` (`:core:mushaf-ui`)
+### 16.4 `PageRenderer` (`:core:mushaf-render`)
 
 ```kotlin
 class PageRenderer @Inject constructor(private val ornaments: OrnamentPainters) {
@@ -1095,13 +1177,13 @@ class PageRenderer @Inject constructor(private val ornaments: OrnamentPainters) 
             val y = geo.slotTop(k + 1)
             drawLine(theme.rule, Offset(geo.x(0f), y), Offset(geo.x(1f), y), strokeWidth = 1.dp.toPx())
         }
-        geo.model.ornaments.forEach { ornaments.draw(this, it, geo, theme) }
+        geo.model.furniture.ornaments.forEach { ornaments.draw(this, it, geo, theme) }
         drawIntoCanvas { c ->
             val nc = c.nativeCanvas
-            for (r in geo.model.furniture) {
+            for (r in geo.model.furniture.runs) {
                 if (!geo.marginsShown && r.band == BAND_MARGIN) continue
                 val p = paints.get(geo.fontPx * r.sizeEm, r.kashida)
-                val (x, y) = geo.furnitureOrigin(r, p)            // ext. fn in :core:mushaf-ui: band → px, baseline from y centre
+                val (x, y) = geo.furnitureOrigin(r, p)            // ext. fn in :core:mushaf-render: band → px, baseline from y centre
                 if (r.rotation == 0) nc.drawTextRun(r.text, 0, r.text.length, 0, r.text.length, x, y, true, p)
                 else nc.withRotation(r.rotation.toFloat(), geo.furnitureCenterX(r), geo.furnitureCenterY(r)) {
                     drawTextRun(r.text, 0, r.text.length, 0, r.text.length, x, y, true, p) }
@@ -1140,12 +1222,12 @@ data class PageHighlights(
 enum class HighlightStyle { FILL, UNDERLINE }
 ```
 
-### 16.5 `MushafPage` composable (`:core:mushaf-ui`)
+### 16.5 `MushafPage` composable (`:core:mushaf-render`)
 
 ```kotlin
 @Composable
 fun MushafPage(
-    model: PageModel,
+    model: PageLayout,
     highlights: () -> PageHighlights,          // lambda: read in draw phase only
     theme: MushafTheme,
     zoom: ZoomState,                           // committed scale + per-page pan; persisted scale
@@ -1162,7 +1244,7 @@ fun MushafPage(
         val vw = constraints.maxWidth.toFloat(); val vh = constraints.maxHeight.toFloat()
         val geo = remember(model, vw, vh, zoom.scale, settings.marginsShown) {
             PageGeometry.fit(model, vw, vh, zoom.scale, settings.fitMode, settings.marginsShown) }
-        val paints = remember(typeface, theme.ink) { PaintCache(typeface, theme.ink.toArgb(), model.spec.kashidaTag) }
+        val paints = remember(typeface, theme.ink) { PaintCache(typeface, theme.ink.toArgb(), model.geom.kashidaTag) }
         val hit = remember(geo) { HitTester(geo) }
         Box(
             Modifier.matchParentSize()
@@ -1187,12 +1269,12 @@ fun MushafPage(
 }
 ```
 
-### 16.6 `FollowAlongController` (`:feature:reader`, policy in `:core:mushaf`)
+### 16.6 `FollowAlongController` (`:feature:reader`; pure `FollowAlongPolicy` in `:core:mushaf-render`)
 
 ```kotlin
 class FollowAlongController(
-    private val scope: CoroutineScope, private val hub: StateFlow<PlaybackUiState>,
-    private val repo: MushafRepository, private val mushafId: Int,
+    private val scope: CoroutineScope, private val hub: PlaybackStateHub,     // :core:domain (doc 04)
+    private val repo: MushafRepository, private val mushaf: MushafId,
     private val visiblePages: () -> Set<PageIndex>, private val followEnabled: () -> Boolean,
     private val now: () -> Long = SystemClock::elapsedRealtime,
 ) {
@@ -1204,17 +1286,26 @@ class FollowAlongController(
     fun onUserPagerInteraction() { lastUserTouch = now() }
     fun arm() { lastUserTouch = 0L }                           // play-from-here / play from index
     private fun canAutoTurn() = now() - lastUserTouch >= 8_000
+    private fun turnIfHidden(p: PageIndex) { if (p !in visiblePages() && canAutoTurn()) _turns.tryEmit(p) }
 
+    /** Re-evaluates on EVERY emission (new seq): repeats, range passes and seeks re-target correctly (§8.6). */
     fun start() = scope.launch {
-        hub.distinctUntilChanged { a, b -> a.ayah == b.ayah && a.isPlaying == b.isPlaying && a.speed == b.speed }.collect { st ->
+        hub.state.collect { st ->
             pending?.cancel()
-            val ayah = st.ayah ?: return@collect
-            if (!st.isPlaying || !followEnabled()) return@collect
-            val span = repo.ayahSpan(mushafId, ayah)
-            if (span.pageStart !in visiblePages() && canAutoTurn()) _turns.tryEmit(span.pageStart)
-            if (span.pageEnd != span.pageStart) {
-                val frac = span.wordsOnStartPage.toFloat() / span.wordCount
-                val turnAt = st.ayahStartMs + frac * (st.ayahEndMs - st.ayahStartMs)
+            if (!st.isPlaying || !followEnabled() || !st.highlightAvailable) return@collect
+            val key = when (val h = st.highlight) {
+                is HighlightTarget.Ayah -> h.key
+                is HighlightTarget.Word -> h.key                                // v1.x
+                is HighlightTarget.BasmalaLine -> { turnIfHidden(repo.headerPage(mushaf, h.surah)); return@collect }
+                null -> return@collect
+            }
+            val a0 = st.ayahStartMs ?: return@collect; val a1 = st.ayahEndMs ?: return@collect
+            val span = repo.ayahSpan(mushaf, key)
+            val turnAt = if (span.pageEnd == span.pageStart) Long.MAX_VALUE
+                         else a0 + (span.wordsOnStartPage.toDouble() / span.wordCount * (a1 - a0)).toLong()
+            val target = if (st.positionMs < turnAt) span.pageStart else span.pageEnd
+            turnIfHidden(target)                                                 // rep 2 / backward seek → pageStart
+            if (target == span.pageStart && turnAt != Long.MAX_VALUE) {
                 val delayMs = ((turnAt - st.positionMs) / st.speed).toLong().coerceAtLeast(0)
                 pending = launch { delay(delayMs); if (canAutoTurn()) _turns.tryEmit(span.pageEnd) }
             }
@@ -1223,26 +1314,29 @@ class FollowAlongController(
 }
 ```
 
-### 16.7 `MushafRepositoryImpl` sketch (`:core:content`)
+### 16.7 `MushafRepositoryImpl` sketch (`:core:data`)
 
 ```kotlin
 internal class MushafRepositoryImpl @Inject constructor(
-    private val packs: MushafPackRegistry,                    // resolves active pack per mushafId (bundled vs superseding)
+    private val packs: PackManager,                           // installed(), notices(); bundled install (doc 04 §6)
+    private val opener: PackDbOpener,                         // :core:content; opens pack.db by absolute path
     @IoDispatcher private val io: CoroutineDispatcher,
 ) : MushafRepository {
-    private val lru = object : LruCache<Long, PageModel>(16) {}
-    override suspend fun page(mushafId: Int, index: PageIndex): PageModel {
-        val key = (mushafId.toLong() shl 32) or index.value.toLong()
+    private val lru = object : LruCache<Long, PageLayout>(lruEntries()) {}   // 7..15 by memoryClass (doc 04 §13)
+    override suspend fun page(id: MushafId, page: PageIndex): PageLayout {
+        val key = (id.id.toLong() shl 32) or page.value.toLong()
         lru.get(key)?.let { return it }
         return withContext(io) {
-            val db = packs.db(mushafId)
+            // newest installed, tier-eligible, non-revoked `mushaf_layout` pack for this MushafId
+            val db = opener.open<MushafPackDb>(activeLayoutPack(id).path)
             db.withReadTransaction {                           // 5 queries: page, line, word, furniture+ornament, marker
-                PageModelBuilder.build(db.spec(), db.page(index.value), db.lines(index.value),
-                    db.words(index.value), db.furniture(index.value), db.ornaments(index.value), db.markers(index.value))
+                PageLayoutBuilder.build(db.spec(id), db.geometry(), db.page(page.value), db.lines(page.value),
+                    db.words(page.value), db.furniture(page.value), db.ornaments(page.value), db.markers(page.value))
             }
         }.also { lru.put(key, it) }
     }
-    // ayahSpan/pageOf: single-row queries on ayah_page; prefetch: launch page() for ±radius
+    // ayahSpan/pageOf/headerPage: single-row queries on ayah_page / line; prefetch: launch page() for ±radius.
+    // The LRU is cleared whenever PackManager.installed() changes (new version from an app update, or a revocation).
 }
 ```
 
@@ -1252,31 +1346,32 @@ internal class MushafRepositoryImpl @Inject constructor(
 |---|---|
 | `PageHighlights.word` + `wordBox()` | Word highlight (F-AU-12, P3). Timing packs keyed by our word ids via the 72:16 rule ([Audio engine](06-audio-engine.md)). |
 | `WordVisibility` provider (draw a bar instead of text per word) | Hifz hide/reveal (F-CP-12, P3; [Companion features](07-companion-engagement-features.md)) |
-| `PageRenderer.renderAyahBitmap(ayahRange, widthPx, theme)` (offscreen `Picture` → `Bitmap`) | Share-as-image (F-CP-10, P2), ayah-of-the-day widget bitmap (F-CP-08, P2) |
+| `PageRenderer.renderAyahBitmap(ayahRange, widthPx, theme)` (offscreen `Picture` → `Bitmap`) | Share-as-image (F-CP-10, v1.1), ayah-of-the-day widget bitmap (F-CP-08, v1.1) |
 | Per-word colour runs | Tajweed (F-RD-15, P4). Needs a split-run shaping study, because colouring sub-ranges breaks a single `drawTextRun`. |
-| New packs (`hafizi15`, `taj13`, `madani15`) | F-RD-11. Same schema; each needs its label offset verified (unverified for 15/13-line, g02 Rec. 1), its furniture rules, permission and G5. |
+| New packs (`mushaf.indopak15_hafizi.dk`, `mushaf.indopak13_taj.dk`, `mushaf.madani15.<script>`) | F-RD-11 (downloaded through the v1.1 pack system). Same schema; each needs its label offset verified (unverified for 15/13-line, g02 Rec. 1), its furniture rules, permission and G5. |
 
 ---
 
 ## 17. Implementation plan and estimates
 
-Estimates are dev-days for a solo developer with AI agents (D-25). The epic numbers belong to [Roadmap](09-roadmap-backlog.md).
+Estimates are dev-days for a solo developer with AI agents (D-25), at doc-spec level. [Roadmap](09-roadmap-backlog.md) owns the epic and story IDs and the plan-of-record estimates; its estimate-reconciliation table compares the two (doc 09's E-04 P0+P1 is smaller than this doc's ≈ 15 because it assumes an AI speed-up factor). Stories marked *(proposed)* do not exist in doc 09 yet.
 
-| Phase | Work | Est. |
-|---|---|---|
-| **P0** (→ 2026-11-02) | `KashidaDeviceTest` + `DrawTextRunOriginTest` on physical API 24/25 + emulators 26/30/35 (g04 Rec. 10) | 0.5 |
-| P0 | Pack schema v1 (`MushafPackDb` entities) exported, so that the pipeline can build `mushaf-taj16-dk-v0` (personal) | 1 |
-| **P1** (11-03 → 12-21) | `:core:mushaf` models, `PageGeometry`, `HitTester`, `AyahSpans` + JVM tests | 2 |
-| P1 | Repository + LRU + pack registry (bundled; supersede stub) | 1 |
-| P1 | `PageRenderer` text + placeholder furniture/ornaments + margin markers (ruku, para, manzil, sajda) | 2.5 |
-| P1 | `MushafPager` (RTL, restore, Go-to labels, page lock, rotation lock, keep-screen-on) | 1.5 |
-| P1 | Gestures, selection, highlights, follow-along (with [Audio engine](06-audio-engine.md)) | 2 |
-| P1 | Themes + contrast test; pinch zoom + persistence | 1.5 |
-| P1 | Semantics overlay | 1 |
-| P1 | Roborazzi goldens (pages 1–21), benchmarks, perf pass, calibration check | 2 |
-| **P1 total** | | **≈ 13.5** |
-| **P2** (→ ~2027-02-01) | Final ornaments integration (art from the designer), quarter markers (data verified), Book/Curl transitions, vertical auto-scroll, `FullBookCaptureTest`, low-end perf tuning, share-bitmap hook, range "Select until…" | ≈ 8 |
-| **P3** | Word highlight, Large-text reflow, two-page spread, 15/13-line packs, hifz masking hook, TextRunShaper fast path if needed | ≈ 12 |
+| Phase | Work | Doc 09 stories | Est. |
+|---|---|---|---|
+| **P0** (→ 2026-11-02) | `KashidaDeviceTest` + `DrawTextRunOriginTest` on the physical API 24/25 phone + emulators 26/30/35 (g04 Rec. 10) | E-04-S01 | 0.5 |
+| P0 | Pack schema v1 (`MushafPackDb` entities, §3.3) exported, so that the pipeline can build `mushaf.indopak16_taj.dk@0` (PERSONAL) | E-03-S12 *(proposed: pack writer to this schema)* | 1 |
+| **P1** (11-03 → 12-21) | Layout models (`:core:model`), `PageGeometry`, `HitTester`, `AyahSpans` + JVM tests (`:core:mushaf-render`) | E-04-S02, E-04-S05 | 2 |
+| P1 | `MushafRepositoryImpl` + LRU (`:core:data`); per-tier bundled pack via `PackManager.ensureBundledInstalled()` | E-10-S07 *(proposed)*, E-04-S08 | 1 |
+| P1 | `PageRenderer` text + placeholder furniture/ornaments + margin markers (ruku, para, manzil, sajda) | E-04-S03, E-04-S04 | 2.5 |
+| P1 | `MushafPager` (RTL, restore, Go-to labels, page lock, rotation lock, keep-screen-on) | E-05-S01, E-05-S02, E-05-S05, E-06-S04 | 1.5 |
+| P1 | Gestures, selection, highlights, follow-along (with [Audio engine](06-audio-engine.md)) | E-04-S05, E-05-S03, E-05-S04 | 2 |
+| P1 | Themes + contrast test; pinch zoom + persistence | E-04-S06, E-05-S06 | 1.5 |
+| P1 | Semantics overlay | E-13-S05 | 1 |
+| P1 | Renderer golden subset (§14.3) on doc 10's infra, `PageHashTest`, benchmarks, perf pass, calibration check | E-02-S03, E-02-S05, E-04-S07 | 2 |
+| **P1 total** | | | **≈ 13.5** |
+| **P2 → v1.0** (S4–S7, → 2027-02-01) | Final ornament integration (**by 2027-01-04**, before hafiz round 2; §7), `FullBookCaptureTest` + round-2 device captures, Ref-low perf tuning, range "Select until…", quarter markers when F-IX-07 data is verified (v1.0-stretch) | E-04-S09, E-20-S02/S03, E-04-S08 | ≈ 5 |
+| **v1.1** | Book/Curl transitions (F-RD-12), vertical auto-scroll (F-RD-09), share-bitmap hook (F-CP-10) | E-05-S09, E-05-S08, E-17-S04 | ≈ 3 |
+| **P3** | Word highlight, Large-text reflow, two-page spread, 15/13-line packs, hifz masking hook, TextRunShaper fast path if needed | — | ≈ 12 |
 
 ---
 
@@ -1292,7 +1387,7 @@ Numbering of R-xx belongs to [Decisions & risks](12-decisions-risks.md). The lis
 | Width drift between offline HarfBuzz and the device's Minikin (hinting, rounding) | Low / Medium | Calibration check (T2) → plain or runtime fitting; nightly full-book capture |
 | Furniture glyph coverage (Urdu digits, ی) in DK | Medium / Low | Pipeline zero-`.notdef` gate; Noto Naskh Arabic furniture fallback (O-4) |
 | Phone width loses ~10% to the outer margin; users may prefer bigger text | Medium / Low | "Margin notes: Hidden" setting (in-text ع and sajda signs remain) |
-| Large-glyph path rendering janks at high zoom on low-end | Medium / Low | Zoom benchmark; cap at 2.0× per device class; Large-text reflow in P3 |
+| Large-glyph path rendering janks at high zoom on low-end | Medium / Low | Zoom benchmark; cap at 1.6× per device class; Large-text reflow in P3 |
 | Users expect the exact scan look of the reference app | Medium / Medium | Messaging: "typeset, searchable, night-mode-perfect". Ask quranwbw.com about the AlQuran IndoPak font as a future style option (r04 Rec. 3). |
 | Ornament artwork resembles Taj or KFGQPC art | Low / High | Originality warranty + review against the print before acceptance; no tracing |
 | A single Robolectric HarfBuzz build hides OEM differences (g04 §4) | High / Low | Device capture tests on real low-end hardware |

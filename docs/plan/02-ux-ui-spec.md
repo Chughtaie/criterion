@@ -2,19 +2,27 @@
 
 **Purpose.** This document defines the app the owner will hold in their hand: the information architecture, navigation and deep links, every screen (with ASCII wireframes, behaviour, states and acceptance criteria), the `:core:designsystem` tokens (colour, type, spacing, shape, elevation, motion), RTL/bidi and numeral rules, key bilingual copy, accessibility, large-screen behaviour, haptics, Material 3 component choices and the respectful-design rules. An engineer or AI agent should be able to build every screen from this doc plus the engine docs ([Mushaf rendering](05-mushaf-rendering-engine.md), [Audio engine](06-audio-engine.md), [Companion features](07-companion-engagement-features.md)) without redoing research.
 
-**Status:** Draft v1 — 2026-10-19
+**Status:** Draft v2 — 2026-10-19 (revised after cross-doc review: doc 04 NavKeys and deep links, release labels, F-PL-11 notices, F-PL-12 shortcuts)
 
 **Key decisions in this doc**
 - Typeset, ayah-aware mushaf as the hero surface. It is never covered by ads, banners, tooltips or coach marks (D-05, D-17).
-- Bottom navigation: **Home · Quran · Listen · More** in P1. **Prayer** is added as the 4th tab in P2. On ≥ 600 dp a navigation rail replaces the bar (D-03, D-25).
+- Bottom navigation: **Home · Quran · Listen · More** in P1. **Prayer** is added as the 4th tab in P2 (ships in v1.0 with Times · Hijri; Qibla in v1.1). On ≥ 600 dp a navigation rail replaces the bar (D-03, D-25).
 - Page numbers in the UI are always the **printed labels 2–549**. Para, Manzil, Ruku and Sajda come from our Indo-Pak tables, never from Madani juz (D-04, D-07).
 - Every index row has **Read** (row tap) and **Play** (trailing button) (F-IX-01…04, F-IX-06).
 - Audio scopes in one Play sheet: Surah / Para / Manzil / Ruku / Page / Range / Ayah, with repeat, pause-between, speed and sleep timer (D-13).
 - Themes Light / Sepia / Night / AMOLED, with separate mushaf paper/ink/highlight tokens. All text pairs are ≥ 7:1 on the page (D-05).
 - English and Urdu UI from MVP. Urdu uses Noto Nastaliq Urdu. The mushaf is always RTL. Urdu UI uses Eastern (Urdu-style) digits by default (D-21).
 - Rotation lock on phones only, page-turn lock everywhere (D-23). Haptics are off by default.
-- No reciter photos (D-12). No tracking, no promo notifications, at most one review prompt (D-17, D-20).
+- No reciter photos (D-12). No tracking, no promo notifications, at most one review prompt (F-PL-10, play flavor, v1.1; D-17, D-20).
 - Never auto-start audio. Playback starts only from a user action (D-13). Notifications and deep links open a screen with a Play button.
+- Signed remote notices (F-PL-11, v1.0 floor) appear as a dismissible Home card and an info chip in the reader chrome. They never appear as a banner over Quran text (§4.23).
+
+**Release labels.** "P1/P2/P3" is the build phase. The release that ships a screen follows doc 09's final v1.0 scope ([Roadmap](09-roadmap-backlog.md)):
+- **v1.0** = all P1 screens, plus prayer times with Sehri/Iftar (F-CP-01), Hijri (F-CP-04), Ramadan core (F-CP-07), khatam planner (F-BM-04), Credits (F-PL-04), Report text error (F-PL-05), notices (F-PL-11), and the storage half of F-PL-06.
+- **v1.0-stretch** = tafsir sheet (F-RD-13), Para quarters (F-IX-07), tasbeeh (F-CP-05) and the Manzil-dua part of F-CP-06.
+- **v1.1** = everything else that is tagged P2 here: adhan + health check (F-CP-02, unless the 2026-11-30 freelancer lever pulls it into v1.0), Qibla, azkar, widgets, reminders, share image, group khatam sheet, notes, streaks, JSON export, translation packs and translator choice, auto-scroll, page transitions, public interleave audio, the rating prompt (F-PL-10) and launcher shortcuts (F-PL-12).
+
+Each P2 heading below carries its release label.
 
 ---
 
@@ -23,7 +31,7 @@
 | # | Principle | What it means on screen |
 |---|---|---|
 | P1 | **The page is sacred and calm** | No overlays on Quran text except user-requested highlight or selection. Chrome is translucent and auto-hides. No confetti, no points, no sounds. |
-| P2 | **One tap to what I do every day** | Home → Continue reading takes 1 tap. Any index row → Play takes 1 tap. Favourite qari is preset. App start to last page in under 1.5 s cold on a 2 GB phone (doc 10 sets the perf budget). |
+| P2 | **One tap to what I do every day** | Home → Continue reading takes 1 tap. Any index row → Play takes 1 tap. Favourite qari is preset. Cold start → last page fully drawn ≤ 2.0 s on Ref-low (3 GB phone), with first frame ≤ 1.5 s ([doc 10](10-quality-testing-ci.md) QB-03/QB-04 set the budget). |
 | P3 | **Like my printed Quran** | 16-line Taj page furniture, printed page labels, Indo-Pak Para names (الم، سیقول …), Manzil footer, ruku «ع» triples in the outer margin (D-04, D-07; geometry in doc 05). |
 | P4 | **Offline first, honest about the network** | Reading, search, translation and indexes work with zero network. Audio says clearly whether it is streaming or downloaded, and gives sizes before any download. |
 | P5 | **Bilingual by construction** | Every screen is designed in English (LTR) and Urdu (RTL) at 100% and 200% font scale before it ships (screenshot matrix in doc 10). |
@@ -37,11 +45,11 @@
 
 | Tab (EN / UR) | Phase | Root screen | Contains |
 |---|---|---|---|
-| Home / ہوم | P1 | `HomeKey` | Continue reading/listening, quick-access passages, next prayer (P2), ayah of the day (P2), khatam today (P2) |
-| Quran / قرآن | P1 | `QuranIndexKey` | Index tabs Surah · Para · Manzil · Ruku · Page · Sajda · Bookmarks → Reader |
+| Home / ہوم | P1 | `HomeKey` | Notices (F-PL-11, v1.0), continue reading/listening, quick-access passages, next prayer (v1.0), khatam today (v1.0), ayah of the day (v1.1) |
+| Quran / قرآن | P1 | `IndexKey` | Index tabs Surah · Para · Manzil · Ruku · Page · Sajda · Bookmarks → Reader |
 | Listen / سنیں | P1 | `ListenKey` | Favourite qari, continue listening, Surah/Para/Manzil/Popular/Downloaded lists, Downloads entry |
-| Prayer / نماز | **P2** | `PrayerKey` | Times · Qibla · Hijri sub-tabs. Ramadan card in season. Adhan health check |
-| More / مزید | P1 | `MoreKey` | Khatam planner, Tasbeeh, Azkar, Downloads & storage, Settings, Sources & Credits, Report text error, About |
+| Prayer / نماز | **P2 (v1.0)** | `PrayerKey` | v1.0: Times · Hijri sub-tabs, with the Ramadan card in season. v1.1 adds the Qibla sub-tab and the adhan health check |
+| More / مزید | P1 | `MoreKey` | Khatam planner (v1.0), Tasbeeh (v1.0-stretch), Azkar (v1.1), Downloads & storage, Settings, Sources & Credits, Report text error, About |
 
 **Why this bar.**
 1. The owner's three must-haves (read, listen, index) each get a first-class home. Quran = read + index. Listen is the "media player tab" users ask for (r02 W3, Dawat-e-Islami reviews).
@@ -59,21 +67,23 @@
 ```mermaid
 flowchart TD
   L(["Launcher / widget / notification / deep link"]) --> F{"First run?"}
-  F -- yes --> OB["Onboarding: language → mushaf+theme → favourite qari → location (P2)"]
+  F -- yes --> OB["Onboarding: language → mushaf+theme → favourite qari → location (P2, v1.0)"]
   F -- no --> H
   OB --> H["Home"]
   H -->|Continue reading| R["Reader (mushaf / translation mode)"]
   H -->|Quick access| R
   H -->|Continue listening| PL["Full player"]
   H --> S["Search"]
+  H -->|notice card| NS["Notice sheet (F-PL-11)"]
+  R -->|ⓘ notice chip| NS
   Q["Quran index: Surah·Para·Manzil·Ruku·Page·Sajda·Bookmarks"] -->|row tap = Read| R
   Q -->|row ▶ = Play| MP["Mini-player"]
   Q --> S
   R -->|long-press ayah| AS["Ayah action sheet"]
   AS --> PS["Play sheet (scope picker)"]
-  AS --> TS["Tafsir summary sheet (P2)"]
-  AS --> NOTE["Note editor (P2)"]
-  AS --> SH["Share ayah (P2)"]
+  AS --> TS["Tafsir summary sheet (v1.0-stretch)"]
+  AS --> NOTE["Note editor (v1.1)"]
+  AS --> SH["Share ayah as image (v1.1)"]
   R -->|Jump to| JS["Jump-to sheet"]
   R -->|▶| PS
   PS --> MP
@@ -84,96 +94,83 @@ flowchart TD
   LI["Listen"] --> PS
   LI --> DL["Downloads & storage"]
   S -->|result| R
-  P["Prayer (P2): Times·Qibla·Hijri"] --> HC["Adhan health check"]
-  P --> RM["Ramadan timetable"]
-  M["More"] --> K["Khatam planner (P2)"]
-  M --> T["Tasbeeh (P2)"]
-  M --> AZ["Azkar (P2)"]
+  P["Prayer: Times·Hijri (v1.0) · Qibla (v1.1)"] --> HC["Adhan health check (v1.1)"]
+  P --> RM["Ramadan timetable (v1.0)"]
+  M["More"] --> K["Khatam planner (v1.0)"]
+  M --> T["Tasbeeh (v1.0-stretch)"]
+  M --> AZ["Azkar (v1.1)"]
   M --> DL
   M --> SET["Settings"]
-  M --> CR["Sources & Credits (P2)"]
-  M --> RE["Report text error (P2)"]
+  M --> CR["Sources & Credits (v1.0)"]
+  M --> RE["Report text error (v1.0)"]
   R -->|overflow| RE
 ```
 
 ### 2.3 Back-stack model (Navigation 3, NiA `NavigationState`/`Navigator` pattern)
 
 - Each tab owns its own back stack (`NavBackStack`, `@Serializable`, so it survives process death). Re-selecting the active tab pops it to its root.
-- The Reader lives in the **Quran** stack: `[QuranIndexKey, ReaderKey]`. Home → Continue switches to the Quran tab and sets its stack to `[QuranIndexKey(lastTab), ReaderKey(...)]`. Back from the reader then lands on the index, the natural "Juz Index" return the reference app has (r01 §2.4).
+- The Reader lives in the **Quran** stack: `[IndexKey, ReaderKey]`. Home → Continue switches to the Quran tab and sets its stack to `[IndexKey(lastTab), ReaderKey()]` (all-null `ReaderKey` = resume). Back from the reader then lands on the index, the natural "Juz Index" return the reference app has (r01 §2.4).
 - Sheets that must respond to predictive back (Play sheet, full player, reciter picker) are Nav3 entries shown with a bottom-sheet `SceneStrategy`. Transient sheets that belong to one screen (ayah action sheet, jump-to sheet, repeat, speed, sleep) are local `ModalBottomSheet`s with `BackHandler`. Never override `onBackPressed` (predictive back is on at targetSdk 36, r07 §2.8).
 - The bottom bar is hidden in the Reader (immersive surface) and while onboarding. The **mini-player** shows on every tab root and list screen, above the bar.
 
 ### 2.4 NavKeys (`:core:navigation`)
 
-Doc 04 owns module placement. The names below are the contract the feature modules implement.
+**Doc 04 §8.2 owns the NavKey list** ([Architecture](04-architecture.md)). Every key is a plain `@Serializable … : NavKey` with the shared identity types from doc 04 §5 (`MushafId`, `PageIndex`, `VerseKey`, `PlayScope`). This doc uses those keys verbatim. The key the Reader needs most is repeated here for convenience:
 
 ```kotlin
-@Serializable sealed interface AppKey : NavKey
-
-// Top level
-@Serializable data object HomeKey : AppKey
-@Serializable data class QuranIndexKey(val tab: IndexTab = IndexTab.SURAH) : AppKey
-@Serializable data object ListenKey : AppKey
-@Serializable data object PrayerKey : AppKey                     // P2
-@Serializable data object MoreKey : AppKey
-
-// Reading
 @Serializable data class ReaderKey(
-    val mushafId: MushafId = MushafId.INDOPAK_16_TAJ,
-    val pageIndex: Int? = null,             // QUL index 1..548; UI shows label = index + 1 (D-04)
-    val verseKey: String? = null,           // "2:255"; reader resolves page and flashes ayah
+    val mushaf: MushafId? = null,           // null = settings.reader.mushaf (v1: MushafId.INDOPAK_16_TAJ)
+    val page: PageIndex? = null,            // null = resolve from focus, else last read
+    val focus: VerseKey? = null,            // scroll/flash target (Kufan key, e.g. 2:255)
     val mode: ReaderMode = ReaderMode.MUSHAF,   // MUSHAF | TRANSLATION
-) : AppKey
-@Serializable data class SearchKey(val query: String = "") : AppKey
-@Serializable data class CollectionKey(val collectionId: Long) : AppKey
-@Serializable data class ReportErrorKey(val mushafId: MushafId, val pageIndex: Int, val verseKey: String?, val line: Int?) : AppKey
-
-// Audio
-@Serializable data class PlaySheetKey(val draft: PlayRequestDraft) : AppKey   // bottom-sheet scene
-@Serializable data object PlayerKey : AppKey                                   // bottom-sheet scene, full height
-@Serializable data class ReciterPickerKey(val purpose: ReciterPickPurpose) : AppKey
-@Serializable data object DownloadsKey : AppKey
-
-// Companion (P2)
-@Serializable data class KhatamKey(val planId: Long? = null) : AppKey          // null = list
-@Serializable data object KhatamCreateKey : AppKey
-@Serializable data class QiblaKey(val sunMode: Boolean = false) : AppKey
-@Serializable data object HijriKey : AppKey
-@Serializable data object RamadanKey : AppKey
-@Serializable data object AdhanHealthKey : AppKey
-@Serializable data object TasbeehKey : AppKey
-@Serializable data class AzkarKey(val category: String? = null) : AppKey
-
-// Platform
-@Serializable data class OnboardingKey(val step: Int = 0) : AppKey
-@Serializable data class SettingsKey(val section: SettingsSection? = null) : AppKey
-@Serializable data object CreditsKey : AppKey
+    val autoplay: Boolean = false,          // honoured only for our own PendingIntents (doc 04 §8.3)
+) : NavKey
 ```
 
-`PlayRequestDraft` is the UI-side mirror of doc 06's `PlayRequest`: scope, from/to verse keys, reciter id, repeat and pause options. The Play sheet validates it and converts it to a `PlayRequest`.
+- **Targets.** Resume = all fields null. A printed page label L is converted once, in `:core:model`, to `page = PageIndex(L − pageLabelOffset)` (offset 1 for Taj-16). Ayah, Para, Manzil and Ruku targets are resolved by the caller to a `focus` `VerseKey` through `IndexRepository` (doc 04).
+- **Screens → doc 04 keys.** Home `HomeKey` · Quran index `IndexKey(tab)` · Listen `ListenKey` · Prayer `PrayerKey` · More `MoreKey` · Search `SearchKey(query)` · Go to page/ayah `GoToKey` · full player `PlayerKey` · reciter picker `ReciterPickerKey(forScope: PlayScope?)` · Downloads & storage `DownloadsKey` · content packs `PacksKey` (v1.1) · Bookmarks `BookmarksKey` (also Index tab 7) · collection `CollectionKey(id)` · notes `NotesKey` (v1.1) · khatam `KhatamListKey`, `KhatamKey(id)` · stats `StatsKey` (v1.1) · onboarding `OnboardingKey` (step progress lives in DataStore) · `SettingsKey(section)` · `CreditsKey` · `ReportErrorKey(key: VerseKey?, mushaf: MushafId?, page: PageIndex?)` · `PrayerKey`, `AdhanSettingsKey`, `AdhanHealthKey`, `CityPickerKey`, `QiblaKey`, `HijriKey`, `RamadanKey`, `TasbeehKey`, `AzkarKey(category)`.
+- **UX-only keys this doc needs (doc 04 must add them to §8.2):**
+
+```kotlin
+@Serializable data class PlaySheetKey(val draft: PlayRequestDraft) : NavKey   // bottom-sheet scene (§4.7.1)
+@Serializable data object KhatamCreateKey : NavKey                             // §4.11 create plan
+@Serializable data object TranslationsKey : NavKey                             // §4.24, v1.1 (F-TR-02/03)
+```
+
+- **`IndexTab`** must hold all seven tabs in §4.3: `SURAH, PARA, MANZIL, RUKU, PAGE, SAJDA, BOOKMARKS` (doc 04's comment lists only five).
+
+`PlayRequestDraft` is the UI-side, editable mirror of doc 04's `PlayRequest(scope: PlayScope, recitation: RecitationId?, repeat: RepeatSpec, speed, startAt…)`. The Play sheet edits the draft, `PlanExpander` (doc 06) validates it, and the sheet converts it to a `PlayRequest`.
 
 ### 2.5 Deep links
 
 One parser (`DeepLinkParser` in `:core:navigation`, using the Nav3 1.2.0 `DeepLinkMatcher`) handles widgets, notifications, launcher shortcuts, adb and, after G3, public App Links. Internal scheme: `criterion://` (the codename; the package stays `com.chughtai.criterion`, D-19). Public `https://<brand-domain>/…` App Links come after gate G3, with `assetlinks.json` on the R2 custom domain (D-24). The paths are identical.
 
+Doc 04 §8.3 owns the URI grammar. The table below is the UX view of it: what each link opens and which tab stack it builds. `HomeKey` is always the root. Paths marked † are UX additions that doc 04 §8.3 must list.
+
 | URI | Opens | Synthetic back stack |
 |---|---|---|
-| `criterion://page/{label}` (2–549) | Reader at that printed page | Quran: `[Index, Reader]` |
-| `criterion://ayah/{s}/{a}` | Reader at the ayah's page, ayah flashed 1.5 s | Quran |
-| `criterion://surah/{s}` · `/para/{n}` · `/manzil/{n}` · `/ruku/{s}/{r}` | Reader at the start page | Quran |
-| `criterion://read?mode=translation&ayah={s}:{a}` | Translation view | Quran |
-| `criterion://listen?scope={surah\|para\|manzil\|ruku\|page\|range\|ayah}&from={s:a}&to={s:a}&n={k}&reciter={id}` | **Play sheet prefilled. Never autoplays** | Listen |
-| `criterion://search?q={text}` | Search with query | current tab |
-| `criterion://prayer` · `/qibla` · `/hijri` · `/ramadan` · `/adhan-health` | Companion screens (P2) | Prayer |
-| `criterion://tasbeeh` · `/azkar/{category}` · `/khatam/{id}` | Companion screens (P2) | More |
-| `criterion://settings/{section}` | Settings section | More |
+| `criterion://page/{mushafCode}/{label}` (Taj-16: `indopak16_taj`, labels 2–549) | Reader at that printed page | Home · Quran: `[IndexKey, ReaderKey(page)]` |
+| `criterion://ayah/{s}/{a}` | Reader at the ayah's page, ayah flashed 1.5 s | Home · Quran: `[IndexKey, ReaderKey(focus)]` |
+| `criterion://surah/{n}` · `/para/{n}` · `/manzil/{n}` · `/ruku/{id}` (RukuId 1–558) | Reader at the start page | Home · Quran: `[IndexKey(tab), ReaderKey]` |
+| `criterion://play?scope=surah:18` (`para:23`, `manzil:7`, `range:2:285-2:286`, `passage:manzil-dua`)`&rec={id}` | External origin: Reader at the scope start, **paused**, with the Play sheet prefilled. Own `PendingIntent` origin (reminder [Play]): `ReaderKey(focus, autoplay = true)` | Home · Quran |
+| `criterion://search?q={text}` † | Search with query | current tab |
+| `criterion://prayer` · `/qibla` (v1.1) · `/hijri` · `/ramadan` † · `/adhan-health` † (v1.1) | Companion screens | Home · Prayer |
+| `criterion://tasbeeh` · `/azkar/{category}` † (v1.1) · `/khatam/{id}` | Companion screens | Home · More |
+| `criterion://settings/{section}` † | Settings section | Home · More |
 
 Rules:
 - Unknown or invalid params (for example page 1 or 550) open the nearest valid target and show a snackbar. They never crash.
-- A deep link can never perform a destructive action (delete, reset) or start playback.
-- Notification actions labelled "Play" (Kahf Friday, Mulk night) are explicit user taps. They call the media controller directly, which D-13 and the Android 17 rules allow. The URI only opens the screen.
+- A deep link can never perform a destructive action (delete, reset).
+- **External** deep links (`VIEW` intents from other apps, adb, shared links) never start playback: the reader opens paused with Play focused.
+- Only our own `FLAG_IMMUTABLE` `PendingIntent.getActivity(…)` (the reminder and notification "Play" actions: Kahf Friday, Mulk night) may set `autoplay = true`. Playback then starts from the visible reader, which counts as a user action under D-13 and the Android 17 rules. There are no broadcast trampolines (doc 04 §8.3, doc 06).
 
-**Launcher shortcuts (new: F-PL-10, P2).** Static shortcuts: "Continue reading", "Play favourite qari: continue", "Qibla", "Tasbeeh". Each fires the URIs above.
+**Launcher shortcuts (F-PL-12, P2, Could; ships v1.1).** Static shortcuts:
+- "Continue reading" → `ReaderKey()` (resume).
+- "Play favourite qari" → the full player at the listening pointer, paused with Play focused.
+- "Qibla" → `/qibla` (Qibla itself ships in v1.1).
+- "Tasbeeh" → `/tasbeeh`.
+
+A shortcut never autoplays.
 
 ---
 
@@ -181,13 +178,14 @@ Rules:
 
 | Pattern | Spec |
 |---|---|
-| **IndexRow** (`:core:ui`) | 72 dp min height (88 dp in Urdu). Leading: `NumberBadge` (octagon outline, 40 dp, number in locale digits). Centre: title (titleMedium) + meta line (bodySmall, onSurfaceVariant). Trailing end: Arabic name (Noto Naskh Arabic 20 sp), then **Play** `IconButton` (48 dp, `play_circle`). Row tap = **Read**. Long-press = context menu (Play with options… · Download (Listen tab) · Bookmark start). |
+| **IndexRow** (`:core:designsystem`) | 72 dp min height (88 dp in Urdu). Leading: `NumberBadge` (octagon outline, 40 dp, number in locale digits). Centre: title (titleMedium) + meta line (bodySmall, onSurfaceVariant). Trailing end: Arabic name (Noto Naskh Arabic 20 sp), then **Play** `IconButton` (48 dp, `play_circle`). Row tap = **Read**. Long-press = context menu (Play with options… · Download (Listen tab) · Bookmark start). |
 | **Mini-player** | 64 dp `Surface` (tonal level 3), above the bottom bar, across tabs. Line 1: "Al-Baqarah · 255". Line 2: "Mishary Alafasy · Para 3". 2 dp progress line on top = position within the current plan. Buttons: play/pause, next ayah, ✕ (stop). Tap or swipe up → full player. Hidden in the immersive reader (see §4.4). |
-| **Snackbar + Undo** | Every removal (bookmark, collection, download, khatam plan) is immediate with a 6 s Undo snackbar. No confirmation dialogs, except two irreversible cases: "delete all downloads of a reciter" and "reset tasbeeh". |
+| **Snackbar + Undo** | Every removal (bookmark, collection, download, khatam plan) is immediate with an Undo snackbar that stays ≥ 8 s (doc 01; use `SnackbarDuration.Long`, never `Short`). No confirmation dialogs, except two irreversible cases: "delete all downloads of a reciter" and "reset tasbeeh". |
 | **Download state icon** | `none ⤓` · `queued ◷` · `downloading ◔ 42%` (determinate ring) · `paused ‖` (waiting for Wi-Fi) · `error ⟳` · `done ✓`. Each state has a distinct shape, not only a distinct colour. |
 | **Empty state** | 96 dp geometric line illustration (no figures) + title + one-line body + at most one action. |
 | **Error state** | Inline card: what happened, what still works, one action (Try again / Report). Never a dead-end full-screen error for content that is bundled. |
 | **Offline banner** | Thin `surfaceContainerHigh` strip under the top bar on network-dependent screens only (Listen, Play sheet, Downloads, Reciter picker, pack manager). Never shown in the reader. |
+| **Notice (F-PL-11)** | A signed `notices.json` entry is shown as a dismissible Home card, or as an info chip in the reader's top bar. It is never a banner, toast or overlay on the mushaf or translation text. Spec in §4.23. |
 | **Permission rationale** | A full-width card in context (Prayer, Reminders), before the system dialog: icon · title · 2-line body · [Allow] [Not now]. After a permanent deny: [Open settings]. Never at app start. |
 | **Bottom sheets** | `ModalBottomSheet` with a drag handle and `skipPartiallyExpanded` false for action sheets. The full player is full height. Sheets never cover the selected ayah (see §4.5). |
 | **Loading** | Content is local, so show nothing for 150 ms, then a skeleton. Spinners are allowed only for network work. The reader page placeholder = paper colour + 16 faint ruled lines (no spinner). |
@@ -222,8 +220,8 @@ Step 1 Language            Step 2 Mushaf & theme         Step 3 Favourite qari  
 
 - **Step 1.** Two equal 64 dp buttons. The device locale preselects focus (ur-* → اردو).
 - **Step 2.** In v1 only the 16-line layout exists, so this step confirms the mushaf and picks the day theme. When 15- and 13-line layouts ship (F-RD-11, P3), it becomes a 3-card picker. The preview is our own rendered page (label 2) at the live theme.
-- **Step 3.** The list is the public highlight shortlist from D-12, ordered as in the register. Alafasy is preselected. Each row has a 10 s sample, streamed with a user tap, and the sample is disabled offline with "Needs internet". Personal builds also list personal-only reciters, with a "Personal build" chip. No photos: each row has a monogram tile (§6.7).
-- **Step 4 (P2+).** Location uses coarse location only (D-15). The Asr choice defaults to Hanafi for PK (D-16). Notification and exact-alarm permissions are **not** requested here. They are requested when the user turns on an adhan or reminder (§4.13).
+- **Step 3.** The list is the public highlight shortlist from D-12, ordered as in the register. Alafasy is preselected. Each row has a 10 s sample, streamed with a user tap, and the sample is disabled offline with "Needs internet". Personal builds also list personal-only reciters, with a "Personal build" chip. Closed-test (BETA) builds also list recitations whose licence is still PENDING, with a "Test build" chip. PUBLIC builds never list them (D-29). No photos: each row has a monogram tile (§6.7).
+- **Step 4 (P2, ships v1.0).** Location uses coarse location only (D-15). The Asr choice defaults to Hanafi for PK (D-16). Notification and exact-alarm permissions are **not** requested here. They are requested when the user turns on an adhan or reminder (§4.13).
 - **Exit.** Go to Home. Home's Continue card shows "Start reading · Al-Fatiha · Page 2".
 
 **AC:**
@@ -232,11 +230,14 @@ Step 1 Language            Step 2 Mushaf & theme         Step 3 Favourite qari  
 - (c) Killing the app mid-onboarding resumes at the same step.
 - (d) Zero network calls unless the user taps a sample or location.
 
-### 4.2 Home (F-IX-09, F-IX-08, F-BM-01; cards F-CP-01/F-CP-08 data, F-BM-04 in P2) — `HomeKey`
+### 4.2 Home (F-IX-09, F-IX-08, F-BM-01; notices F-PL-11 v1.0; next prayer F-CP-01 v1.0; khatam F-BM-04 v1.0; ayah of the day F-CP-08/09 list v1.1) — `HomeKey`
 
 ```
 ┌──────────────────────────────────────┐
 │ <Brand>                      🔍  ⚙   │  TopAppBar (small); brand = codename until G3
+│ ┌──────────────────────────────────┐ │
+│ │ ⓘ Text under review · Page 42  ✕ │ │  Notice card (F-PL-11), only when active; §4.23
+│ └──────────────────────────────────┘ │
 │ ┌──────────────────────────────────┐ │
 │ │ CONTINUE READING                 │ │  Card (primaryContainer)
 │ │ Al-Baqarah · Para 3 · Page 42    │ │
@@ -251,36 +252,36 @@ Step 1 Language            Step 2 Mushaf & theme         Step 3 Favourite qari  
 │ [Ya-Sin ▶] [Ar-Rahman ▶] [Al-Waqi'ah▶]│  FlowRow of 8 AssistChips with trailing ▶
 │ [Al-Mulk ▶] [Al-Kahf ▶] [Ayat al-Kursi▶]│
 │ [Manzil dua ▶] [Last 2 of Al-Baqarah ▶]│
-│ ┌──────────────── P2 ──────────────┐ │
+│ ┌──────────────── v1.0 ────────────┐ │
 │ │ Asr 3:48 PM · in 1 h 20 min      │ │  Next prayer card → Prayer tab
 │ │ 7 Jumada al-Ula 1448 · Lahore    │ │
 │ └──────────────────────────────────┘ │
-│ ┌──────────────── P2 ──────────────┐ │
+│ ┌──────────────── v1.0 ────────────┐ │
 │ │ Today's khatam: Pages 42–60  ▸   │ │
 │ └──────────────────────────────────┘ │
-│ ┌──────────────── P2 ──────────────┐ │
+│ ┌──────────────── v1.1 ────────────┐ │
 │ │ Ayah of the day   (Arabic, DK)   │ │  curated 365-list (r08 §2.15); Share
 │ │ translation… — Al-Baqarah 2:286  │ │
 │ └──────────────────────────────────┘ │
 │ Bookmarks (3 latest) ›               │
 ├──────────────────────────────────────┤
 │ ▶ mini-player (when active)          │
-│  Home    Quran    Listen    More     │  NavigationBar (P2: + Prayer)
+│  Home    Quran    Listen    More     │  NavigationBar (P2 / v1.0: + Prayer)
 └──────────────────────────────────────┘
 ```
 
 Behaviour:
-- **Continue reading** uses the auto last-read pointer F-BM-01. It is written when a page stays visible ≥ 3 s, and it is independent of bookmarks and khatam pointers (r08 §2.13).
+- **Continue reading** uses the auto last-read pointer F-BM-01. It is written when a page stays visible ≥ 4 s, or when the user interacts with an ayah or audio plays on the page (doc 01 F-BM-01). It is independent of bookmarks, the listening pointer and khatam pointers (r08 §2.13).
 - **Quick access chips.** Chip tap = Read at the passage start, with the passage range flashed. Trailing ▶ = Play that exact range (Ayat al-Kursi = 2:255; Last 2 of Al-Baqarah = 2:285–286; Manzil dua = the multi-range playlist from r08 §2.8).
 - **Friday.** On Fridays (local date, until Maghrib), the Al-Kahf chip moves first and gets a small "Friday" label. There are no streak counters on Home.
-- **Card order** is fixed: Continue reading → Continue listening → Quick access → Next prayer → Khatam → Ayah of the day → Bookmarks. Cards with no data are omitted, not shown empty.
+- **Card order** is fixed: Notices → Continue reading → Continue listening → Quick access → Next prayer → Khatam → Ayah of the day → Bookmarks. Cards with no data are omitted, not shown empty.
 
 **AC:**
-- (a) Cold start → Continue tap → page rendered ≤ 1.5 s on the reference low-end device (doc 10).
+- (a) Cold start → first frame ≤ 1.5 s and cold start → last-read page fully drawn ≤ 2.0 s on Ref-low (3 GB phone; doc 10 QB-03/QB-04). Ref-high: ≤ 500 ms / ≤ 800 ms.
 - (b) Reading a bookmarked page never changes any bookmark.
 - (c) Every card is reachable and announced by TalkBack in order.
 
-### 4.3 Quran index (F-IX-01…06, F-IX-07 in P2, F-BM-02) — `QuranIndexKey(tab)`
+### 4.3 Quran index (F-IX-01…06; F-IX-07 quarters v1.0-stretch; F-BM-02) — `IndexKey(tab)`
 
 ```
 ┌──────────────────────────────────────┐
@@ -300,7 +301,7 @@ Behaviour:
 │ ⬡2  سَیَقُوْلُ  Sayaqool            ○ ▶ │
 │     Starts 2:142 · Page 21           │
 │ ⬡3  تِلْكَ الرُّسُلُ  Tilkar Rusul   ● ▶ │
-│     Starts 2:253 · Page 39     ⌄     │  ⌄ expands quarters (P2, F-IX-07)
+│     Starts 2:253 · Page 39     ⌄     │  ⌄ expands quarters (F-IX-07, v1.0-stretch)
 │      ├ ربع  2:273 · p.43        ▶  │
 │      ├ نصف  3:18 · p.48         ▶  │
 │      └ ثلثة 3:54 · p.52         ▶  │
@@ -321,7 +322,7 @@ Behaviour:
 | Tab | Row title | Meta line | Read target | Play scope |
 |---|---|---|---|---|
 | Surah (114) | number · transliterated name · Arabic name | Makki/Madani · ayahs · rukus · start page | surah start page | Surah |
-| Para (30) | number · Arabic opening words (traditional name) · transliteration | "Starts s:a · Page L" + progress ring | Para start page (label 18n−15 for n ≤ 28; 509; 529) | Para (Indo-Pak range, D-07) |
+| Para (30) | number · Arabic opening words (traditional name) · transliteration | "Starts s:a · Page L" + progress ring | Para start page (Para 1 = label 2; label 18n−15 for n = 2…28; Para 29 = 509; Para 30 = 529) | Para (Indo-Pak range, D-07) |
 | Manzil (7) | "Manzil N · first surah – last surah" | start page | start page | Manzil |
 | Ruku (558) | grouped by surah (sticky header), toggle "By Para". Row "Ruku 1 · 2:1–7" | "Page 3 · ع 1 / 7 / 1" (spoken: "ruku 1 of the surah, 7 ayahs, ruku 1 of the para") | page of the ruku's first ayah | Ruku |
 | Page | "Go to page" field (2–549) + "Go to ayah" (surah dropdown + ayah field) + grid of page labels in Para sections (18 per row-block) | — | page | Page (via long-press) |
@@ -339,13 +340,13 @@ Behaviour:
 - (c) 22:77 is never counted as sajda #15.
 - (d) Tab state and scroll survive rotation and process death.
 
-### 4.4 Reader (F-RD-01, 02, 03, 05, 06, 07; F-RD-09/12 in P2) — `ReaderKey`
+### 4.4 Reader (F-RD-01, 02, 03, 05, 06, 07; F-RD-09/12 v1.1; notice chip F-PL-11 v1.0) — `ReaderKey`
 
 **Chrome visible (tap to toggle):**
 
 ```
 ┌──────────────────────────────────────┐
-│ ‹   Para 3 · Page 42        🔖 🌙 🔒 │  translucent TopAppBar (surface @ 92%)
+│ ‹   Para 3 · Page 42     ⓘ  🔖 🌙 🔒 │  translucent TopAppBar (surface @ 92%); ⓘ = notice chip, only if a notice targets this page
 │     Al-Baqarah                       │  ≥ 400 dp: one line "Para 3 · Page 42 · Al-Baqarah"
 ├──────────────────────────────────────┤
 │  تلک الرسل ۳        ۴۲        البقرة ۲  │  printed header (above frame)
@@ -374,18 +375,20 @@ Behaviour:
 | Title | "Para {n} · Page {label}" + surah. For a page holding several surahs: "Al-Falaq – An-Nas". Tapping the title opens Jump-to. |
 | 🔖 | Toggles a **page bookmark** in the default collection. Filled icon + ribbon glyph in the page's top outer corner. Removal → Undo snackbar. Long-press 🔖 → choose collection. |
 | 🌙 | Toggles day ↔ night theme for the whole app (§6.1, "Mode" override). |
-| 🔒 | On phones: a menu with two checkable items, "Lock screen rotation" and "Lock page turning". On ≥ 600 dp, the rotation item is hidden and 🔒 toggles page-turn lock directly (D-23). The icon is filled when any lock is on, and a 2 s snackbar confirms the change. Page-turn lock blocks swipe, scrubber and auto page-turn. It does **not** block Jump-to (an explicit command). |
+| 🔒 | On phones: a menu with two checkable items, "Lock screen rotation" and "Lock page turning". On ≥ 600 dp, the rotation item is hidden and 🔒 toggles page-turn lock directly (D-23). The icon is filled when any lock is on, and a 2 s snackbar confirms the change. Page-turn lock blocks the user's swipes and the scrubber. It does **not** block the audio auto page-turn (follow-along, doc 01 / doc 05 K6) or Jump-to (an explicit command). |
+| ⓘ Notice chip (F-PL-11, v1.0) | An `AssistChip` "Under review" with an ⓘ icon tinted `secondary`, in the top bar. It shows only while a signed notice targets this page and has not expired. It stays in the chrome and never draws on the page. When the reader lands on such a page in immersive mode, the chrome shows once for 3 s so the chip is seen. Tap → notice sheet (§4.23). |
+| Back to page chip | After a jump away from the last-read page (index, search, go-to, bookmark, quick access), an `AssistChip` "Back to page 61" sits above the bottom toolbar for the rest of the reading session. It can be dismissed (doc 01 F-BM-01). |
 | Scrubber | `Slider` 2–549, RTL, with ticks at Para starts. While dragging, a bubble shows "Page 213 · Para 12 · Hud". The page commits on release. |
-| ☰ Jump to | Full-height sheet with segmented Surah / Para / Manzil / Ruku / Page lists (shared `:core:ui` rows; no feature-to-feature dependency). Tap → page. |
+| ☰ Jump to | Full-height sheet with segmented Surah / Para / Manzil / Ruku / Page lists (shared `:core:designsystem` rows; no feature-to-feature dependency). Tap → page. |
 | ▶ Play | Opens the Play sheet prefilled with **Page scope** of the current page. If an ayah is selected, it is prefilled with "From selected ayah". |
 | ت Translation | Switches to translation mode (§4.6) at the first ayah of the page. The icon is the Arabic letter ت in EN and UR alike. |
-| ⋮ overflow | Search · Go to page/ayah · Night brightness (night themes) · Page-turn animation (P2) · Auto-scroll mode (P2) · Share page as image (P2) · Report text error (P2) · Reader settings. |
+| ⋮ overflow | Search · Go to page/ayah · Night brightness (night themes) · Report text error (v1.0) · Reader settings · Page-turn animation (v1.1) · Auto-scroll mode (v1.1) · Share page as image (v1.1). |
 | Keep screen on | On by default while the reader is visible. It releases after N minutes without touch or page turn (Setting: 5 / 15 / 30 / never, default 15). It stays on while audio is playing and the reader is visible. |
 | System bars | Setting *Keep system bars visible* (default off; restores the toggle the reference removed, r01 §2.5). |
-| Zoom (F-RD-06) | Pinch 1.0–2.5×. During the gesture: `graphicsLayer` scale. On release: re-layout at the new font px (crisp vector). While zoomed, a drag pans first and turns the page only at the edge. The zoom level persists across pages and per orientation (r02 rec. 2). Double-tap is **not** used, because it would delay tap-to-toggle. From 1.6× upward, a chip offers "Large text mode" (reflow, P3). |
+| Zoom (F-RD-06) | Pinch 1.0–2.0× (doc 01 F-RD-06). During the gesture: `graphicsLayer` scale. On release: re-layout at the new font px (crisp vector). While zoomed, a drag pans first and turns the page only at the edge. The zoom level persists across pages and per orientation (r02 rec. 2). Double-tap is **not** used, because it would delay tap-to-toggle. From 1.6× upward, a chip offers "Large text mode" (reflow, P3). |
 | Landscape (phone) | One page fitted to width, scrolling vertically within the page. On ≥ 600 dp: see §10. |
-| Auto-scroll (F-RD-09, P2) | Vertical `LazyColumn` of pages with a speed slider (1–10). Touch pauses it, and a ▶ chip resumes. |
-| Page-turn animation (F-RD-12, P2) | Slide (default) · Curl. See §6.6. |
+| Auto-scroll (F-RD-09, v1.1) | Vertical `LazyColumn` of pages with a speed slider (1–10). Touch pauses it, and a ▶ chip resumes. |
+| Page-turn animation (F-RD-12, v1.1) | Slide (default) · Book · Curl. Book and Curl are per-page `graphicsLayer` transforms of the cached page layers ([05 §11.2](05-mushaf-rendering-engine.md)). No third-party curl library. See §6.6. |
 
 **Tap and gesture contract:**
 
@@ -401,7 +404,8 @@ Behaviour:
 - The current ayah gets the **audio highlight** fill (§6.1). The highlight crossfades in 120 ms. Gapped audio switches on item transition, gapless audio on PlayerMessage.
 - **Auto page-turn** happens when the playing ayah's start is on another page. It animates (350 ms) unless reduce-motion is on.
 - After the user touches the pager, auto-turn is **suspended for 8 s** and the "Follow recitation" chip appears. Tapping the chip re-attaches immediately. After 8 s with no touch, the reader re-attaches on the next ayah change.
-- If the recitation has no timing for this surah (missing pack or kill-switch), no ayah highlight is drawn. The page turns only at surah boundaries, and the full player shows "No highlight for this surah".
+- If the recitation has no timing for this surah (missing pack or kill-switch), no ayah highlight is drawn. The page turns only at surah boundaries, and the full player shows "No highlight for this surah". Gapless scopes that need mid-surah boundaries in such a surah (Range, Ayah, Ruku, a Para that starts mid-surah, Play from here) ask first: "Timing isn't available for this surah with Sudais — play with Alafasy?" [Play with Alafasy] [Play whole surah] (doc 01 F-AU-02).
+- The reader reads all of this from `PlaybackStateHub.state` (`PlaybackState.highlight`, `highlightAvailable`, `status`; doc 04 §5). It owns the auto page-turn and the 8 s suspension.
 
 ```mermaid
 stateDiagram-v2
@@ -431,23 +435,24 @@ stateDiagram-v2
 ┌──────────────────────────────────────┐
 │ Al-Baqarah 2:255 · Para 3            │  header; alias "Ayat al-Kursi" shown if any
 │ ▶ Play from here    ⟳ Play range…   │
-│ 🔖 Bookmark          ✎ Note (P2)     │
-│ ⧉ Copy               ↗ Share         │  Share = text in P1, image in P2 (F-CP-10)
-│ ت Translation        ✦ Tafsir summary│  tafsir summary (P2, F-RD-13)
-│ ⚑ Report text error (P2)             │
+│ 🔖 Bookmark          ✎ Note (v1.1)   │
+│ ⧉ Copy               ↗ Share         │  Share = text in P1, image in v1.1 (F-CP-10)
+│ ت Translation        ✦ Tafsir summary│  formatted sheet v1.0-stretch (F-RD-13)
+│ ⚑ Report text error                  │  v1.0 (F-PL-05)
 │ ── Urdu (Junagarhi) ──────────────── │  inline translation preview (2 lines, expandable)
 │ اللہ تعالیٰ ہی معبود برحق ہے…            │
 └──────────────────────────────────────┘
 ```
 
 - **Placement.** The sheet opens at 45% height. If the selected ayah's rects fall in the bottom 50% of the viewport, the page auto-scrolls/translates up by the overlap (zoomed) or the sheet opens in **compact mode**: 2 action rows, no preview, ≈ 168 dp.
-- **Play from here** plays from this ayah to the end of the current surah with the favourite qari (scope `Ayah→SurahEnd`). **Play range…** opens the Play sheet with *From* = this ayah.
+- **Play from here** plays from this ayah onward, continuously through later surahs, until the user stops it or a sleep timer ends, with the favourite qari: `PlayScope.FromHere(start = key, until = Until.CONTINUOUS)` (doc 01 F-AU-02 row 8; doc 04 §5). **Play range…** opens the Play sheet with *From* = this ayah.
+- **Tafsir summary.** In the v1.0 floor, the Ahsan-ul-Bayan footnotes expand inline in the translation preview and the translation view. The formatted sheet (F-RD-13) is v1.0-stretch.
 - **Copy / Share text format.** Doc 03 owns the exact attribution strings. Tanzil Uthmani text with PUA/control characters stripped (D-08):
   `{arabic}\n\n{translation} — {translator}\n\n{Surah name} {s}:{a} · Para {n}`.
 - **Bookmark** toggles an ayah bookmark in the last-used collection. Long-press picks a collection.
 - Selection visual: selection fill + 2 dp outline (§6.1). Multi-line ayahs show one rounded rect per line.
 
-### 4.6 Translation view (F-RD-08; F-RD-13 tafsir sheet P2) — `ReaderKey(mode = TRANSLATION)`
+### 4.6 Translation view (F-RD-08; F-RD-13 tafsir sheet v1.0-stretch) — `ReaderKey(mode = TRANSLATION)`
 
 ```
 ┌──────────────────────────────────────┐
@@ -468,7 +473,8 @@ stateDiagram-v2
 - **Aa sheet.** Arabic size 18–44 sp (default 26). Urdu 14–30 (default 18). English 12–28 (default 16). Line-height factors are in §6.2. Sizes multiply with system font scale.
 - **Position sync.** Opening from mushaf page L scrolls to that page's first ayah. Returning to mushaf opens the page of the first fully visible ayah. The last-read pointer updates from either mode.
 - **Audio follow.** The playing ayah card gets the audio-highlight fill and auto-scrolls into view, with the same 8 s detach rule.
-- **Footnotes.** Superscript markers (¹) in Urdu Junagarhi open the tafsir-summary sheet (P2) showing Ahsan-ul-Bayan text with an attribution footer.
+- **Footnotes.** Superscript markers (¹) in Urdu Junagarhi expand the Ahsan-ul-Bayan footnote inline (v1.0, doc 01 F-RD-08 AC 3). With F-RD-13 (v1.0-stretch), they open the formatted tafsir-summary sheet with an attribution footer instead.
+- **No translation pack.** If a language's pack is missing or disabled by a notice, the "Install translation" card (§5) links to Translations (§4.24, v1.1). In v1.0 the two bundled translations always exist.
 - `LazyColumn` keyed by verse key; 6,236 items, so paging isn't needed (content DB query by page range, windowed ±3 pages).
 
 ### 4.7 Audio (F-AU-01…09)
@@ -492,10 +498,11 @@ stateDiagram-v2
 └──────────────────────────────────────┘
 ```
 
-- Scope semantics and boundaries come from doc 06's `PlanExpander`. The sheet only displays and validates them. Range validation: *To* ≥ *From* in mushaf order. Ranges across surahs are allowed.
-- **Size line.** Sizes come from our catalogue's measured bytes, never from provider APIs (r06 §2.8.7). On mobile data with *Stream on mobile data = Ask* (default), the first stream of the session shows the `audio_mobile_data` dialog.
+- Scope semantics and boundaries come from doc 06's `PlanExpander`, over doc 04's `PlayScope`. The sheet only displays and validates them. Range validation: *To* ≥ *From* in mushaf order. Ranges across surahs are allowed. **Page** scope starts at the first ayah that starts on the page; if the page begins mid-ayah, that ayah plays from its start (doc 01 F-AU-02). Explicit scopes stop at their end; "Continue to next surah" is off by default.
+- Scopes without a chip: `FromHere` (ayah sheet "Play from here"), `Passage` (Home quick-access multi-range items such as the Manzil dua) and `Quran`. When the sheet is opened for one of them, it shows the scope read-only in the summary line.
+- **Size line.** Sizes come from our catalogue's measured bytes, never from provider APIs (r06 §2.8.7). On mobile data with *Stream on mobile data = Ask once* (default), the first stream of the session shows the `audio_mobile_data` dialog.
 - **Offline and not downloaded:** Play is disabled. The info line reads "Not downloaded — connect to the internet or download on Wi-Fi."
-- **Gapped verse-by-verse reciters** (F-AU-04) show only in builds where the catalogue's licence flags allow them (personal builds until G2).
+- **Gapped verse-by-verse reciters** (F-AU-04) show only in builds where the catalogue's `licenceStatus` and `eligibleTiers` allow them (D-29). While their licence is PENDING (until G2), that means personal and closed-test (BETA) builds only, never PUBLIC.
 
 #### 4.7.2 Full player — `PlayerKey`
 
@@ -581,7 +588,7 @@ Repeat                                 Speed                       Sleep timer
 - The **Popular** list matches the Media3 browse-tree "Popular" node (doc 06): Ya-Sin, Ar-Rahman, Al-Mulk, Al-Kahf, Al-Waqi'ah, Al-Fatiha, Ayat al-Kursi, Manzil dua.
 - Download icon tap → confirm dialog with size (`dl_confirm`). A Para row in gapless layout uses the `dl_para_needs_surah` copy.
 
-### 4.8 Downloads & storage manager (F-AU-08, F-AU-09, F-PL-06) — `DownloadsKey`
+### 4.8 Downloads & storage manager (F-AU-08, F-AU-09; F-PL-06 storage half v1.0, pack half v1.1) — `DownloadsKey`
 
 ```
 ┌──────────────────────────────────────┐
@@ -602,10 +609,13 @@ Repeat                                 Speed                       Sleep timer
 │ [Clean up unfinished downloads]      │
 │ CONTENT PACKS                        │
 │ Urdu – Junagarhi (bundled)    ✓      │  licence chip "QuranEnc"
-│ Tafsir summary – Ahsan-ul-Bayan 4.4 MB ⤓│ (P2)
-│ Timing packs   12 reciters  ✓ auto   │
+│ Tafsir – Ahsan-ul-Bayan (in Junagarhi) ✓│ bundled footnotes, not a download
+│ Timing packs   12 reciters  ✓ bundled│
+│ Translations ›                       │  v1.1 → §4.24 (`TranslationsKey`)
 └──────────────────────────────────────┘
 ```
+
+- In v1.0, CONTENT PACKS lists only the bundled items (storage half of F-PL-06). Installing and removing packs arrives in v1.1 (`PacksKey`, §4.24).
 
 - Expanded reciter grid: 114 surah cells, or 30 Para cells (segmented). Each cell has a state icon. Long-press a cell → delete.
 - "Download all" and "Delete …" show the size first. "Delete reciter" is the only confirm dialog here.
@@ -638,7 +648,7 @@ Repeat                                 Speed                       Sleep timer
 - **No results** shows `search_no_results` + "Search tips: try without harakat; try Urdu or English".
 - Latency target: ≤ 150 ms for whole-word queries on the low-end device (FTS5, D-11).
 
-### 4.10 Bookmarks & collections (F-BM-02; notes F-BM-03 P2; F-BM-01 pointer) — Index tab 7 + `CollectionKey`
+### 4.10 Bookmarks & collections (F-BM-02; notes F-BM-03 v1.1; F-BM-01 pointer) — Index tab 7 / `BookmarksKey` + `CollectionKey`
 
 ```
 ┌──────────────────────────────────────┐
@@ -651,7 +661,7 @@ Repeat                                 Speed                       Sleep timer
 │ RECENT                               │
 │ 🔖 Page 57 · Para 4 · Āl-ʿImrān · 3d  │  page bookmark
 │ ◆ 2:255 Ayat al-Kursi · Duas · 1w   │  ayah bookmark; first words in DK
-│   ✎ "Read after every salah" (P2)    │  note preview
+│   ✎ "Read after every salah" (v1.1)  │  note preview
 └──────────────────────────────────────┘
 ```
 
@@ -660,7 +670,7 @@ Repeat                                 Speed                       Sleep timer
 - Bookmark keys: `(mushafId, pageIndex)` for pages, verse key for ayahs (D-10). Ayah bookmarks therefore survive a future layout switch, and page bookmarks are shown "on 16-line".
 - **Empty state:** `empty_bookmarks`.
 
-### 4.11 Khatam planner (F-BM-04; F-BM-05 streaks/stats; F-CP-11 sheet) — P2 — `KhatamKey`, `KhatamCreateKey`
+### 4.11 Khatam planner (F-BM-04 v1.0; F-BM-05 streaks/stats v1.1; F-CP-11 sheet v1.1) — P2 — `KhatamListKey`, `KhatamKey(id)`, `KhatamCreateKey`
 
 ```
 Plan list / today                       Create plan
@@ -684,16 +694,18 @@ Plan list / today                       Create plan
 - The algorithm is from r08 §2.13: daily goal = ceil(remaining / active days), snapped to a ruku end if chosen. Missed days are redistributed silently, and the copy is `khatam_replanned`, never "You missed …".
 - Each plan has its own pointer, separate from Last read (F-BM-01). "Read ▸" opens the plan's pointer, and reading auto-suggests "Mark as read" after the portion's last page has been visible ≥ 20 s.
 - On completion: the dua-e-khatam screen with Arabic + translation and sourced text (content per doc 07), and copy `khatam_complete`. No animation, no badge.
-- **Streaks & stats (F-BM-05)** are private by default, with 2 freeze days per month (r08). They appear only inside the planner as plain text ("4 days in a row"). They never appear on Home, in notifications or on Quran pages.
-- **Group khatam sheet (F-CP-11, P2)** builds WhatsApp text "1. الم — Ahmed ✓ / 2. سیقول — ____ …". "Paste updated list" parses claims back. The realtime version is P3 (doc 07).
+- **Streaks & stats (F-BM-05, v1.1)** are private by default, with 2 freeze days per month (r08). They appear only inside the planner as plain text ("4 days in a row"). They never appear on Home, in notifications or on Quran pages.
+- **Group khatam sheet (F-CP-11, v1.1)** builds WhatsApp text "1. الم — Ahmed ✓ / 2. سیقول — ____ …". "Paste updated list" parses claims back. The realtime version is P3 (doc 07).
 
-### 4.12 Share ayah (F-CP-10, P2)
+### 4.12 Share ayah as image (F-CP-10, P2) — v1.1
 
 - Text share is in P1 (§4.5). Image share: an offscreen Compose card at 1080×1350 (post) and 1080×1920 (status). Content: Arabic (DK IndoPak), translation with translator attribution, reference "Al-Baqarah 2:255 · Para 3", and a small app mark.
 - Backgrounds are 6 plain or geometric presets in the theme palette. No imagery of living beings, no photos of the Haram (r08 §2.15).
 - The image goes out through `FileProvider` + `ACTION_SEND`. A preview screen has [Post] [Status] toggles and [Share].
 
-### 4.13 Prayer times (F-CP-01, F-CP-02; Ramadan F-CP-07) — P2 — `PrayerKey`
+### 4.13 Prayer times (F-CP-01 v1.0; adhan alert modes F-CP-02 v1.1; Ramadan F-CP-07 core v1.0) — P2 — `PrayerKey`
+
+**v1.0 vs v1.1.** v1.0 ships F-CP-01 only: times, the next-prayer card, method and Asr settings, and the Ramadan table. The alert-mode column, the ⚠ exact-alarm row and the health-check link appear with F-CP-02 in v1.1, or in v1.0 if the 2026-11-30 freelancer lever pulls the adhan in (doc 09). The Qibla sub-tab also arrives in v1.1, so v1.0 shows `[Times] [Hijri]`.
 
 ```
 ┌──────────────────────────────────────┐
@@ -726,14 +738,15 @@ Plan list / today                       Create plan
   Declining keeps the mode but shows the ⚠ row (inexact).
 - **Full adhan screen** while sounding: none. The notification has [Stop]. No full-screen intent in v1 (D-16). Silent/DND states are respected by the app (doc 07).
 - **Prayer settings** (`SettingsKey(PRAYER)`): method, Asr madhab, per-prayer offsets ±30 min, high-latitude rule, region preset, adhan voice per mode, location/city.
-- **Ramadan (F-CP-07)** `RamadanKey`, in season (Hijri Ramadan ± 3 days or a manual toggle):
+- **Ramadan (F-CP-07, core v1.0)** `RamadanKey`, in season (Hijri Ramadan ± 3 days or a manual toggle):
   - countdown card ("Iftar in 42 min")
   - 30-day Sehri/Iftar table with safety margins (Sehri −0…−10, Iftar +0…+3 min)
-  - [Share timetable image]
   - Taraweeh khatam preset
   - sourced duas only
+  - [Share timetable image] (v1.1, with F-CP-10)
+  - Sehri alarm (v1.0-stretch only if the adhan scheduler is pulled in, else v1.1)
 
-### 4.14 Adhan health check (F-CP-02) — P2 — `AdhanHealthKey`
+### 4.14 Adhan health check (F-CP-02) — P2 — v1.1 — `AdhanHealthKey`
 
 ```
 ┌──────────────────────────────────────┐
@@ -749,14 +762,15 @@ Plan list / today                       Create plan
 │ Fajr  18 Oct  +7 min late  ⚠         │
 │ [ Test adhan in 1 minute ]           │
 │ [ Copy diagnostic report ]           │  plain text to clipboard/share; no upload
-│ Guidance adapted from dontkillmyapp.com (CC BY 4.0) │
+│ Guidance adapted from dontkillmyapp.com (CC BY) │
 └──────────────────────────────────────┘
 ```
 
 - The vendor is detected via `Build.MANUFACTURER`. The table covers Transsion (Infinix/Tecno/itel), Vivo, Xiaomi, Oppo/realme and Samsung (r08 §2.3.5). [Fix] deep-links to the vendor's intent where known, and falls back to app details.
 - Lateness = actual fire − scheduled time, from the local alarm log (doc 07).
+- DontKillMyApp is credited as "CC BY" without a version. r08 §1.3 verified only "licenced under CC-BY", so confirm the version from the dont-kill-my-app LICENCE file in P0 before adding one (as docs 01, 03 and 07 do).
 
-### 4.15 Qibla (F-CP-03) — P2 — `QiblaKey`
+### 4.15 Qibla (F-CP-03) — P2 — v1.1 — `QiblaKey`
 
 ```
 ┌──────────────────────────────────────┐
@@ -779,7 +793,7 @@ Plan list / today                       Create plan
 - **No-magnetometer devices** show an empty state "This phone has no compass" + the bearing in degrees + "Use the Sun" (when Sun mode ships).
 - Keep-screen-on while visible. Alignment haptic tick (functional, see §11). The heading needle updates at ≥ 30 fps with circular smoothing.
 
-### 4.16 Hijri calendar (F-CP-04) — P2 — `HijriKey`
+### 4.16 Hijri calendar (F-CP-04) — P2 — v1.0 — `HijriKey`
 
 ```
 ┌──────────────────────────────────────┐
@@ -800,7 +814,7 @@ Plan list / today                       Create plan
 - After local Maghrib, the header shows "8 Jumada al-Ula (from Maghrib)". Today's cell keeps the civil date mapping.
 - **Feed missing or stale > 40 days:** an info line "Using Umm al-Qura with your adjustment".
 
-### 4.17 Tasbeeh (F-CP-05) — P2 — `TasbeehKey`
+### 4.17 Tasbeeh (F-CP-05) — P2 — v1.0-stretch — `TasbeehKey`
 
 ```
 ┌──────────────────────────────────────┐
@@ -820,7 +834,7 @@ Plan list / today                       Create plan
 - Keep-screen-on. Haptic tick per count, with a stronger tick at the target (functional, §11). Daily totals stay local.
 - Reset uses the confirm dialog `tasbeeh_reset_confirm`. There is no "lifetime hasanat" figure anywhere (§12).
 
-### 4.18 Azkar (F-CP-06) — P2 — `AzkarKey`
+### 4.18 Azkar (F-CP-06) — P2 — v1.1 (Manzil dua v1.0-stretch) — `AzkarKey`
 
 ```
 Categories                            Session (card per dhikr)
@@ -837,6 +851,7 @@ Categories                            Session (card per dhikr)
                                      └────────────────────────────────┘
 ```
 
+- Content comes from the `azkar` pack (a doc 04 pack type, bundled or downloadable). The screen never hard-codes azkar text.
 - The language toggles reuse the translation view settings. Every card has a reference chip (no unsourced items, doc 07). Quranic items (the Manzil dua) use the Quran text, the DK font and our reciter audio.
 - The counter reaches its count → auto-advance after 600 ms (respects reduce motion). A session progress ring sits in the top bar. No completion fanfare.
 
@@ -849,17 +864,17 @@ List-detail on ≥ 600 dp. Defaults are authoritative for the `UserSettings` Dat
 | Language & region | App language (English / اردو) · Numerals in Urdu UI (Eastern ۱۲۳ / Western 123) | device-based · Eastern |
 | Appearance | Mode (Follow system / Day / Night) · Day theme (Light / Sepia) · Night theme (Night / Pure black) · Night text brightness 70–100% | Follow system · Light · Night · 100% |
 | Accessibility | Read translation with TalkBack · Reduce motion (Follow system / On) · Volume keys turn pages (P2) | on · Follow system · off |
-| Reading | Open app to (Home / Last page) · Keep screen on (5/15/30 min/never) · Keep system bars visible · Page-turn animation (Slide / Curl, P2) · Vibration on page turn · Show playing indicator · Auto page-turn during recitation | Home · 15 min · off · Slide · **off** · on · on |
-| Translation | Show Urdu · Show English · Translator per language (P2, F-TR-03) · Arabic / Urdu / English sizes | per UI language · Junagarhi / Saheeh · 26/18/16 sp |
-| Audio | Favourite qari · Skip buttons (ayah/surah) · Stream on mobile data (Ask / Allow / Never) · Streaming quality (Auto / Data saver / High) · When other audio plays (Pause / Lower volume) | Alafasy · ayah · Ask · Auto · Pause |
+| Reading | Open app to (Home / Last page) · Keep screen on while reading (releases after 5/15/30 min without interaction / never) · Keep system bars visible · Page-turn animation (Slide / Book / Curl, v1.1) · Vibration on page turn · Show playing indicator · Auto page-turn during recitation | Home · on, 15 min · off · Slide · **off** · on · on |
+| Translation | Show Urdu · Show English · Translator per language (v1.1, F-TR-03) · Arabic / Urdu / English sizes | per UI language · Junagarhi / Saheeh · 26/18/16 sp |
+| Audio | Favourite qari · Skip buttons (ayah/surah) · Stream on mobile data (Ask once / Allow / Never) · Streaming quality (Auto / Data saver / High) · When other audio plays (Pause / Lower volume) | Alafasy · ayah · Ask once · Auto · Pause |
 | Downloads | Wi-Fi only · Storage location · Stream cache size | on · Phone · 256 MB |
-| Prayer (P2) | Location/city · Method · Asr · Offsets · High-latitude · Adhan voices · Adhan health check | Karachi · Hanafi (PK) |
-| Reminders (P2) | Kahf Friday · Mulk night · Daily ayah · Azkar · Khatam · Ayat al-Kursi after salah · Quiet hours · Max 3/day | per r08 §2.15 |
-| Backup | Android backup status (F-BM-06) · Export / Import JSON (P2) | — |
-| Privacy | Plain statement: "No ads. No tracking. Nothing leaves your phone except audio and pack downloads." Crash reports opt-in (P3, F-PL-09) | off |
+| Prayer (v1.0) | Location/city · Method · Asr · Offsets · High-latitude · Adhan voices (v1.1) · Adhan health check (v1.1) | Karachi · Hanafi (PK) |
+| Reminders (v1.1) | Kahf Friday · Mulk night · Daily ayah · Azkar · Khatam · Ayat al-Kursi after salah · Quiet hours · Max 3/day | per r08 §2.15 |
+| Backup | Android backup status (F-BM-06) · Export / Import JSON (v1.1) | — |
+| Privacy | Plain statement: "No ads. No tracking. Nothing leaves your phone except audio and pack downloads." Crash reports opt-in (v1.1, F-PL-09; doc 11 D-32) | off |
 | About | Sources & Credits · Open-source licences · Report text error · Version · Contact | — |
 
-### 4.20 Sources & Credits (F-PL-04) — P2 — `CreditsKey`
+### 4.20 Sources & Credits (F-PL-04) — P2 — v1.0 — `CreditsKey`
 
 ```
 ┌──────────────────────────────────────┐
@@ -877,14 +892,14 @@ List-detail on ≥ 600 dp. Defaults are authoritative for the `UserSettings` Dat
 │ AUDIO                                │
 │ Mishary Alafasy — mp3quran.net … ›   │  per recitation: host, statement, date
 │ DATA & GUIDANCE                      │
-│ GeoNames cities (CC BY 4.0) · DontKillMyApp (CC BY 4.0) · adhan2 (MIT) │
+│ GeoNames cities (CC BY 4.0) · DontKillMyApp (CC BY) · adhan2 (MIT) │
 │ Open-source licences ›               │  AboutLibraries screen
 └──────────────────────────────────────┘
 ```
 
 - The screen is generated from `content_meta.sources_json` plus the pack manifests (attribution strings owned by doc 03). It is not hand-coded, and CI fails if any pack lacks an attribution entry.
 
-### 4.21 Report text error (F-PL-05) — P2 — `ReportErrorKey`
+### 4.21 Report text error (F-PL-05) — P2 — v1.0 — `ReportErrorKey(key, mushaf, page)`
 
 ```
 ┌──────────────────────────────────────┐
@@ -907,13 +922,15 @@ List-detail on ≥ 600 dp. Defaults are authoritative for the `UserSettings` Dat
 └──────────────────────────────────────┘
 ```
 
-- The report is sent with `ACTION_SENDTO mailto:` plus a structured subject `[TEXT-ERR] indopak16 p42 l7 2:270 w4 v{contentVersion}` and the body. The SLA and kill-switch process are in doc 11.
+- The key carries the ayah and page (doc 04 §8.2). Line and word are not in the key: they come from the word the user taps on the snapshot, and default to the first line of the focused ayah.
+- The report is sent with `ACTION_SENDTO mailto:` plus a structured subject `[TEXT-ERR] indopak16_taj p42 l7 2:270 w4 v{contentVersion}` and the body.
+- The response SLA (doc 12) is: triage ≤ 24 h; signed notice or kill-switch ≤ 48 h (shown through §4.23); corrected build submitted ≤ 72 h; reporter acknowledged ≤ 72 h. A text fix always ships as an app update, because the content DB is bundled and remote notices never change Quran text (D-30). The process is in doc 11.
 
-### 4.22 Widgets (F-CP-08) and notifications (F-CP-09) — P2
+### 4.22 Widgets (F-CP-08) and reminders (F-CP-09) — P2 — v1.1
 
 | Widget (Glance 1.2.0) | Size | Content | Tap |
 |---|---|---|---|
-| Continue reading | 2×2 | Surah · Para · Page · today's khatam goal | `criterion://page/{label}` |
+| Continue reading | 2×2 | Surah · Para · Page · today's khatam goal | `criterion://page/{mushafCode}/{label}` |
 | Next prayer | 2×1 | name, time, Hijri date (no seconds) | `criterion://prayer` |
 | All prayers | 4×2 | 6 rows | `criterion://prayer` |
 | Ayah of the day | 4×2 | Arabic as a **bitmap** rendered with DK IndoPak (Glance cannot load custom fonts), translation + reference as text | `criterion://ayah/{s}/{a}` |
@@ -922,6 +939,73 @@ Notification channels and copy rules:
 - Channels: **Adhan** · **Prayer notifications** · **Quran reminders** · **Downloads** · **Playback**.
 - Quran reminders show a reference and an action, never a truncated ayah. Example: "Friday — Surah Al-Kahf" / "Read or listen to Surah Al-Kahf." [Read] [Play].
 - No emoji, no promo copy, max 3 non-prayer notifications per day, quiet hours (r08 §2.15).
+
+### 4.23 Notices (F-PL-11, P2) — v1.0 floor — local sheet, no NavKey
+
+Signed `notices.json` entries (schema in doc 04 §14.3, built and signed by doc 08) reach the user in exactly two places: a **dismissible card on Home** and an **info chip in the reader chrome**. A notice is never a banner, toast, dialog or overlay on the mushaf or translation text (§12 rule 1), and never a push notification. Notices annotate or disable. They never change Quran text or layout (D-30): a text fix always arrives as an app update.
+
+```
+Home card                                Reader chrome (page 42)                Notice sheet (from card or chip)
+┌──────────────────────────────────┐    ┌──────────────────────────────────┐   ┌──────────────────────────────────┐
+│ ⓘ Text under review · Page 42  ✕ │    │ ‹  Para 3 · Page 42    ⓘ 🔖 🌙 🔒│   │ ⓘ Under review                   │
+│   A possible text issue on this  │    │ (page drawn unchanged)           │   │ A possible text issue on this    │
+│   page is under review.   [View] │    │                                  │   │ page is under review.            │
+└──────────────────────────────────┘    └──────────────────────────────────┘   │ Page 42 · Al-Baqarah 2:270       │
+┌──────────────────────────────────┐                                           │ Shown until 31 Jan 2027          │
+│ ⓘ Update available            ✕ │  minVersion nudge                         │ [Open page] [Report]  [Dismiss]  │
+│   This update fixes a text issue.│                                           └──────────────────────────────────┘
+│   [Update]                       │
+└──────────────────────────────────┘
+```
+
+| Notice (doc 04 §14.3 `target.type` / `action`) | Home card | Reader | Elsewhere |
+|---|---|---|---|
+| `page` / `warn` | "Text under review · Page L" until dismissed or expired | ⓘ chip in the top bar on the target page(s). The page is drawn unchanged | Translation view: the same chip in its top bar while a target ayah is visible |
+| `page` / `disable` (several pages; doc 11 S0 fallback) | "Pages L–M are being corrected" | Target pages show the ruled placeholder plus an inline card "This page is being corrected. Read these ayahs in the translation view." [Open translation view]. Nothing is drawn over any text | — |
+| `recitation` / `disable` | Only if it is the favourite qari: "Mishary Alafasy is unavailable for now" + [Choose reciter] | — | Reciter picker row "Unavailable"; downloaded files kept (§4.7.3) |
+| `surahHighlight` / `disable` | — | No highlight for that surah (§4.4 follow-along) | Full player `audio_no_highlight` |
+| `pack` / `disable` | Only if the pack is installed and active | — | Pack row "Unavailable" (§4.24) |
+| `feature` / `disable` | — | The feature's entry point is hidden | — |
+| `minVersion` nudge (doc 11; field to add to the doc 04 schema) | "Update available" card. [Update] opens the Play in-app update flow (play) or the release page (foss) | — | Never a blocking dialog |
+
+- **Message.** `message.en` or `message.ur` follows the UI language. If one is missing, the other is shown with its own direction (§7). The notice sheet is a local `ModalBottomSheet`. [Open page] → `ReaderKey(page)`; [Report] → `ReportErrorKey` prefilled.
+- **Lifecycle.** A notice shows from the time the verified file arrives until its `until`. Dismissing hides the Home card only; the reader chip stays while the notice is active, because it marks the page. Dismissed ids are kept in DataStore. A new notice id shows again. Expired notices disappear without UI.
+- **Trust.** Only notices whose detached `.sig` verifies against the embedded keys, with a higher `sequence` and an unexpired `expires`, are shown (doc 04). Invalid files are ignored silently, and the last valid set stays in force.
+- **Offline.** The last verified file applies. There is no "can't check notices" message.
+- **A11y.** Chip `contentDescription` = "Notice: text on this page is under review". The Home card is announced first in card order.
+
+**AC:**
+- (a) A `page`/`warn` notice for page 42 shows the chip on page 42 only, and a screenshot test proves that no pixel inside the page frame changes.
+- (b) Dismissing the Home card persists across restarts; a notice with a new id shows again.
+- (c) A file with a bad signature or a lower `sequence` changes nothing on screen.
+- (d) An expired notice disappears at `until` without an app restart.
+
+### 4.24 Translations (F-TR-02, F-TR-03) — P2 — v1.1 — `TranslationsKey`
+
+```
+┌──────────────────────────────────────┐
+│ ‹ Translations                   🔍  │
+│ Active per language: up to 2         │
+│ URDU                                 │
+│ [✓] Muhammad Junagarhi  bundled      │  QuranEnc v1.1.3 · with Ahsan-ul-Bayan notes
+│ [ ] <Urdu translator A>       1.2 MB ⤓│ chip "Non-commercial" if a Tanzil file
+│ [ ] <Urdu translator B>       1.3 MB ⤓│ provenance line: source · version · date
+│ ENGLISH                              │
+│ [✓] Saheeh International  bundled    │  Noor International Center · QuranEnc
+│ [ ] <English translator>      1.1 MB ⤓│
+│ OTHER LANGUAGES ›                    │  per doc 03's v1.1 pack list
+│ ──────────────────────────────────── │
+│ Show translations from other         │
+│ schools of thought            [ off ]│  D-22; Shia packs hidden until on
+└──────────────────────────────────────┘
+```
+
+- The rows come from the signed pack index (`index.json`, doc 04/08). Doc 03 owns the eligible list, the descriptions and the licence flags. Each row shows the translator, a maslak-neutral description (doc 01 F-TR-03), size, a licence chip ("Non-commercial" for every Tanzil file; `commercialOk = false`) and a provenance line.
+- Tap ⤓ → install (the download state icon from §3). Checkbox = active. At most 2 active translations per language; a third check asks which one to replace. Bundled packs can be deactivated but not deleted. Installed packs can be removed with Undo.
+- **Other schools (D-22).** Shia translations are hidden until "Show translations from other schools of thought" is on. They are then labelled «شیعہ (جعفری) ترجمہ» / "Shia (Ja'fari) translation" (doc 03 §8.3). They are never a default.
+- A pack disabled by a notice shows "Unavailable" and is hidden from the translation view.
+- Entry points: Downloads → Translations (§4.8), Settings → Translation → Translator per language (§4.19), and the translation view's "Install translation" card (§5).
+- Offline: installed rows work; ⤓ is disabled, and the offline banner shows.
 
 ---
 
@@ -935,7 +1019,7 @@ L = loading, E = empty, Er = error, Off = offline, PD = permission denied. "—"
 | Home | skeleton cards > 150 ms | First run: "Start reading · Al-Fatiha" | Card hidden if its source fails | No change (all local); continue-listening card shows "Downloaded only" if not cached | Prayer card shows "Set your city" |
 | Quran index | skeleton rows | Bookmarks tab → `empty_bookmarks` | Content DB integrity failure → full-screen "Reinstall needed" + Report (should never ship; CI-gated) | — | — |
 | Reader | ruled placeholder page | — | Page model missing → `error_page_render` card on paper + Report; neighbours still swipeable | — (audio errors surface in mini-player) | — |
-| Translation view | skeleton cards | Translation pack missing → "Install translation" card (Arabic still shown) | Pack corrupt → re-download prompt | Pack install disabled + banner | — |
+| Translation view | skeleton cards | Translation pack missing → "Install translation" card (Arabic still shown; links to §4.24 in v1.1) | Pack corrupt → re-download prompt | Pack install disabled + banner | — |
 | Play sheet | size line "Calculating…" | — | Catalogue unavailable → bundled fallback catalogue | Non-downloaded scopes: Play disabled + reason | — |
 | Full player / mini | buffering ring on ⏯ | — | `audio_play_error` + Retry (after mirror failover) | Streaming item → pause + `audio_not_downloaded` (never silently skips ayahs) | Notification permission denied (13+): playback works; media notification may be hidden → one-time hint |
 | Reciter picker | skeleton | Filters match none → "No reciters match" + Clear | Catalogue fetch failed → last cached + banner | banner; samples disabled | — |
@@ -954,6 +1038,8 @@ L = loading, E = empty, Er = error, Off = offline, PD = permission denied. "—"
 | Credits | — | — | Missing attribution → CI failure (never at runtime) | — | — |
 | Report error | snapshot rendering ring | — | No email app → fall back to Copy | Email can be queued by the mail app | — |
 | Widgets | Glance placeholder "Loading…" | No last read → "Start reading" | — | — | Location denied → "Set city in app" |
+| Notices (Home card, reader chip) | — (shown only after verification) | No active notice → nothing shown | Bad signature / older `sequence` → ignored, last valid set kept | Last verified file applies | — |
+| Translations (v1.1) | skeleton rows | Only bundled packs → list still shows them | Index fetch failed → last cached list + banner; install error → ⟳ with reason | banner; ⤓ disabled | Notifications denied → in-app progress only |
 
 ---
 
@@ -1084,7 +1170,7 @@ No drop shadows on the mushaf page or frame. The page is flat paper.
 | `motionMedium` | 250–300 ms · emphasized decelerate | Chrome show/hide (200 ms fade + 8 dp slide), sheets |
 | `pageSwipe` | Pager fling spring (default `PagerDefaults.flingBehavior`) | User page turns |
 | `autoPageTurn` | 350 ms · FastOutSlowIn `animateScrollToPage` | Follow-along turns |
-| `pageCurl` (P2, F-RD-12) | ~450 ms, gesture-driven | `io.github.oleksandrbalan:pagecurl` 1.5.1 (Apache-2.0), only after a 1-day spike proves RTL direction and ≥ 55 fps on the low-end device. Otherwise ship our own `graphicsLayer { rotationY; cameraDistance }` "book fold" |
+| `pageTransition` Book / Curl (F-RD-12, v1.1) | ~450 ms, gesture-driven | Per-page `graphicsLayer` transforms from `pagerState.getOffsetDistanceInPages(page)` over the cached page layers, as specified in [05 §11.2](05-mushaf-rendering-engine.md): Book = `rotationY` around the spine + `cameraDistance` + shadow gradient. No third-party curl library (`pagecurl` 1.5.1 is not adopted). Slide stays the default |
 
 - **Reduce motion.** When `ANIMATOR_DURATION_SCALE == 0` or the in-app setting is on: page turns snap (`scrollToPage`), there is no curl, highlight changes are instant, and azkar auto-advance has no slide.
 - No parallax, no bouncing, no celebratory animation anywhere (§12).
@@ -1243,8 +1329,19 @@ All strings live in `:core:designsystem` / feature `strings.xml` with `values-ur
 | settings_page_haptics | Vibrate on page turn | صفحہ پلٹنے پر وائبریشن |
 | notif_kahf_title | Friday — Surah Al-Kahf | جمعہ — سورۃ الکہف |
 | notif_kahf_body | Read or listen to Surah Al-Kahf. | سورۃ الکہف پڑھیں یا سنیں۔ |
+| reader_back_to_page | Back to page %1$s | صفحہ %1$s پر واپس جائیں |
+| notice_chip | Under review | زیرِ جائزہ |
+| notice_chip_a11y | Notice: text on this page is under review | اطلاع: اس صفحے کے متن کا جائزہ لیا جا رہا ہے |
+| notice_home_page | Text under review · Page %1$s | متن زیرِ جائزہ · صفحہ %1$s |
+| notice_pages_corrected | Pages %1$s–%2$s are being corrected. Read these ayahs in the translation view. | صفحات %1$s تا %2$s کی درستی جاری ہے۔ یہ آیات ترجمہ والے منظر میں پڑھیں۔ |
+| notice_until | Shown until %1$s | %1$s تک دکھایا جائے گا |
+| notice_update_title | Update available | نیا ورژن دستیاب ہے |
+| notice_update_body | This update fixes a text issue. | اس اپ ڈیٹ میں متن کی ایک غلطی درست کی گئی ہے۔ |
+| notice_reciter_unavailable | %1$s is unavailable for now. | %1$s فی الحال دستیاب نہیں۔ |
+| translations_other_schools | Show translations from other schools of thought | دیگر مکاتبِ فکر کے تراجم دکھائیں |
+| licence_noncommercial | Non-commercial | غیر تجارتی |
 
-(≈ 110 strings, counting each grouped row by its parts.)
+(≈ 120 strings, counting each grouped row by its parts. The notice message bodies themselves come from the signed file in both languages.)
 
 ---
 
@@ -1298,7 +1395,7 @@ All haptics go through `LocalHapticFeedback` / `HapticFeedbackConstants` behind 
 
 ## 12. Respectful-design rules (non-negotiable; enforced in code review)
 
-1. **Nothing over Quran text** except user-requested highlight or selection. No ads, banners, toasts, coach marks, tooltips or promo cards on the mushaf or translation views. The first-run hints ("Tap to show controls", "Long-press an ayah") appear **once** as a snackbar-style hint over the chrome area, never over text.
+1. **Nothing over Quran text** except user-requested highlight or selection. No ads, banners, toasts, coach marks, tooltips or promo cards on the mushaf or translation views. The first-run hints ("Tap to show controls", "Long-press an ayah") appear **once** as a snackbar-style hint over the chrome area, never over text. The F-PL-11 notice chip is allowed only because it sits in the reader's top bar (chrome), never on the page (§4.23).
 2. **No gamification.** No confetti, badges, points, levels, leaderboards, trophies or sound effects anywhere. No "hasanat" counters or reward estimates. Completion screens show a dua and a plain message.
 3. **No streak shaming.** Streaks are private, optional, and live inside the khatam planner only. There is no "You broke your streak" copy and no streak notifications. Missed days are redistributed silently (§4.11).
 4. **No guilt notifications.** Max 3 non-prayer notifications per day, quiet hours, every one opt-in or with a visible off switch. No "We miss you" or "You haven't read today".
@@ -1307,7 +1404,7 @@ All haptics go through `LocalHapticFeedback` / `HapticFeedbackConstants` behind 
 7. **Neutral and labelled.** Madhhab-specific items are labelled: Asr choice; sajda 22:77 «عند الامام الشافعی رح»; observances in the Hijri calendar are toggles with neutral names (r08 §2.7). Shia options are labelled and opt-in (D-22).
 8. **No generated religious content.** Search and suggestions are retrieval-only with citations (r08 §2.14).
 9. **Imagery.** Geometric and plain only. No living beings, no reciter photos (D-12), no photos of the Haram or Masjid an-Nabawi (avoids rights issues and keeps calm). Age-neutral visuals (D-22, Families policy).
-10. **Honesty.** No dark patterns, no fake urgency. The privacy promise in onboarding and settings is literal (D-20). A review prompt (play flavor, In-App Review API) is shown at most once, after a completed surah listen or khatam, and **never** while reading or listening.
+10. **Honesty.** No dark patterns, no fake urgency. The privacy promise in onboarding and settings is literal (D-20). A review prompt (F-PL-10, play flavor, In-App Review API, v1.1) is shown at most once, after a completed surah listen or khatam, and **never** while reading or listening.
 11. **Dignified copy.** Use "Quran" and "the Quran" with respect. Use honorifics in Urdu where customary (ﷺ via text, not image). Never truncate an ayah mid-word in a notification or widget. Show the reference instead.
 
 ---
@@ -1328,7 +1425,7 @@ All haptics go through `LocalHapticFeedback` / `HapticFeedbackConstants` behind 
 | Listen segments, theme picker, alert modes | `SingleChoiceSegmentedButtonRow` | — |
 | Speed, scrubber, brightness | `Slider` | Scrubber with tick marks and RTL |
 | Confirmations | `AlertDialog` | Only the 2 cases in §3 + permissions |
-| Undo | `SnackbarHost` with action | 6 s |
+| Undo | `SnackbarHost` with action | ≥ 8 s (§3) |
 | Dates and times | `DatePicker`, `TimePicker` dialogs | Khatam target, reminder time |
 | Search | `SearchBar` (docked, stable) | Avoid `AppBarWithSearch` (experimental again, r07) |
 | Progress | `LinearProgressIndicator`, `CircularProgressIndicator` (determinate for downloads) | Avoid `LoadingIndicator` (not stable) |
@@ -1342,30 +1439,40 @@ All haptics go through `LocalHapticFeedback` / `HapticFeedbackConstants` behind 
 
 Estimates are for a solo developer with AI agents (D-25) and cover UI only, with the engines built per docs 05–07. Doc 09 schedules them.
 
-| Screen / item | Phase | Estimate (dev-days) | Must-have screenshot tests (Roborazzi) |
-|---|---|---|---|
-| Designsystem tokens, typography, themes, IndexRow, NumberBadge, mini-player shell | P1 | 4 | Token sheet × 4 themes × EN/UR |
-| Navigation shell, NavKeys, deep-link parser | P1 | 3 | — (unit tests for parser) |
-| Onboarding (steps 1–3) | P1 | 2 | 3 steps × EN/UR |
-| Home (P1 cards) | P1 | 2 | Home × 4 themes × 200% |
-| Quran index (6 tabs + Bookmarks tab) | P1 | 5 | Each tab × EN/UR |
-| Reader chrome, gestures, locks, scrubber, jump-to, zoom | P1 | 6 | 5 golden pages × 4 themes (with doc 05) |
-| Ayah action sheet + copy/share text | P1 | 2 | Sheet normal/compact |
-| Translation view | P1 | 3 | 3 pages × EN/UR × 200% |
-| Play sheet, full player, reciter picker, repeat/speed/sleep | P1 | 6 | Each sheet × EN/UR |
-| Listen tab | P1 | 2 | — |
-| Downloads & storage | P1 | 3 | Empty / active / full |
-| Search | P1 | 3 | Grouped results EN/UR |
-| Bookmarks & collections | P1 | 2 | Empty / populated |
-| Settings (P1 sections) | P1 | 2 | — |
-| Prayer, health check, Ramadan | P2 | 5 | Times × EN/UR; health check |
-| Qibla | P2 | 3 | Calibrate / aligned / no-compass |
-| Hijri | P2 | 2 | Month grid EN/UR |
-| Tasbeeh + Azkar | P2 | 4 | — |
-| Khatam planner + group sheet | P2 | 4 | Plan list, create |
-| Credits, Report error, Share image, widgets, shortcuts | P2 | 5 | Share card × backgrounds |
-| a11y pass (TalkBack, 200%, keyboard) | P1 + P2 | 3 + 2 | — |
-| **Total** | | **P1 ≈ 48, P2 ≈ 25** | |
+**Unit.** 1 dev-day = 1 ideal day (id) = 6 focused hours of the owner working with AI agents (doc 09 §0). The "Epic" column maps each row to doc 09's epics.
+
+| Screen / item | Phase · Release | Epic (doc 09) | Estimate (id) | Must-have screenshot tests (Roborazzi) |
+|---|---|---|---|---|
+| Designsystem tokens, typography, themes, IndexRow, NumberBadge, mini-player shell | P1 · v1.0 | E-14 | 4 | Token sheet × 4 themes × EN/UR |
+| Navigation shell, NavKeys, deep-link parser | P1 · v1.0 | E-01 / E-06 | 3 | — (unit tests for parser) |
+| Onboarding (steps 1–3) | P1 · v1.0 | E-13 | 2 | 3 steps × EN/UR |
+| Home (P1 cards) | P1 · v1.0 | E-06 | 2 | Home × 4 themes × 200% |
+| Quran index (6 tabs + Bookmarks tab) | P1 · v1.0 | E-06 | 5 | Each tab × EN/UR |
+| Reader chrome, gestures, locks, scrubber, jump-to, zoom, back-to-page chip | P1 · v1.0 | E-05 | 6 | 5 golden pages × 4 themes (with doc 05) |
+| Ayah action sheet + copy/share text | P1 · v1.0 | E-05 | 2 | Sheet normal/compact |
+| Translation view | P1 · v1.0 | E-11 | 3 | 3 pages × EN/UR × 200% |
+| Play sheet, full player, reciter picker, repeat/speed/sleep | P1 · v1.0 | E-08 | 6 | Each sheet × EN/UR |
+| Listen tab | P1 · v1.0 | E-08 / E-09 | 2 | — |
+| Downloads & storage | P1 · v1.0 | E-10 | 3 | Empty / active / full |
+| Search | P1 · v1.0 | E-12 | 3 | Grouped results EN/UR |
+| Bookmarks & collections | P1 · v1.0 | E-07 | 2 | Empty / populated |
+| Settings (P1 sections) | P1 · v1.0 | E-13 | 2 | — |
+| Prayer times, Ramadan core | P2 · v1.0 | E-15 / E-16 | 3 | Times × EN/UR; Ramadan table |
+| Hijri | P2 · v1.0 | E-16 | 2 | Month grid EN/UR |
+| Khatam planner (no streaks, no group sheet) | P2 · v1.0 | E-18 | 3 | Plan list, create |
+| Credits, Report error | P2 · v1.0 | E-19 | 2 | Credits EN/UR |
+| Notices: Home card, reader chip, sheet (F-PL-11) | P2 · v1.0 | E-23 | 1 | Chip on/off with the page frame unchanged; card EN/UR |
+| Tasbeeh, Manzil-dua session, tafsir sheet, Para quarters | P2 · v1.0-stretch | E-16 / E-05 / E-06 | 3 | — |
+| Adhan alert modes + health check | P2 · v1.1 | E-15 | 2 | Health check |
+| Qibla | P2 · v1.1 | E-16 | 3 | Calibrate / aligned / no-compass |
+| Azkar | P2 · v1.1 | E-16 | 2 | — |
+| Streaks, group khatam sheet, notes | P2 · v1.1 | E-18 / E-07 | 2 | — |
+| Share image, widgets, launcher shortcuts (F-PL-12), rating prompt (F-PL-10) | P2 · v1.1 | E-17 / E-22 | 4 | Share card × backgrounds |
+| Translations screen (F-TR-02/03), page transitions, auto-scroll | P2 · v1.1 | E-11 / E-05 | 3 | Translations EN/UR |
+| a11y pass (TalkBack, 200%, keyboard) | P1 + P2 | E-13 | 3 + 2 | — |
+| **Total** | | | **P1 ≈ 48; P2 v1.0 ≈ 13 (incl. a11y); v1.0-stretch ≈ 3; v1.1 ≈ 16** | |
+
+**Variance against doc 09.** These figures are ≈ 2.6× doc 09's UI allocation (≈ 18 id for the P1 UI stories). Doc 09 assumes a strong AI speed-up and smaller stories. This doc does not lower its estimates. Doc 09's estimate-reconciliation table (feasibility ruling) carries the gap and the AI-assistance factor it assumes.
 
 Global acceptance for every screen:
 - (1) EN and UR at 100% and 200% render without clipping.
@@ -1377,12 +1484,13 @@ Global acceptance for every screen:
 
 ## 15. Cross-doc contracts (other docs must match)
 
-- **Doc 04:** NavKeys and the `UserSettings` defaults in §2.4 / §4.19. `MushafId.INDOPAK_16_TAJ`. `PageLabel = pageIndex + 1` conversions in one place (`:core:model`).
-- **Doc 05:** the renderer exposes `MushafColors` tokens exactly as in §6.1, a separate highlight layer and selection layer, per-ayah semantics nodes with the custom actions in §9, `hit(offset) → AyahKey`, and "rects for key" used by the action-sheet placement rule (§4.5). Zoom re-layout on release. Page placeholder = ruled lines.
-- **Doc 06:** `PlaybackStateHub` provides `NowPlaying(sura, ayah, scope, repeatIndex, repeatCount, sleepRemaining, highlightAvailable)`. The mini-player, full player and follow-along consume it. The PlanExpander validates the Play sheet's draft. A catalogue flag hides non-public reciters.
-- **Doc 07:** the alarm log provides lateness for the health check. Ramadan, azkar and khatam content and copy are owned there. Group khatam text format.
-- **Doc 03:** attribution strings for copy/share/credits. Curated surah names in EN/UR/AR and transliteration spellings used in this doc's wireframes.
-- **Doc 10:** screenshot matrix (themes × locales × font scales) and the low-end performance budget referenced in §4.2.
+- **Doc 04:** owns the NavKeys (§8.2) and deep-link grammar (§8.3) that §2.4 / §2.5 use verbatim. Doc 04 must add the UX-only keys `PlaySheetKey(draft)`, `KhatamCreateKey` and `TranslationsKey`, the `IndexTab` values `PAGE` and `BOOKMARKS`, and the deep-link paths marked † in §2.5. Doc 04 also owns the shared types (`MushafId.INDOPAK_16_TAJ("indopak16_taj", 1)`, `PageIndex`/`PageLabel` with label = index + `pageLabelOffset` converted once in `:core:model`, `VerseKey`, `PlayScope`, `PlayRequest`), the `UserSettings` schema with the defaults in §4.19, and the `notices.json` schema (§14.3), which must add the `minVersion` nudge and the `page`/`disable` behaviour used in §4.23.
+- **Doc 05:** the renderer exposes `MushafColors` tokens exactly as in §6.1, a separate highlight layer and selection layer, per-ayah semantics nodes with the custom actions in §9, `hit(offset) → VerseKey`, and "rects for key" used by the action-sheet placement rule (§4.5). Zoom re-layout on release. Page placeholder = ruled lines. Page transitions Slide / Book / Curl per 05 §11.2.
+- **Doc 06 / doc 04 §5:** the mini-player, full player and follow-along read `PlaybackStateHub.state: StateFlow<PlaybackState>`. Fields used here: `status` (buffering ring, ⏯), `request.scope` (scope line), `recitation`, `segment` (`Ayah(key, rep, repOf)` → "Al-Baqarah · 255"), `highlight` + `highlightAvailable` (§4.4, "No highlight for this surah"), `positionMs` / `durationMs` / `ayahStartMs` / `ayahEndMs` (seek bar, ayah ticks), `ayahRep` / `ayahRepOf` and `rangePass` / `rangeOf` (0 = ∞) ("Repeat 2/3"), `speed`, `sleep: SleepTimerState?` ("☾ 12:30"), `error: AudioError?` (`audio_play_error`). `PlanExpander` validates the Play sheet's draft. The catalogue's `licenceStatus` + `eligibleTiers` hide recitations that are not eligible for the build's `CONTENT_TIER`.
+- **Doc 07:** the alarm log provides lateness for the health check. Ramadan, azkar (as an `azkar` pack) and khatam content and copy are owned there. Group khatam text format.
+- **Doc 08:** builds and signs `notices.json` (detached `.sig`) and the pack index the Translations screen lists.
+- **Doc 03:** attribution strings for copy/share/credits; the translator list, descriptions and licence flags for §4.24. Curated surah names in EN/UR/AR and transliteration spellings used in this doc's wireframes.
+- **Doc 10:** screenshot matrix (themes × locales × font scales), the notice-chip "page frame unchanged" test (§4.23 AC a), and the QB-03/QB-04 cold-start budgets referenced in §1 and §4.2.
 
 ---
 
@@ -1391,7 +1499,7 @@ Global acceptance for every screen:
 1. **Urdu copy review.** All Urdu strings need a native-speaker and scholar pass (religious phrasing such as «اللہ قبول فرمائے» and «امام شافعیؒ»). Owner: doc 11, before the P2 closed test.
 2. **Brand name and icon (G3).** All wireframes say `<Brand>`. The App Links domain also waits on G3.
 3. **Font sizes on device.** Noto Nastaliq Urdu and Noto Sans subset sizes are unmeasured. Measure in P0 and keep the APK budget (doc 10).
-4. **Page-curl library** (`pagecurl` 1.5.1, last release Feb 2024): RTL support and low-end fps are unverified. A 1-day spike in P2 decides it, with the fallback specified in §6.6.
+4. **Page transitions — resolved.** Doc 05 §11.2 does not adopt the `pagecurl` library. Book and Curl are our own `graphicsLayer` transforms (§6.6), and no spike is needed.
 5. **Eastern digits default in Urdu UI.** Many Pakistani apps use Western digits for times. Validate with 5 users during the P1 daily-use period, and keep the setting either way.
 6. **Ayah-of-the-day list** (365 curated, scholar-reviewed) and dua-e-khatam text are content dependencies owned by doc 07 and doc 03.
 7. **Glance custom fonts:** the widget renders Arabic as a bitmap. Verify memory and size limits on API 24–26 launchers during P2.

@@ -1,19 +1,48 @@
 # 08 · Offline Data Pipelines (`tools/`)
 
-**Purpose.** This doc specifies every offline tool that turns upstream Quran data into the files the app ships or downloads. It covers the read-only content DB, the typeset mushaf layout packs with precomputed justification, translation and tafsir packs, audio timing packs, the reciter catalogue, the signed pack index, the offline city DB and the Hijri month-start feed. It also covers publishing to Cloudflare R2. For each tool it gives the repo layout, pinned inputs, stage-by-stage pseudocode, output schemas, the full list of validation invariants that CI enforces, the CI jobs and the proofreading workflow. The device never shapes, justifies, parses upstream formats or validates timings: it opens SQLite files and draws. The doc is written so an engineer or AI agent can implement `tools/` without redoing the research.
+**Purpose.** This doc specifies every offline tool that turns upstream Quran data into the files the app ships or downloads. It covers:
+- the read-only content DB;
+- the typeset mushaf layout packs with precomputed justification;
+- translation, tafsir and azkar packs;
+- audio timing packs and the reciter catalogue;
+- the signed pack index, the signed notices file (F-PL-11) and the Hijri month-start feed;
+- the offline city DB;
+- the per-tier eligibility manifest (`bundled.json`) and the G5 page-hash list (`certified_pages.json`);
+- publishing to Cloudflare R2.
 
-**Status:** Draft v1, 2026-10-19
+For each tool it gives the repo layout, pinned inputs, stage-by-stage pseudocode, which owner doc's schema the output follows, the full list of validation invariants that CI enforces, the CI jobs and the proofreading workflow. The device never shapes, justifies, parses upstream formats or validates timings: it opens SQLite files and draws. The doc is written so an engineer or AI agent can implement `tools/` without redoing the research.
+
+**Status:** Draft v2, 2026-10-19 (revised after cross-doc review)
+
+**Schema ownership.** This doc owns the pipeline, its outputs, file names and V-checks. It does **not** own the schemas it writes:
+
+| Output | Schema owner |
+|---|---|
+| `quran_content.db` DDL | [04 §7.2](04-architecture.md) |
+| Translation, tafsir, cities and azkar pack shapes | [04 §7.3](04-architecture.md), with azkar tables per [07 §9.2](07-companion-engagement-features.md) |
+| `index.json` and `notices.json` | [04 §7.6 / §14.3](04-architecture.md) |
+| `bundled.json` and asset paths | [04 §7.7 / §11.2](04-architecture.md) |
+| Mushaf-pack DDL and the justification contract | [05 §3.3 / §4](05-mushaf-rendering-engine.md) |
+| Timing-pack DDL, `catalogue.json` and recitation IDs | [06 §5.1 / §3.2](06-audio-engine.md) |
+
+Where this doc shows a schema, it is an abridged copy for orientation. The owner doc wins.
 
 **Key decisions in this doc**
-- Python 3.12 + `uv` workspace under `tools/`. Every stage runs as `uv run --frozen python -I -m crit …`. Inputs are pinned by SHA-256 in `data/pins.lock`. Downloaded files are parsed as data and never executed (D-02, D-10).
-- The content DB, and every Room-opened pack, is written by **executing the Room-exported schema JSON verbatim**: `createSql`, indices, `contentSyncTriggers`, `setupQueries`. Then `rebuild`/`optimize`, `PRAGMA user_version`, `VACUUM`. CI also emits a `--no-master` copy so `onValidateSchema` actually runs (D-10, D-11).
-- Canonical word table = the **DigitalKhatt MIT token stream (83,669 tokens)** keyed to Kufan verse keys, with QUL positions mapped 1:1 except 72:16 (D-06).
-- Indexing tables (Para, Manzil, Ruku, Sajda, Quarters, aliases, surah headers) are **our own curated CSVs**, cross-checked against the print-verified facts (D-07).
-- Mushaf layout = **QUL resource 11 export** joined to DK tokens. Justification is precomputed offline: per-word x-fractions plus `cv01` kashida, ≤ 3 steps. Font = DK IndoPak converted CFF2 → glyf (D-04, D-05, D-06).
-- Timing packs come only from the **mp3quran `ayat_timing` + the same host's audio**, through the g03 normaliser (relabel, clamp, onset snap, per-surah disable) with ETag/length/sha256 guards (D-12, D-13).
-- Every remote JSON (pack `index.json`, `catalogue.json`, Hijri feed) is a **single-object Ed25519 signed envelope**. The private key is offline on the owner's machine and **never in CI**; the public keys are compiled into the app (D-10, D-15, D-24).
-- Hosting = R2 bucket behind a custom domain. Immutable versioned paths for packs and audio, short-TTL mutable envelopes, `rclone` uploads (D-24).
-- Licence and eligibility flags travel with every dataset. CI blocks non-commercial content in a monetized profile and permission-pending content in a public profile (D-09, D-12, D-17, D-22).
+- **Toolchain.** Python 3.12 + `uv` workspace under `tools/`. Every stage runs as `uv run --frozen python -I -m crit …`. Inputs are pinned by SHA-256 in `data/pins.lock`. Downloaded files are parsed as data and never executed (D-02, D-10).
+- **Room-opened DBs.** The content DB and every Room-opened pack (mushaf, translation, tafsir, azkar, cities) are written by **executing the Room-exported schema JSON verbatim**: `createSql`, indices, `contentSyncTriggers`, `setupQueries`. Then `rebuild`/`optimize`, `PRAGMA user_version`, `VACUUM`. CI also emits a `--no-master` copy so `onValidateSchema` actually runs (D-10, D-11). Rows are inserted by the **column names in the exported JSON**, never by a DDL copied into this doc.
+- **Timing packs are the one exception.** They are plain SQLite with doc 06 §5.1's DDL, read through `androidx.sqlite`. They have no Room identity table (writer ruling).
+- **Canonical word table.** The **DigitalKhatt MIT token stream (83,669 tokens)**, keyed to Kufan verse keys. QUL positions are mapped 1:1 except 72:16 (D-06).
+- **Indexing tables.** Para, Manzil, Ruku, Sajda, Quarters, aliases, passages and surah headers are **our own curated CSVs**, cross-checked against the print-verified facts (D-07).
+- **Mushaf layout.** The **QUL resource 11 export** (or the clean-room grid if G1 fails) is joined to DK tokens. Justification is precomputed offline with **doc 05 §4.3's algorithm**: integer x-fractions, kashida and plain variants, `cv01` ≤ 3 steps. The font is DK IndoPak converted from CFF2 to glyf (D-04, D-05, D-06).
+- **Timing packs** come only from the **mp3quran `ayat_timing` + the same host's audio**. They go through the g03 normaliser (relabel, clamp, onset snap, per-surah disable), with ETag/length/sha256 guards (D-12, D-13).
+- **Signing.** Every remote JSON (`index.json`, `catalogue.json`, `notices.json`, `feeds/hijri-pk.json`) is plain JSON carrying `kid`, `sequence` and `expiresAt`. It has a **detached `X.json.sig`**: base64 of the 64-byte Ed25519 signature over the exact file bytes (doc 04 §7.6). The private key is offline on the owner's machine and **never in CI**. Two public keys are compiled into the app (D-10, D-15, D-24, D-30).
+- **Hosting.** An R2 bucket behind a brand-neutral custom domain (`CDN_BASE_URL`, doc 04 §1). Packs and audio use immutable versioned paths. Signed JSON uses short-TTL mutable paths. Uploads go through `rclone` (D-24).
+- **Eligibility** travels with every dataset as `licenceStatus` (5 values: `PERMITTED`, `HOST_GRANT`, `PENDING`, `PERSONAL_ONLY`, `REVOKED`), free-text `basis`, per-tier eligibility and `commercialOk`. The pipeline builds per **content tier** `PERSONAL` / `BETA` / `PUBLIC` plus the `MONETIZED` flag (D-29). The CI gate:
+  - blocks non-commercial content when `MONETIZED`;
+  - blocks `PENDING`/`PERSONAL_ONLY` content from PUBLIC, and `PERSONAL_ONLY` from BETA;
+  - blocks any layout that is neither G1-cleared nor clean-room from BETA and PUBLIC.
+
+  `PERSONAL` outputs are bundled only and **never uploaded to R2** (D-09, D-12, D-17, D-22, D-29).
 
 Related: [Content & licensing](03-content-data-licensing.md) · [Architecture](04-architecture.md) · [Mushaf rendering](05-mushaf-rendering-engine.md) · [Audio engine](06-audio-engine.md) · [Companion features](07-companion-engagement-features.md) · [Roadmap](09-roadmap-backlog.md) · [Quality & CI](10-quality-testing-ci.md) · [Release & compliance](11-release-compliance-business.md) · [Decisions & risks](12-decisions-risks.md)
 
@@ -32,33 +61,38 @@ flowchart LR
     MP3Q["mp3quran ayat_timing + MP3s"]
     EA["everyayah 000_checksum.md5"]
     GN["GeoNames cities15000.zip"]
+    NOT["data/notices/*.yml<br/>(owner-written)"]
   end
   TZ & DK & CUR --> S1["1 content-db"]
   QUL & DK & CUR --> S2["2 mushaf-pack"]
   S1 --> S2
-  QE --> S3["3 translation packs"]
-  MP3Q & EA --> S4["4 timing packs"]
+  QE --> S3["3 translation / tafsir / azkar packs"]
+  CUR --> S3
+  MP3Q & EA --> S4["4 timing packs + catalogue inputs"]
   S1 --> S4
-  S2 & S3 & S4 --> S5["5 catalogue.json + index.json<br/>Ed25519 envelopes"]
-  GN --> S6["6 geo pack"]
+  S2 & S3 & S4 --> S5["5 catalogue.json · index.json · notices.json<br/>bundled.json · detached .sig"]
+  NOT --> S5
+  GN --> S6["6 cities DB"]
   S6 --> S5
-  S5 --> S7["7 publish → R2"]
-  S1 --> APK[("APK assets")]
+  S5 --> S7["7 publish → R2 (beta, public channels only)"]
+  S1 --> APK[("APK assets<br/>src/main + src/personal|public")]
   S2 --> APK
   S3 --> APK
-  S2 --> PROOF["proof PDFs → hafiz sign-off (G5)"]
+  S4 --> APK
+  S5 --> APK
+  S2 --> PROOF["proof PDFs + device captures → hafiz sign-off<br/>→ certified_pages.json (G5)"]
 ```
 
-| # | Stage | Tool dir | Output | Ships how | Phase |
+| # | Stage | Tool dir | Output | Ships how | Release |
 |---|---|---|---|---|---|
-| 1 | content-db | `tools/data-pipeline` | `quran_content.db` | APK asset (createFromAsset) | P0 v0, P1 v1 |
-| 2 | mushaf-pack | `tools/mushaf-pipeline` | `mushaf.taj16.sqlite`, `criterion_indopak.ttf`, proof PDFs | APK asset (pre-installed pack); later layouts downloadable | P0 font, P1 pack, P2 sign-off |
-| 3 | translation/tafsir packs | `tools/packs` | `tr.*.sqlite` | 2 bundled (D-09), rest downloadable | P1 bundled, P2 packs, P3 tafsir |
-| 4 | timing packs | `tools/audio-timing` | `timing.<recitation>.sqlite` | Default reciter bundled, others downloaded | P1 |
-| 5 | catalogue + index + signing | `tools/catalogue` | `catalogue.json`, `index.json` (signed envelopes) | Bundled copy + remote override | P1 |
-| 6 | geo DB | `tools/packs` (`geonames`) | `geo.cities15000.sqlite` | APK asset (pre-installed pack) | P2 |
-| 6b | Hijri PK feed | `tools/catalogue` (`hijri`) | `feeds/hijri-pk.json` envelope | Remote only | P2 |
-| 7 | publish | `tools/catalogue` (`publish`) | R2 objects | CDN | P1 → ongoing |
+| 1 | content-db | `tools/data-pipeline` | `quran_content.db`, `normalization_vectors.json` | APK asset (`createFromAsset`) | v1.0 (P0 v0, P1 v1); `daily_ayah` rows v1.1 |
+| 2 | mushaf-pack | `tools/mushaf-pipeline` | `mushaf.indopak16_taj.dk@<ver>.db`, `criterion_indopak.ttf`, proof PDFs, `certified_pages.json` | Bundled pack per tier; later layouts downloadable | v1.0 (P0 font, P1 pack, G5 sign-off 2027-01-18) |
+| 3 | translation / tafsir / azkar packs | `tools/packs` | `ur.junagarhi.qe@<ver>.db`, `en.saheeh.qe@<ver>.db`, `azkar.core@<ver>.db`, … | 2 translations bundled (D-09); the rest downloadable | v1.0 bundled translations; v1.1 downloadable packs (F-TR-02) and azkar (F-CP-06); P3 tafsir |
+| 4 | timing packs | `tools/audio-timing` | `timing.<recitationId>@<ver>.db` (plain SQLite) | 12 PUBLIC timing packs bundled (doc 06 §5.1); updates through the index | v1.0 |
+| 5 | catalogue, index, notices, eligibility manifest, signing | `tools/catalogue` | `catalogue.json`, `index.json`, `notices.json` (+ `.sig` each), `bundled.json` per tier | Bundled copies plus remote override | v1.0 for the catalogue override, `notices.json` (F-PL-11) and `bundled.json`; v1.1 for the remote `index.json` (pack system, doc 09 B8) |
+| 6 | cities DB | `tools/packs` (`geonames`) | `cities@<ver>.db` | Bundled pack | v1.0 (prayer times, F-CP-01) |
+| 6b | Hijri PK feed | `tools/catalogue` (`hijri`) | `feeds/hijri-pk.json` + `.sig` | Remote only | v1.0 (F-CP-04) |
+| 7 | publish | `tools/catalogue` (`publish`) | R2 objects | CDN | v1.0 → ongoing |
 
 ---
 
@@ -79,8 +113,9 @@ tools/
     roomdb.py               # write SQLite from Room schema JSON (generalised build_content_db.py)
     normalize.py            # Arabic / Urdu / English normalisers (spec §4.4) — mirrored in Kotlin
     quran_ref.py            # surah ayah counts, global id <-> s:a, Kufan keys
-    registry.py             # data/curated/content_registry.yaml (licence, attribution, eligibility)
-    envelope.py             # Ed25519 signed-envelope create/verify
+    registry.py             # data/curated/content_registry.yaml (licenceStatus, basis, eligibility, attribution)
+    tiers.py                # ONE eligibility function shared by every gate (§8.6); mirrors doc 04 ContentPolicy
+    sign.py                 # Ed25519 detached-signature create/verify over exact file bytes (§8.4)
     report.py               # JSON + Markdown run reports (posted by CI)
   data-pipeline/criterion_data/
     tanzil.py  dk_text.py  dk_numbering.py  qul_script.py  align.py
@@ -88,52 +123,69 @@ tools/
   mushaf-pipeline/criterion_mushaf/
     fontconv.py             # CFF2 -> glyf (from spikes/.../cff2_to_glyf.py) + rename
     fontcheck.py            # feature table + width vectors (from font_features.py, hb_widths.py)
-    shape.py                # uharfbuzz shaping cache: token -> widths at cv01 0..3
+    shape.py                # uharfbuzz shaping cache: token -> advances + ink box at cv01 0..3
     qul_layout.py           # read res-11 export, restore 16-slot grid
-    quirks.py               # p.529 fix, sar-lauh remap, embedded-basmala flags, text overrides
-    justify.py              # page scale + kashida + gap solver
+    quirks.py               # p.529 fix, sar-lauh remap, three-part headers, build-time text overrides/errata
+    justify.py              # doc 05 §4.3 solver (page em, kashida + plain variants, vertical metrics)
     markers.py  furniture.py  build_pack.py  validate_pack.py
+    hashes.py               # per-page text-layer hash + ornament-layer hash (§5.6)
+    certify.py              # signoff.csv + certificate → certified_pages.json (§14)
     proof.py                # SVG -> PDF/PNG proof renders, sign-off sheet, certificate template
     oracle.py               # LOCAL ONLY: diff vs scraped previews / Waqar (never in CI)
-    rebreak.py              # P0-gated fallback tool (clean-room line breaker + correction UI backend)
+    rebreak.py              # G1-fallback tool (clean-room line breaker + correction UI backend)
   audio-timing/criterion_timing/
     mp3quran.py  mp3probe.py  letters.py  shift.py  onset.py
-    normalise.py  build_timing.py  gapped_manifest.py  validate_timing.py  drift.py
+    normalise.py  build_timing.py  gapped_checks.py  validate_timing.py  drift.py
   packs/criterion_packs/
-    quranenc.py  tanzil_trans.py  build_translation.py  build_tafsir.py  geonames.py  validate_pack.py
+    quranenc.py  tanzil_trans.py  build_translation.py  build_tafsir.py  build_azkar.py
+    geonames.py  validate_pack.py
   catalogue/criterion_catalogue/
-    build_catalogue.py  build_index.py  hijri.py  keys.py  publish.py  verify_live.py
+    build_catalogue.py  build_index.py  build_notices.py  build_bundled.py  hijri.py
+    keys.py  publish.py  verify_live.py
+    schemas/                # JSON Schemas copied from docs 04 §7.6/§14.3 and 06 §3.2 (V-X01)
+    test_vectors/           # {json bytes, .sig} pairs incl. tampered + rolled-back cases (exported to app tests)
   tests/                    # pytest; tiny fixtures only (no upstream data committed)
 data/
   pins.lock                 # TOML, every upstream input (§3)
   curated/                  # our own facts, hand-verified (§3.3)
     paras.csv  manzils.csv  sajdas.csv  para_quarters.csv  ruku_print_checks.csv
-    surahs.csv  surah_headers.csv  aliases.csv  quick_access.csv
+    surahs.csv  surah_headers.csv  aliases.csv  passages.csv  passage_ranges.csv
+    daily_ayah.csv                                      # v1.1 (F-CP-08/09)
+    azkar/categories.csv  azkar/dhikr.csv  azkar/dhikr_translation.csv   # v1.1 (F-CP-06)
     taj16_empty_slots.csv  taj16_text_overrides.csv  skeleton_whitelist_qul.csv
     skeleton_whitelist_tanzil.csv  reciters.yaml  content_registry.yaml  ummalqura_months.csv
     errata/taj16.csv
+  notices/*.yml                       # one file per notice (F-PL-11); source of notices.json (§8.3)
   keys/content-signing-<kid>.pub      # public keys only
   legal/permissions.yml               # machine-readable grant status per dataset (drives CI gates)
   legal/evidence/*.sha256             # hashes of archived statements (files themselves private)
   legal/proofreading/<layout>-<build>.signoff.csv   # G5 sign-off rows (certificate scans private, hash committed)
+  legal/proofreading/<layout>.certified_pages.json  # G5 page-hash list (§14), committed
 out/                                  # git-ignored build outputs and reports
 ```
 
 **Rules.**
-- `~/criterion-data/` (outside the repo) is the **private input store**: QUL exports, King Fahd Complex ZIPs, scraped-preview oracle, Waqar clone, the owner's checkpoint photos and archived statements. CI reads the private inputs it needs from a private R2 bucket (`criterion-private`, read-only token). **Taj scans and owner photos never enter the repo, CI artifacts or app assets** (g02 Rec 12).
+- `~/criterion-data/` (outside the repo) is the **private input store**. It holds QUL exports, King Fahd Complex ZIPs, the scraped-preview oracle, the Waqar clone, the owner's checkpoint photos and archived statements. Raw QUL exports sit in the gitignored `data/private/` symlink to it. CI reads the private inputs it needs from a private R2 bucket (`criterion-private`, read-only token). **Taj scans and owner photos never enter the repo, CI artifacts or app assets** (g02 Rec 12).
 - Upstream files are parsed with explicit parsers: XML via `xml.etree`, DK `.ts` via string-literal extraction, `quran-data.js` never `eval`'d, SQLite via `sqlite3` read-only URI. Each download lands in its own fresh directory under the cache. No third-party build script is ever run.
 - GPL sources (quran_android, QuranApp) are never read by `tools/` code. Waqar144 and preview data are used **only** by `oracle.py`, locally (D-06, D-18).
 
-**Generated assets in git.** Outputs copied into module asset dirs are committed through **Git LFS** (`*.db`, `*.sqlite`, `*.ttf` under `*/src/main/assets/`), so Android Studio builds need no Python. CI rebuilds them and checks reproducibility (§12). Asset destinations are configured in `pipeline.toml`. Defaults, which doc 04 may override:
+**Generated assets in git.** `crit install-assets --tier <TIER>` copies outputs into the app's asset source sets. They are committed through **Git LFS** (`*.db`, `*.ttf` under `app/src/*/assets/`), so Android Studio builds need no Python. CI rebuilds them and checks reproducibility (§12). Destinations follow doc 04 §7.7/§11.2 and are configured in `pipeline.toml`:
 
-| Output | Default destination |
-|---|---|
-| `quran_content.db` | `core/content/src/main/assets/databases/quran_content.db` |
-| `mushaf.taj16.sqlite` + `criterion_indopak.ttf` | `core/mushaf/src/main/assets/packs/` and `…/assets/fonts/` |
-| `tr.ur.junagarhi.qe.sqlite`, `tr.en.saheeh.qe.sqlite` | `core/translation/src/main/assets/packs/` |
-| `timing.alafasy.murattal.gapless.sqlite` + `catalogue.json` (envelope) | `core/audio/src/main/assets/` |
-| `geo.cities15000.sqlite` (P2) | `feature/prayer` or `core/location` assets (doc 04) |
-| `index.json` envelope (bundled snapshot) | `core/content/src/main/assets/index.json` |
+| Output | Destination | Why there |
+|---|---|---|
+| `quran_content.db` | `app/src/main/assets/content/quran_content.db` | Eligible in every tier (Tanzil CC BY, DK MIT, our curated tables) |
+| `criterion_indopak.ttf` + `OFL.txt` | `app/src/main/assets/fonts/` | OFL, every tier |
+| `normalization_vectors.json` | `core/model/src/test/resources/` (test only, never shipped) | Kotlin normaliser parity test (doc 04 §5.7) |
+| Mushaf layout pack | `app/src/personal/assets/packs/mushaf_layout/mushaf.indopak16_taj.dk@<ver>.db` (QUL-derived allowed) and `app/src/public/assets/packs/mushaf_layout/…` (**only** a G1-cleared or clean-room pack; otherwise empty, so the public build fails, doc 04 §11.3) | Writer ruling: QUL-derived data never in `src/main` |
+| Bundled translation packs `ur.junagarhi.qe`, `en.saheeh.qe` | `app/src/{personal,public}/assets/packs/translation/<id>@<ver>.db` | Per tier, so `bundled.json` covers them |
+| Timing packs (12 PUBLIC recitations, doc 06 §4.1–4.2) | `app/src/{personal,public}/assets/packs/timing/timing.<recitationId>@<ver>.db` | Per tier |
+| Cities pack | `app/src/{personal,public}/assets/packs/cities/cities@<ver>.db` | Per tier |
+| `catalogue.json` + `.sig` | `app/src/{personal,public}/assets/catalogue/` | The PERSONAL copy may list PERSONAL_ONLY recitations; the public-source-set copy is generated for the BETA tier (it adds PENDING items) and regenerated for PUBLIC with `--tier PUBLIC` at release |
+| `personal-overlay.json` | `app/src/personal/assets/catalogue/` only | Original-host URLs for personal-only items, never uploaded (doc 04 §11.2) |
+| `bundled.json` | `app/src/{personal,public}/assets/content/bundled.json` | Eligibility manifest that `verifyContentEligibility` reads (§8.5) |
+| `index.json` + `.sig` (seed snapshot) | `app/src/{personal,public}/assets/remote-seed/` | v1.1 (pack system) |
+
+**Tier vs. source set.** The `public` flavour source set serves both BETA and PUBLIC builds (doc 04 §11.1). By default a public-flavour build is BETA, so the committed `src/public` assets are generated with `--tier BETA`. Only the mushaf layout pack is tier-independent there: it must be G1-cleared or clean-room in both tiers. The production release workflow (`-Pcriterion.release=production`) first re-runs `crit install-assets --tier PUBLIC` and `crit validate all --tier PUBLIC` (§12). Those steps drop PENDING items and require G5.
 
 ---
 
@@ -147,8 +199,8 @@ out/                                  # git-ignored build outputs and reports
 | uv | version in `tools/.uv-version` (set at P0) | `uv sync --frozen` only; `uv.lock` committed |
 | uharfbuzz | `==0.56.3` (HarfBuzz 14.6.0) | Widths verified identical to Android Minikin/HarfBuzz 2.6.4 for `cv01` (g04 §2.7) |
 | fontTools | `==4.67.*`, locked exactly | `Cu2QuPen` conversion, name table, SVG pen |
-| cryptography (pyca) | locked at P0 | Ed25519 sign/verify |
-| numpy | locked at P0 | Envelopes, correlation |
+| cryptography (pyca) | locked at P0 | Ed25519 sign/verify (detached `.sig`) |
+| numpy | locked at P0 | RMS energy envelopes (onset snap), correlation |
 | cairosvg + pypdf | locked at P0 | Proof SVG → PDF/PNG, merge per Para (system `libcairo2` on the CI image) |
 | ffmpeg CLI | ≥ 6 from the CI image (`apt`), version recorded in run report | Decode MP3 → 8 kHz mono s16 for onset snapping only. Tool only, never shipped |
 | rclone | ≥ 1.6x, version recorded | R2 uploads (S3 API) |
@@ -159,19 +211,22 @@ out/                                  # git-ignored build outputs and reports
 ```bash
 cd tools && uv sync --frozen
 uv run --frozen python -I -m crit fetch all            # verify/download pinned inputs into cache
-uv run --frozen python -I -m crit content build        # stage 1
-uv run --frozen python -I -m crit mushaf build taj16   # stage 2 (needs private inputs)
-uv run --frozen python -I -m crit mushaf proof taj16   # proof PDFs
-uv run --frozen python -I -m crit packs build tr.ur.junagarhi.qe
-uv run --frozen python -I -m crit timing build alafasy.murattal.gapless
-uv run --frozen python -I -m crit catalogue build && python -I -m crit index build
-uv run --frozen python -I -m crit validate all         # every invariant in §6
-uv run --frozen python -I -m crit install-assets       # copy outputs to module asset dirs
-uv run --frozen python -I -m crit sign index|catalogue|hijri   # owner machine only
-uv run --frozen python -I -m crit publish --dry-run|--go       # owner machine only
+uv run --frozen python -I -m crit content build        # stage 1 (+ normalization_vectors.json)
+uv run --frozen python -I -m crit mushaf build indopak16_taj   # stage 2 (needs private inputs)
+uv run --frozen python -I -m crit mushaf proof indopak16_taj   # proof PDFs + proof-manifest.json
+uv run --frozen python -I -m crit mushaf certify indopak16_taj # signoff.csv → certified_pages.json (§14)
+uv run --frozen python -I -m crit packs build ur.junagarhi.qe
+uv run --frozen python -I -m crit timing build alafasy.murattal.mp3q123
+uv run --frozen python -I -m crit catalogue build --channel beta|public
+uv run --frozen python -I -m crit index build --channel beta|public     # v1.1 (pack system)
+uv run --frozen python -I -m crit notices build                         # F-PL-11
+uv run --frozen python -I -m crit validate all --tier PERSONAL|BETA|PUBLIC [--monetized]   # every invariant in §11
+uv run --frozen python -I -m crit install-assets --tier PERSONAL|BETA|PUBLIC   # copy to app/src/{main,personal,public}/assets + bundled.json
+uv run --frozen python -I -m crit sign catalogue|index|notices|hijri    # owner machine only; writes X.json.sig
+uv run --frozen python -I -m crit publish --channel beta|public --dry-run|--go   # owner machine only; never 'personal'
 ```
 
-`justfile` aliases: `just fetch`, `just content`, `just mushaf`, `just proof`, `just packs`, `just timing`, `just validate`, `just assets`, `just ci` (lint + tests + build + validate + repro), `just sign`, `just publish`.
+`justfile` aliases: `just fetch`, `just content`, `just mushaf`, `just proof`, `just certify`, `just packs`, `just timing`, `just validate`, `just assets`, `just ci` (lint + tests + build + validate + repro), `just notice` (build + validate + sign notices), `just sign`, `just publish`.
 
 ### 3.2 `data/pins.lock` (TOML)
 
@@ -221,21 +276,24 @@ All CSVs are UTF-8 with a header row, LF line endings, and are sorted. Each has 
 
 | File | Columns | Rows | Seed / verification |
 |---|---|---|---|
-| `paras.csv` | `para, name_ar, name_ur, name_roman, start_surah, start_ayah, taj16_page_index, verified_source` | 30 | r05 §2.3.2 table. Names are hand-typed with Indo-Pak diacritics. Starts follow D-07: 7 differ from Madani (3:92, 5:83, 9:94, 15:2, 27:60, 29:45, 36:22). Pages 1, 20, 38, 56, 74, …, 488 (18n−16), 508, 528 |
+| `paras.csv` | `para, name_ar, name_ur, name_roman, start_surah, start_ayah, madani_start_surah, madani_start_ayah, taj16_page_index, verified_source` | 30 | r05 §2.3.2 table. Names are hand-typed with Indo-Pak diacritics. Starts follow D-07: 7 differ from Madani (3:92, 5:83, 9:94, 15:2, 27:60, 29:45, 36:22). Page indices: **Para 1 = index 1** (label 2); Para *n* = 18n−16 **for n = 2..28 only** (20, 38, 56, …, 488); P29 = 508; P30 = 528 |
 | `manzils.csv` | `manzil, start_surah, start_ayah, taj16_page_index, taj16_qul_line` | 7 | 1:1, 5:1, 10:1, 17:1, 26:1, 37:1, 50:1. Pages/lines (1,2), (96,3), (187,4), (254,2), (330,5), (401,14), (466,7) (g01 §2.4) |
-| `sajdas.csv` | `surah, ayah, print_no, kind, label_ar` | 15 | 7:206, 13:15, 16:50, 17:109, 19:58, 22:18, 25:60, 27:26, 32:15, 38:24, 41:38, 53:62, 84:21, 96:19 numbered 1–14 in mushaf order (`kind=both`). **22:77** `print_no` NULL, `kind=shafii_only`, label «السجدة عند الامام الشافعی رح» (g02 §2.6) |
-| `para_quarters.csv` | `para, quarter(1..3), surah, ayah, word_pos, verified_source` | 90 | g02 Appendix A, with the 3 print corrections: P4 ¾ = 3:198; P7 ¼ = 5:113; P7 ¾ = 6:73 `word_pos=10` (the «۵» after فَيَكُوْنُ). 37 print-verified so far; the remaining 53 are hand-checked before public release. **Never derived from Madani rub** |
+| `sajdas.csv` | `surah, ayah, number, kind, label_ar` | 15 | 7:206, 13:15, 16:50, 17:109, 19:58, 22:18, 25:60, 27:26, 32:15, 38:24, 41:38, 53:62, 84:21, 96:19 numbered 1–14 in mushaf order (`kind=hanafi`, doc 04 §7.2). **22:77** `number` NULL, `kind=shafii_only`, label «السجدة عند الامام الشافعی رح» (g02 §2.6) |
+| `para_quarters.csv` | `para, quarter(1..3), surah, ayah, after_word_pos, verified_source` | 90 | g02 Appendix A, with the 3 print corrections: P4 ¾ = 3:198; P7 ¼ = 5:113; P7 ¾ = 6:73 `word_pos=10` (the «۵» after فَيَكُوْنُ). 37 print-verified so far; the remaining 53 are hand-checked before public release. **Never derived from Madani rub** |
 | `ruku_print_checks.csv` | `surah, first_ayah, last_ayah, n1, n2, n3, scan_ref` | 29 | g02 §2.3 decoded triples (top/in-ع/bottom) |
 | `surahs.csv` | `surah, name_ar, name_ur, name_roman, name_en, meaning_ur, meaning_en, revelation, revelation_order, roman_aliases` | 114 | Hand-curated; revelation/order cross-checked with Tanzil metadata. No QF payloads copied (r05 §2.8) |
-| `surah_headers.csv` | `style, surah, header_ar, verified_source` | 114 (`style=taj`) | Generated draft «سورة {name} {مكية/مدنية} وهي {N} آية و{M} ركوعات» (single-ruku surahs omit M; Fatiha «وهي سبع آيات»), then hand-proofed against the print (≈75 verified in g02) |
-| `aliases.csv` | `term, lang, target_type(surah/ayah/range/playlist), target` | ~150 | r05 §2.7.5: yasin/yaseen/ya-sin/یس → 36; rahman/rehman → 55; mulk/tabarak → 67; kahf → 18; waqia/waqiah → 56; muzammil; ayatul kursi/آیت الکرسی → 2:255; "last 2 of baqarah" → 2:285–286; manzil dua → playlist |
-| `quick_access.csv` | `id, title_en, title_ur, target_type, target, order` | ~10 | F-IX-08: Yaseen, Rahman, Mulk, Waqiah, Kahf, Ayatul Kursi, last two ayat of Baqarah, Manzil dua. The **Manzil dua ayah list must be sourced from a cited print** before P1 ends (open issue) |
+| `surah_headers.csv` | `layout, surah, variant, title_text, right_text, left_text, verified_source` | 114 (`layout=indopak16_taj`) | Goes into the mushaf pack's `surah_header` table (doc 05 §3.3), not the content DB. Generated draft «سورة {name} {مكية/مدنية} وهي {N} آية و{M} ركوعات» (single-ruku surahs omit M; Fatiha «وهي سبع آيات»), then hand-proofed against the print (≈75 verified in g02). `THREE_PART` split proofed per doc 05 §5.3 |
+| `aliases.csv` | `term, lang(roman/ur/ar/en), target_type(surah/ayah/passage/para/manzil), target, weight` | ~150 | Becomes `alias(id, term_norm, lang, target_type, target_id, weight)` (doc 04 §7.2). `target` is written human-readably (`36`, `2:255`, `manzil_dua`) and resolved to the integer `target_id`. r05 §2.7.5: yasin/yaseen/ya-sin/یس → 36; rahman/rehman → 55; mulk/tabarak → 67; kahf → 18; waqia/waqiah → 56; muzammil; ayatul kursi/آیت الکرسی → 2:255; "last 2 of baqarah" → passage `baqarah_end`; "manzil" → **both** passage `manzil_dua` and the Manzil index (doc 07 §9.3) |
+| `passages.csv` | `id, code, title_en, title_ur, title_ar, sort_order, is_quick_access` | ~10 | Becomes `passage` (doc 04 §7.2). F-IX-08 quick access: Yaseen, Rahman, Mulk, Waqiah, Kahf, Ayatul Kursi, last two ayat of Baqarah, Manzil dua |
+| `passage_ranges.csv` | `passage_code, seq, from_surah, from_ayah, to_surah, to_ayah` | ~30 | Becomes `passage_range(passage_id, seq, from_ayah_id, to_ayah_id)`. `manzil_dua` = the 18 ranges / 79 ayahs of doc 07 §9.3 (Kandhlawi compilation). They **must be checked against a cited printed Manzil booklet** before public release (open issue 4) |
+| `daily_ayah.csv` (v1.1) | `day_of_year(1..366), from_surah, from_ayah, to_surah, to_ayah, theme, reviewed_by` | 366 | F-CP-08 ayah-of-the-day widget and F-CP-09 daily-ayah reminder (doc 07 §12). Curated by the owner, scholar-reviewed (`reviewed_by` required for BETA/PUBLIC). Row 366 is used only in leap years |
+| `azkar/categories.csv`, `azkar/dhikr.csv`, `azkar/dhikr_translation.csv` (v1.1) | Columns = doc 07 §9.2 entities (`dhikr_category`, `dhikr`, `dhikr_translation`), snake_case | 345 Arabic rows (osamayy/azkar-db) + translations | Built into the `azkar.core` pack (§9.3). Every `dhikr` needs `reference`, `licence` and, for BETA/PUBLIC, `reviewed_by`. Fadha'il text is excluded |
 | `taj16_empty_slots.csv` | `page_index, slot` | 24 | p.1 slots 8–16, p.2 slots 1–9, p.548 slots 11–16 (g01 §2.4). Used to restore the exporter-dropped empty lines |
-| `taj16_text_overrides.csv` | `script, surah, ayah, pos, old_sha256, new_text, reason, decided_by` | small | Fatiha end-marker digits; 1:7:4 RLO strip; 59:13:1 and 27:21 spellings once the hafiz decides |
+| `taj16_text_overrides.csv` | `scope(script/layout), surah, ayah, pos, old_sha256, new_text, reason, decided_by` | small | `script` rows change the content DB `word.text`: the Fatiha end-marker Kufan digits, the 1:7:4 RLO strip, and the 59:13:1 and 27:21 spellings once the hafiz decides. `layout` rows change only the pack `word.text`, e.g. the Taj bare ۝ for 1:1–1:7. All of them are **build-time** overrides. The `word_override` table in the pack, if doc 05 keeps it, only records the overrides that were applied. It is never a remote hotfix channel (D-30, writer ruling) |
 | `skeleton_whitelist_qul.csv` | `qul_key, dk_text, qul_text, nature` | 3 | {4:112:3, 18:19:34, 59:13:1} (D-06) |
 | `skeleton_whitelist_tanzil.csv` | `verse_key, dk_skel, tanzil_skel, reviewed_by` | frozen at P0 | Generated once from the first full run, reviewed, then frozen. New diffs fail CI |
-| `reciters.yaml` | per recitation: id, reciter names (en/ar/ur), style, riwayah, layout, host, read id / folder, basmala strategy, attribution, licenceStatus, blocklists | ~20 | D-12 shortlist; ids per doc 06 |
-| `content_registry.yaml` | per dataset: id, title, source_url, licence, attribution (en/ur), notice, `eligibility{personal,public,monetized}`, `permission_ref` | all | Owned by doc 03; the pipeline copies it into packs, the index and the `attribution` table |
+| `reciters.yaml` | per recitation: id (doc 06 format, e.g. `alafasy.murattal.mp3q123`), reciter names (en/ar/ur), style, riwayah, layout, host, read id / folder, basmala strategy, attribution, `licenceStatus`, `basis`, `buildEligibility`, `commercialUse`, expected `highlightDisabledSurahs`, blocklists | ~30 | D-12 shortlist; ids and fields per doc 06 §3.2 and §4 |
+| `content_registry.yaml` | per dataset: id (doc 03 `DS-xx`), title, source_url, licence, attribution (en/ur), notice, `licenceStatus` (`PERMITTED`/`HOST_GRANT`/`PENDING`/`PERSONAL_ONLY`/`REVOKED`), `basis` (free text, e.g. `open_licence`, `host_grant`, `written_permission PERM-01`), `eligibility{personal, beta, public, monetized}`, `commercialOk`, `fossOk`, `requiredGates` (e.g. `[G1, G5]`), `permission_ref` | all | Owned by doc 03. The pipeline copies it into packs (`pack_info`), the index, the catalogue, `bundled.json` and the `attribution` table |
 | `errata/taj16.csv` | `report_id, page_label, slot, word, issue, reviewer, status, resolution, build_id` | grows | Proofreading loop (§14) |
 | `ummalqura_months.csv` | `hijri_month, civil_start` | 180 (1446–1460 AH) | Exported from `java.time` `HijrahDate` by a JVM test; sanity bound for the PK feed (§9.2) |
 
@@ -247,7 +305,7 @@ dk_text_mit_confirmation: {status: pending}
 mp3quran_statement: {status: archived, evidence_sha256: "<…>"}
 alafasy_berhad: {status: pending}
 ```
-Release-profile CI fails if any bundled or listed item whose registry entry has `permission_ref` points at a status other than `granted` or `archived` (§8.4).
+For BETA and PUBLIC tiers, CI fails if any bundled or listed item has a `permission_ref` whose status is not `granted` or `archived`, unless the tier rules in §8.6 allow it. For example, PENDING audio is allowed in BETA.
 
 ---
 
@@ -255,73 +313,38 @@ Release-profile CI fails if any bundled or listed item whose registry entry has 
 
 ### 4.1 Output schema (contract with `:core:content`)
 
-The **Room entities in `:core:content` are the source of truth**. The pipeline executes their exported schema `core/content/schemas/<fqcn QuranContentDb>/<N>.json`. The DDL below is the contract those entities must produce. Column names are snake_case. All ayah references use the **global Kufan ayah id 1..6236** (`ayah.id`, mushaf order) and/or `(surah, ayah)`.
+**Schema = doc 04 §7.2, verbatim.** The Room entities of `QuranContentDb` in `:core:content` are the source of truth. The pipeline executes their exported schema `core/content/schemas/<fqcn QuranContentDb>/<N>.json` and **inserts by the column names in that JSON**. This doc keeps no DDL copy, so the two cannot drift. If an entity changes, the builder's column mapping below must change in the same PR; V-C20 fails otherwise. All ayah references use the **global Kufan ayah id 1..6236** (`ayah.id`, mushaf order).
 
-```sql
--- Non-entity (allowed; Room ignores it, g04 §2.4)
-CREATE TABLE content_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
--- keys: content_version, build_id, data_hash, pins_hash, tools_hash, schema_identity_hash,
---       tanzil_version, dk_commit, qul_res565_sha256 (or 'none'), normalizer_version, profile
+What the pipeline writes into each doc 04 table:
 
-CREATE TABLE surah (id INTEGER PRIMARY KEY NOT NULL, name_ar TEXT NOT NULL, name_ur TEXT NOT NULL,
-  name_roman TEXT NOT NULL, name_en TEXT NOT NULL, meaning_ur TEXT, meaning_en TEXT,
-  revelation TEXT NOT NULL,                -- 'makki' | 'madani'
-  revelation_order INTEGER NOT NULL, ayah_count INTEGER NOT NULL, ruku_count INTEGER NOT NULL,
-  first_ayah_id INTEGER NOT NULL, has_basmala INTEGER NOT NULL);   -- 0 for surah 9; Fatiha 1 (1:1 is a verse)
-
-CREATE TABLE ayah (id INTEGER PRIMARY KEY NOT NULL,   -- 1..6236
-  surah INTEGER NOT NULL, ayah INTEGER NOT NULL,
-  text_uthmani TEXT NOT NULL,              -- Tanzil verbatim (copy/share source, D-08)
-  text_imlaei TEXT NOT NULL,               -- Tanzil Simple-Clean verbatim
-  norm_imlaei TEXT NOT NULL, norm_uthmani TEXT NOT NULL, norm_indopak TEXT NOT NULL,  -- FTS content columns
-  para INTEGER NOT NULL, manzil INTEGER NOT NULL, ruku INTEGER NOT NULL,
-  juz_madani INTEGER NOT NULL, rub_madani INTEGER NOT NULL,          -- Madani mode only (D-07)
-  letters INTEGER NOT NULL);               -- simple-clean letter count (timing QA, reading stats)
-CREATE UNIQUE INDEX ix_ayah_sa ON ayah(surah, ayah);
-
-CREATE TABLE para (id INTEGER PRIMARY KEY NOT NULL, name_ar TEXT NOT NULL, name_ur TEXT NOT NULL, name_roman TEXT NOT NULL,
-  start_ayah_id INTEGER NOT NULL, end_ayah_id INTEGER NOT NULL, ruku_count INTEGER NOT NULL);  -- by-end, Fatiha excluded
-CREATE TABLE manzil (id INTEGER PRIMARY KEY NOT NULL, start_ayah_id INTEGER NOT NULL, end_ayah_id INTEGER NOT NULL);
-CREATE TABLE ruku (id INTEGER PRIMARY KEY NOT NULL,          -- 1..558 mushaf order
-  surah INTEGER NOT NULL, surah_ruku INTEGER NOT NULL,
-  first_ayah_id INTEGER NOT NULL, last_ayah_id INTEGER NOT NULL, ayah_count INTEGER NOT NULL,
-  para INTEGER NOT NULL,                   -- Indo-Pak Para containing last ayah
-  para_ruku INTEGER);                      -- NULL for Fatiha
-CREATE TABLE sajda (ayah_id INTEGER PRIMARY KEY NOT NULL, print_no INTEGER, kind TEXT NOT NULL);  -- 'both' | 'shafii_only'
-CREATE TABLE para_quarter (para INTEGER NOT NULL, quarter INTEGER NOT NULL, ayah_id INTEGER NOT NULL,
-  word_pos INTEGER, verified_source TEXT, PRIMARY KEY(para, quarter));
-CREATE TABLE surah_header (style TEXT NOT NULL, surah INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY(style, surah));
-
--- Script-level (shared by all Indo-Pak layouts). script_id 1 = DK IndoPak.
-CREATE TABLE word (script_id INTEGER NOT NULL, word_index INTEGER NOT NULL,   -- 1..83,669 in mushaf order
-  ayah_id INTEGER NOT NULL, pos INTEGER NOT NULL,                             -- 1..k within ayah; end token = k
-  is_end INTEGER NOT NULL,
-  text TEXT NOT NULL,                      -- render text after overrides (font-bound; never copied/shared)
-  qul_pos INTEGER,                         -- QUL word position (72:16 tokens 1,2 -> 1; p>=3 -> p-1); NULL if no QUL script
-  PRIMARY KEY(script_id, word_index));
-CREATE INDEX ix_word_ayah ON word(script_id, ayah_id, pos);
-CREATE TABLE ayah_marker (script_id INTEGER NOT NULL, word_index INTEGER NOT NULL,
-  ayah_id INTEGER NOT NULL, display_number INTEGER,   -- Kufan number; NULL for disputed «۵»
-  is_kufan_end INTEGER NOT NULL, disputed_end INTEGER NOT NULL,
-  has_ruku_sign INTEGER NOT NULL, has_sajda_sign INTEGER NOT NULL,
-  PRIMARY KEY(script_id, word_index));
-
-CREATE TABLE alias (term_norm TEXT NOT NULL, lang TEXT NOT NULL, target_type TEXT NOT NULL, target TEXT NOT NULL,
-  PRIMARY KEY(term_norm, target_type, target));
-CREATE TABLE quick_access (id TEXT PRIMARY KEY NOT NULL, title_en TEXT NOT NULL, title_ur TEXT NOT NULL,
-  target_type TEXT NOT NULL, target TEXT NOT NULL, sort INTEGER NOT NULL);
-CREATE TABLE attribution (dataset_id TEXT PRIMARY KEY NOT NULL, title TEXT NOT NULL, source_url TEXT NOT NULL,
-  licence TEXT NOT NULL, version TEXT NOT NULL, notice_en TEXT NOT NULL, notice_ur TEXT NOT NULL);
-
--- FTS5 (Room @Fts5, external content = ayah, content_rowid = id) — D-11
-CREATE VIRTUAL TABLE ayah_fts USING FTS5(norm_imlaei, norm_uthmani, norm_indopak, tokenize=`unicode61`, content=`ayah`, content_rowid=`id`);
-CREATE VIRTUAL TABLE ayah_fts_tri USING FTS5(norm_imlaei, tokenize=`trigram`, content=`ayah`, content_rowid=`id`);
-```
+| Doc 04 table | Rows | Filled from |
+|---|---|---|
+| `surah` (incl. `basmala_kind` 'verse' for 1, 'none' for 9, 'header' otherwise) | 114 | `surahs.csv` + Tanzil metadata counts; `ruku_count` from the derived rukus |
+| `ayah` (`surah_id`, `ayah_no`, verbatim `text_uthmani`/`text_imlaei`, `para_id`, `manzil_id`, `ruku_id`, `juz_madani`, `rub_madani`, `first_word_index`, `last_word_index`) | 6,236 | Tanzil XML (verbatim, D-08), curated Para/Manzil, derived rukus, Tanzil metadata (Madani), DK token ranges |
+| `para` (`name_ar`, `name_roman`, `start_ayah_id`, `end_ayah_id`, `madani_start_ayah_id`) | 30 | `paras.csv` (`name_ur` stays in the CSV for UI strings until doc 04 adds a column) |
+| `manzil` | 7 | `manzils.csv` |
+| `ruku` (`surah_id`, `ruku_in_surah`, `para_id`, `ruku_in_para`, `start_ayah_id`, `end_ayah_id`, `ayah_count`) | 558 | Derived from DK U+08D6 (§4.3) |
+| `sajda` (`number`, `kind` 'hanafi'/'shafii_only', `label_ar`) | 15 | `sajdas.csv`, cross-checked with DK U+08DB |
+| `para_quarter` (`para_id`, `quarter`, `ayah_id`, `after_word_pos`) | 90 | `para_quarters.csv`. `verified_source` is checked in the CSV (V-C15) and copied only if doc 04 adds the column |
+| `word` (`word_index`, `ayah_id`, `position`, `qul_position`, `is_end`, `text`) | 83,669 | DK token stream after **script-level** overrides. `qul_position` comes from the deterministic DK→QUL rule (identity except 72:16), so it is never NULL. It is verified against `qul.res565` when that input is present |
+| `ayah_marker` (`script_id`=1, `word_index`, `surah`, `verse_ayah`, `display_number`, `is_kufan_end`, `disputed_end`) | 6,354 | DK end tokens + U+08E2 tokens. This is the **only** `ayah_marker` table. Mushaf packs reference it and do not copy it (writer ruling) |
+| `ayah_search` (`ayah_id`, `norm_imlaei`, `norm_uthmani`, `norm_indopak`) + `ayah_fts`, `ayah_fts_tri` | 6,236 | §4.4 normalisers. The FTS tables are filled by the content-sync triggers, then `rebuild` + `optimize` |
+| `alias` (`id`, `term_norm`, `lang`, `target_type`, `target_id`, `weight`) | ~150 | `aliases.csv` |
+| `passage`, `passage_range` | ~10 / ~30 | `passages.csv`, `passage_ranges.csv` (F-IX-08, Manzil dua) |
+| `content_meta` (`key`, `value`) | — | Doc 04 keys (`content_version`, `built_at`, `pipeline_git_sha`, `sources_lock_sha256`, `normalizer_version`, `dk_font_sha256`), plus pipeline keys `build_id`, `data_hash`, `schema_identity_hash`, `tanzil_version`, `dk_commit`, `qul_res565_sha256` (or `none`). `built_at` = the commit time of `pipeline_git_sha`, never the wall clock, which keeps the file reproducible |
+| `attribution` | one per dataset | `content_registry.yaml` |
+| `daily_ayah` (**v1.1**; entity pending in doc 04 §7.2) | 366 | `daily_ayah.csv` → `(day_of_year, from_ayah_id, to_ayah_id, …)`, inserted by the exported column names once the entity exists |
 
 Decisions inside the schema:
-- **Fatiha numbering.** `display_number` is **Kufan** (1:1 = 1 … 1:7 = 7). The Taj "seven empty circles" look is a **layout-level** override in the mushaf pack (`ayah_display_override`, §5.1). It is not baked into script data. DK's own Fatiha digits (basmala bare, الحمد = ١, ٦ at عليهم) are discarded (g02 Rec 2).
-- **Trigram covers one column, `norm_imlaei`.** The measured cost is about 1.2 MB per column (g04). Uthmani/Indo-Pak spelling variants are covered by the 3-column unicode61 index. Doc 04 can widen this; the pipeline follows whatever the schema declares.
-- Translations are **not** in the content DB. They are separate packs, including the two bundled ones (§6), so QuranEnc's "keep updated" condition can be met without an app update.
+- **Fatiha numbering.** `ayah_marker.display_number` is **Kufan** (1:1 = 1 … 1:7 = 7), and the content-DB `word.text` of the 1:1–1:7 end tokens carries those Kufan digits. The Taj "seven empty circles" look is a **layout-level** build-time override: the mushaf pack's `word.text` holds a bare ۝, and its `ayah_display_override` rows record that (§5.1). It is not baked into script data. DK's own Fatiha digits (basmala bare, الحمد = ١, ٦ at عليهم) are discarded (g02 Rec 2).
+- **Trigram columns.** Doc 04 §7.2 declares `ayah_fts_tri` over all 3 normalised columns, at about 1.2 MB per column (g04). The pipeline builds whatever the exported schema declares. Narrowing it to `norm_imlaei` alone is doc 04 spike S-4's decision, not a pipeline deviation.
+- **No extra columns.** Pipeline-only values (per-ayah letter counts for timing QA, ruku/sajda sign flags) are computed in memory and are not stored in the DB.
+- **Translations are not in the content DB.** They are separate packs, including the two bundled ones (§6), so QuranEnc's "keep updated" condition can be met without an app update.
+- **Requests to doc 04** (listed so they are not lost):
+  - add `para.name_ur`;
+  - add `para_quarter.verified_source`;
+  - add the doc 03 `source(dataset_id, licence_json)` table and `attribution.section`/`sort`;
+  - add the `daily_ayah` entity (v1.1).
 
 ### 4.2 Algorithm
 
@@ -349,21 +372,22 @@ def build_content(cfg):
     assert no_standalone_mark_tokens(toks) and distinct_codepoints(toks) == 84   # warn-only if 84 changes
 
     # --- Kufan keys (dk_numbering.py): walk surahs (header order 1..114), ayah += 1 at each end token
-    words = assign_keys(toks)                                   # (word_index, surah, ayah, pos, is_end, text)
+    words = assign_keys(toks)                                   # (word_index, surah, ayah, position, is_end, text)
     assert per_surah_ayahs(words) == M.ayah_counts
-    words = overrides.apply(words, "data/curated/taj16_text_overrides.csv")   # sha-checked old text
+    words = overrides.apply(words, "data/curated/taj16_text_overrides.csv", scope="script")   # sha-checked old text
     #   - 1:1..1:7 end tokens -> U+06DD + Kufan digits in DK's own digit block (detected from 2:1 end)
     #   - 1:7:4: drop "U+202E ٦", keep U+08E2 (+ U+06D9 «لا» if the P0 render check passes; else ornament)
-    markers = [Marker(w, kufan_end=w.is_end, disputed="࣢" in w.text,
-                      display=w.ayah if w.is_end else None,
-                      ruku="ࣖ" in w.text, sajda="ࣛ" in w.text) for w in words
-               if w.is_end or "࣢" in w.text]
+    markers = [Marker(w, surah=w.surah, verse_ayah=w.ayah, kufan_end=w.is_end, disputed="࣢" in w.text,
+                      display=w.ayah if w.is_end else None,        # Kufan, incl. 1:1 = 1
+                      ruku="ࣖ" in w.text, sajda="ࣛ" in w.text)     # ruku/sajda flags: in memory only
+               for w in words if w.is_end or "࣢" in w.text]
     assert len(markers) == 6_354
 
-    # --- QUL map + skeleton check (only when qul.res565 is present; otherwise qul_pos = NULL and C06/C07 skip with a warning)
-    if have("qul.res565"):
+    # --- QUL positions: deterministic rule, verified against QUL when available
+    for w in words: w.qul_position = qul_rule(w)                # identity except 72:16 (DK 1,2 -> QUL 1; p>=3 -> p-1)
+    if have("qul.res565"):                                      # otherwise V-C07/V-C08 skip with a warning
         Q = qul_script.read(cache("qul.res565"))                # word_index -> word_key s:a:w (83,668)
-        qmap = align.map_dk_to_qul(words, Q)                    # identity except 72:16 (DK 1,2 -> QUL 1; p>=3 -> p-1)
+        assert align.map_dk_to_qul(words, Q) == {w.word_index: w.qul_position for w in words}
         diffs = align.skeleton_diffs(words, Q, pua_wildcard=True)
         assert set(diffs) == whitelist("skeleton_whitelist_qul.csv")
     tz_diffs = align.skeleton_vs_tanzil(words, U)              # per-ayah skeleton (normalize + strip)
@@ -374,20 +398,26 @@ def build_content(cfg):
     manzils = curated.manzils(); assert starts(manzils) == M.manzil_starts
     rukus   = derive_rukus.from_dk(markers, paras)              # ends at U+08D6 tokens; numbering per §4.3
     sajdas  = curated.sajdas();  assert {s.key for s in sajdas} == {m.key for m in markers if m.sajda}
-    quarters, aliases, headers_taj, surahs, quick = curated.load_rest()
+    quarters, aliases, surahs, passages, ranges = curated.load_rest()   # surah headers go to the pack (§5.5)
+    daily = curated.daily_ayah() if schema.has_entity("daily_ayah") else None   # v1.1
 
-    # --- Normalised columns (normalize.py; identical spec in Kotlin, §4.4)
-    rows = []
+    # --- ayah + ayah_search rows (normalize.py; identical spec in Kotlin, §4.4)
+    ayahs, search = [], []
     for gid, ((s, a, ut), (_, _, cl)) in enumerate(zip(U, C), 1):
-        ip = " ".join(w.text for w in words_of(s, a) if not w.is_end)
-        rows.append(Ayah(gid, s, a, ut, cl, ar_norm(cl), ar_norm(ut), ar_norm(ip),
-                         para_of(gid), manzil_of(gid), ruku_of(gid), M.juz(gid), M.rub(gid), letters(cl)))
+        ws = words_of(s, a)
+        ip = " ".join(w.text for w in ws if not w.is_end)
+        ayahs.append(dict(id=gid, surah_id=s, ayah_no=a, text_uthmani=ut, text_imlaei=cl,
+                          para_id=para_of(gid), manzil_id=manzil_of(gid), ruku_id=ruku_of(gid),
+                          juz_madani=M.juz(gid), rub_madani=M.rub(gid),
+                          first_word_index=ws[0].word_index, last_word_index=ws[-1].word_index))
+        search.append(dict(ayah_id=gid, norm_imlaei=ar_norm(cl), norm_uthmani=ar_norm(ut), norm_indopak=ar_norm(ip)))
 
     # --- Write (generalised spikes/toolchain-spike/scripts/build_content_db.py)
     db = roomdb.create(out("quran_content.db"), schema, master=True)   # createSql, indices, triggers, setupQueries verbatim
-    roomdb.insert_all(db, {...})                                # FTS filled by content-sync triggers
+    roomdb.insert_all(db, schema, {"ayah": ayahs, "ayah_search": search, "word": words, ...})   # by exported column names;
+                                                                # unknown/missing column → hard error
     roomdb.fts_rebuild_optimize(db)                             # 'rebuild' + 'optimize' per FTS table
-    roomdb.extra(db, "content_meta", meta(build_id, data_hash, ...))
+    roomdb.insert(db, schema, "content_meta", meta(build_id, data_hash, ...))
     db.execute(f"PRAGMA user_version = {schema.version}"); db.commit(); db.execute("VACUUM")
     roomdb.create_copy(out("quran_content.nomaster.db"), master=False)  # CI-only: forces onValidateSchema
     validate_content.run_all(out("quran_content.db"))           # §11.1
@@ -405,12 +435,13 @@ def from_dk(markers, paras):
     rukus, start = [], 1
     for i, end in enumerate(ends, 1):
         s = surah_of(end); first = max(start, first_ayah_id(s))  # a ruku never crosses a surah
-        rukus.append(Ruku(i, s, None, first, end, end - first + 1, para_of(end), None))
+        rukus.append(Ruku(id=i, surah_id=s, ruku_in_surah=None, para_id=para_of(end), ruku_in_para=None,
+                          start_ayah_id=first, end_ayah_id=end, ayah_count=end - first + 1))
         start = end + 1
-    for s in 1..114: number surah_ruku 1..k in order
-    for p in 1..30: number para_ruku 1..k over rukus with para == p, excluding surah 1 (Fatiha -> NULL)
+    for s in 1..114: number ruku_in_surah 1..k in order
+    for p in 1..30: number ruku_in_para 1..k over rukus with para_id == p, excluding surah 1 (Fatiha -> NULL)
     assert contiguous_cover(rukus, 1, 6236)
-    assert [count(para == p) for p in 1..30 if not fatiha] == [16,16,17,14,17,14,19,17,18,17,16,16,19,22,21,
+    assert [count(para_id == p) for p in 1..30 if not fatiha] == [16,16,17,14,17,14,19,17,18,17,16,16,19,22,21,
                                                             17,17,17,19,16,19,18,17,19,20,18,20,20,22,39]
     assert surah_ruku_count[26] == 11 and [28] == 9 and [31] == 4          # print headers
     assert ends contain 26:51, 26:68, 28:82, 31:30, 56:38                     # Tanzil/Waqar disputes resolved
@@ -421,7 +452,7 @@ def from_dk(markers, paras):
 
 ### 4.4 Normalisers (one spec, two implementations)
 
-Python `criterion_common/normalize.py` is the reference; Kotlin lives in `:core:model` (doc 04). `crit content vectors` emits `out/normalization_vectors.json` with at least 300 `{lang, input, expected}` pairs. These cover every rule plus the r05 query set, and are copied into the Kotlin test resources by `install-assets`. **The spike's simplistic `normalize()` is replaced by this spec.** `normalizer_version` is stored in `content_meta`, and the app re-normalises queries with the same version.
+Python `criterion_common/normalize.py` is the reference; Kotlin `TextNormalizer` lives in `:core:model` (doc 04 §5.7). `crit content vectors` emits `out/normalization_vectors.json` (the file name doc 04 consumes) with at least 300 `{lang, input, expected}` pairs. These cover every rule plus the r05 query set, and are copied into `core/model/src/test/resources/` by `install-assets`. **The spike's simplistic `normalize()` is replaced by this spec.** `normalizer_version` is stored in `content_meta`, and the app re-normalises queries with the same version.
 
 | Lang | Rules (in order) — r05 §2.7.5 |
 |---|---|
@@ -434,49 +465,21 @@ Python `criterion_common/normalize.py` is the reference; Kotlin lives in `:core:
 
 ## 5. Stage 2: mushaf-pack (`tools/mushaf-pipeline`)
 
-### 5.1 Output: `mushaf.<code>.sqlite` (Room `MushafPackDb`, one file per layout)
+### 5.1 Output: one mushaf layout pack per (layout, script, font)
 
-```sql
-CREATE TABLE mushaf_info (code TEXT PRIMARY KEY NOT NULL,     -- 'taj16'
-  name_en TEXT NOT NULL, name_ur TEXT NOT NULL, script_id INTEGER NOT NULL, font_file TEXT NOT NULL,
-  lines_per_page INTEGER NOT NULL, page_count INTEGER NOT NULL,
-  page_label_offset INTEGER NOT NULL,       -- taj16 = 1 → labels 2..549 (g02)
-  min_content_version INTEGER NOT NULL, build_id TEXT NOT NULL, font_sha256 TEXT NOT NULL,
-  gap_min_em REAL NOT NULL, gap_target_em REAL NOT NULL);
-CREATE TABLE page (page_index INTEGER PRIMARY KEY NOT NULL,   -- 1..548 (QUL index)
-  template TEXT NOT NULL,                   -- 'sarlauh' | 'regular'
-  em_per_line_width REAL NOT NULL,          -- line width in font units (upem 1000) → device scale = widthPx / this
-  first_ayah_id INTEGER NOT NULL, last_ayah_id INTEGER NOT NULL,
-  header_para INTEGER NOT NULL,             -- para of the page's last ayah (print check pp.508/528)
-  header_surahs TEXT NOT NULL,              -- '102,103,104'
-  footer_manzil INTEGER NOT NULL,           -- manzil of the page's last ayah (g02 Rec 8)
-  outer_margin TEXT NOT NULL,               -- 'R' if label even else 'L'
-  page_hash TEXT NOT NULL);                 -- proofreading binding (§14)
-CREATE TABLE line (page_index INTEGER NOT NULL, slot INTEGER NOT NULL,  -- 1..16 after grid restore + remap
-  type INTEGER NOT NULL,                    -- 1 AYAH, 2 SURAH_HEADER, 3 SURAH_HEADER_WITH_BASMALA, 4 BASMALA, 5 EMPTY
-  centered INTEGER NOT NULL, first_word INTEGER, last_word INTEGER,      -- DK word_index range (AYAH only)
-  surah INTEGER,                            -- header/basmala lines
-  line_scale REAL NOT NULL DEFAULT 1.0,     -- ≤ 1; per-line shrink if the line overflows the page width
-  PRIMARY KEY(page_index, slot)) WITHOUT ROWID;
-CREATE TABLE word_pos (font_id INTEGER NOT NULL, word_index INTEGER NOT NULL,   -- font_id 1 = Criterion IndoPak
-  left_frac REAL NOT NULL, width_frac REAL NOT NULL,   -- of line width, from the LEFT edge (RTL order implied)
-  features TEXT,                            -- NULL or "'cv01' N" (N = 1..3), passed verbatim to setFontFeatureSettings
-  PRIMARY KEY(font_id, word_index)) WITHOUT ROWID;
-CREATE TABLE margin_marker (page_index INTEGER NOT NULL, slot INTEGER NOT NULL,
-  kind INTEGER NOT NULL,                    -- 1 RUKU(n1 surah_ruku, n2 ayah_count, n3 para_ruku|NULL) 2 QUARTER(n1 1..3)
-                                            -- 3 SAJDA(n1 print_no|NULL, n2 1=shafii_only) 4 MANZIL_START(n1) 5 PARA_START(n1)
-  n1 INTEGER, n2 INTEGER, n3 INTEGER, anchor_word INTEGER NOT NULL,
-  PRIMARY KEY(page_index, slot, kind, anchor_word)) WITHOUT ROWID;
-CREATE TABLE ayah_page (ayah_id INTEGER PRIMARY KEY NOT NULL, page_start INTEGER NOT NULL, page_end INTEGER NOT NULL);
-CREATE TABLE ayah_display_override (ayah_id INTEGER PRIMARY KEY NOT NULL, show_number INTEGER NOT NULL);  -- taj16: 1..7 → 0
-```
+**Schema = doc 05 §3.3 (pack schema v1), executed from the Room-exported `MushafPackDb` JSON.** Rows are inserted by the exported column names. This doc keeps no DDL copy.
 
-The renderer contract (doc 05):
-1. Word text comes from the content DB's `word(script_id = mushaf_info.script_id)`.
-2. End markers are drawn from `word.text`, unless `ayah_display_override.show_number = 0`, in which case the bare U+06DD is drawn. The pack's widths are computed for the overridden form.
-3. Optional "numbered Fatiha" only affects centred lines, which the renderer may re-centre at runtime.
+| Item | Value |
+|---|---|
+| Pack id | `mushaf.<code>.<script>` per doc 04 §5.2, e.g. `mushaf.indopak16_taj.dk` (`MushafId.INDOPAK_16_TAJ`, numeric id 1). Later: `mushaf.indopak15_hafizi.dk` (2), `mushaf.indopak13_taj.dk` (3), `mushaf.madani15.<script>` (4) |
+| File | `mushaf.indopak16_taj.dk@<ver>.db` in `app/src/{personal,public}/assets/packs/mushaf_layout/` (§2). Installed by `PackManager` to `files/packs/mushaf_layout/<id>/<ver>/pack.db` (doc 04 §7.1) |
+| Tables written | `pack_info`, `mushaf`, `page`, `line`, `word` (integer x-fractions in `frac_unit` = 100,000; `x0`/`x1` kashida variant, `x0_plain`/`x1_plain`, `kashida` 0..3, `ink_top`/`ink_bottom`), `ayah_page`, `surah_header`, `margin_marker`, `furniture_run`, `ornament_item`, `calibration`, plus `ayah_display_override` and the provenance-only `word_override` once doc 05's exported schema carries them |
+| **Not** in the pack | `ayah_marker`. It lives once in `quran_content.db` (doc 04 §7.2, writer ruling). The pack's `word` rows give the marker tokens' positions. Para, ruku, manzil, sajda and quarter metadata also stay in the content DB. The pack copies only the values drawing needs (`page.para_id`, `page.manzil_id`, `margin_marker.n1..n3`), and V-M20 asserts that both agree |
+| `pack_info` keys | Doc 05 §3.3 keys: `pack_id`, `pack_version`, `schema_version`, `min_content_version`, `mushaf_id`, `script`, `font_file`, `font_sha256`, `font_source`, `pipeline_git_sha`, `sources_lock_sha256`, `uharfbuzz_version`, `built_at`, `build_eligibility`, `proof_certificate_id`, `licence_json`, `attribution_json`, `fatiha_style`, `furniture_digits`. Pipeline additions: `licence_status` (5-value), `basis`, `eligibility_json` (`{personal, beta, public, monetized}`), the §5.4 tunables (`G_MIN`, `G_MAX`, `G_NAT`, `KMAX_STEP`, `KMAX_WORDS`, `SCALE_FLOOR`, `PAGE_EM_BAND`), `build_id`, and `text_layer_hash` (whole-book hash of the §5.6 page hashes) |
+| `word.text` | The DK token text **after layout-level build-time overrides** (doc 05 §4.2). For Taj-16, the 1:1–1:7 end tokens become a bare ۝, so the Fatiha shows seven empty circles. `ayah_display_override` rows (1:1..1:7 → show no number) record that decision for the reader and a11y. The shaped widths are those of the overridden form |
+| Errata | Hafiz errata (`errata/taj16.csv`) and text decisions are applied **at build time** only. A text fix always ships as a new pack version **inside an app update**. The remote channel can only disable or annotate a page via `notices.json` (D-30, §8.3) |
 
-The page bundle is ≈ 0.1–0.2 MB of line rows plus ≈ 84k `word_pos` rows (§13).
+Size: about 3–3.5 MB raw, about 1 MB deflated in the APK (doc 05 §3.1).
 
 ### 5.2 Font preparation (`fontconv.py`, `fontcheck.py`)
 
@@ -505,121 +508,136 @@ for p, lines in rows:
     lines = restore_grid(p, lines, empty_slots("taj16_empty_slots.csv"))   # exporter drops/renumbers empties
     assert len(lines) == 16
 grid = fix_p529(grid)                              # swap: surah 79 header must precede its basmala; report upstream
-for each SURAH_HEADER line h: if next line is AYAH (not BASMALA) and h.surah not in (1, 9): h.type = SURAH_HEADER_WITH_BASMALA
-assert count(type==SURAH_HEADER_WITH_BASMALA) == 80 and count(BASMALA) == 32
-grid[1] = remap_sarlauh_p1(grid[1])                # QUL lines 1/2/3–7 → slots 10/11/12–16; slots 1–9 EMPTY
-assert sarlauh_shape(grid[2])                      # slots 1–9 EMPTY, 10 header, 11 basmala, 12–16 text
+# doc 05 line enums: type 0 AYAH 1 SURAH_HEADER 2 BASMALA 3 OPENING_PANEL 4 EMPTY;
+#                    header_variant 0 NONE 1 THREE_PART 2 TITLE 3 SARLAUH_TITLE
+for each SURAH_HEADER line h: h.header_variant = THREE_PART if next line is AYAH (not BASMALA) and h.surah_id not in (1, 9) else TITLE
+assert count(header_variant == THREE_PART) == 80 and count(type == BASMALA) == 32
+grid[1] = remap_sarlauh_p1(grid[1])                # QUL L1/L2/L3–7 → slots 10 (SARLAUH_TITLE) / 11 / 12–16; slots 1–9 OPENING_PANEL
+assert sarlauh_shape(grid[2])                      # slots 1–9 OPENING_PANEL, 10 SARLAUH_TITLE, 11 BASMALA, 12–16 AYAH
 for line in AYAH lines:
     a, b = dk_index(Q[line.first_word_id]), dk_index_last(Q[line.last_word_id])   # 72:16:1 → DK t1..t2
-    line.first_word, line.last_word = a, b
+    line.first_word_id, line.last_word_id = a, b    # DK word_index = doc 05 word.id
 assert contiguous_in_order(all AYAH ranges, 1, 83_669)          # each token exactly once
 assert first_last_skeleton_match(lines, except={(493, 13)})     # 59:13 spelling line (g01 §2.4)
 ```
 
 Before G1, `oracle.py` runs **locally** to diff the grid against the scraped previews. Expect 0 diffs on the 548 pages, apart from the documented fixes. The oracle data is deleted once `qul.res11` is pinned (g01 §2.8 step 5).
 
-### 5.4 Shaping and justification solver (`shape.py`, `justify.py`)
+### 5.4 Shaping cache and justification solver (`shape.py`, `justify.py`)
 
-Units: font units, upem 1000. Tunables live in `pipeline.toml` and are calibrated in P0/P1 by owner + hafiz visual review. Changing them changes `page_hash`.
+**The solver is doc 05 §4.3, implemented verbatim** (doc 05 owns the offline precompute contract). That means:
+- one em per page: `em_fit` per page, `E_ref` = 20th percentile, clamped to `[PAGE_EM_BAND·E_ref, E_ref]`;
+- per line: `scale = min(1, L / W_nat)` with `SCALE_FLOOR`;
+- a **plain** variant (no kashida) and a **kashida** variant: at most `KMAX_WORDS` stretched words per line, each at the smallest `j ∈ 1..KMAX_STEP` that brings the gap to ≤ `G_MAX`; ends, U+08E2-only tokens, non-stretchable words and neighbours of a stretched word are excluded;
+- RTL emission into integer `x0/x1` (frac_unit 100,000, LTR within the text block) and `x0_plain/x1_plain`;
+- mushaf-wide `pitch_min` and `baseline_offset_em` from the ink boxes.
 
-| Tunable | Default | Source |
-|---|---|---|
-| `gap_min_em` | 0.18 | r04 §2.5 prototype |
-| `gap_target_em` | 0.30 | r04 (kashida until gap ≤ 0.3 em) |
-| `gap_centered_em` | 0.25 | g01 §2.5 natural gap |
-| `kashida_max_steps` | 3 | D-05 |
-| `kashida_max_words_frac` | 0.34 (≤ ⌈n/3⌉ stretched words per line) | design choice; review |
-| `page_scale_clamp` | ±4 % of the layout median `em_per_line_width` | design choice; review |
-| `line_shrink_max` | 0.06 | design choice; fails above |
+The constants and their defaults come from doc 05: `G_MIN = 0.18 em`, `G_MAX = 0.30 em`, `G_NAT = 0.25 em`, `KMAX_STEP = 3`, `KMAX_WORDS = 2`, `SCALE_FLOOR = 0.90`, `PAGE_EM_BAND = 0.94`. They live in `pipeline.toml`, are recorded in `pack_info`, and may be retuned once in P1 after the hafiz's visual review (doc 05 §4.3). Changing them changes the page text hashes (§5.6) and therefore needs G5 re-review of the affected pages.
+
+This doc adds only the shaping cache that feeds the solver, and the integer rounding rule:
 
 ```python
-W = {}                                              # token -> [w0, w1, w2, w3] (cv01 = 0..3)
-for t in tokens(script=1, overrides=layout.overrides):          # render text after overrides
+A, INK = {}, {}                                     # token -> advances [k=0..3] in em; ink box (milli-em)
+for t in tokens(layout.overrides_applied):          # pack word.text, i.e. after layout-level overrides
     for k in 0..3:
         buf = hb.Buffer(); buf.add_str(t.text); buf.guess_segment_properties()   # RTL, Arab
         hb.shape(font, buf, {"cv01": k} if k else {})
-        assert all(g.codepoint != 0 for g in buf.glyph_infos)    # no .notdef
-        W[t][k] = sum(p.x_advance for p in buf.glyph_positions)
-    if is_end(t) or W[t][1] <= W[t][0]: W[t] = [W[t][0]] * 4     # markers and non-stretchable words never stretch
+        assert all(g.codepoint != 0 for g in buf.glyph_infos)    # no .notdef (V-M12)
+        A[t][k] = sum(p.x_advance for p in buf.glyph_positions) / upem
+    INK[t] = union_extents(font, buf_k0)                         # ink_top / ink_bottom, milli-em rel. baseline
+    if t.is_end or A[t][1] == A[t][0]: A[t] = [A[t][0]] * 4      # markers and non-stretchable words never stretch
 
-def natural(line, g): return sum(W[t][0] for t in line) + (len(line) - 1) * g * 1000
-
-for page in pages:
-    J = [l for l in page.lines if l.type == AYAH and not l.centered]
-    E_raw = max(natural(l, gap_min) for l in J) if J else median_E   # widest line at min gap fits exactly
-    page.E = clamp(E_raw, median_E * 0.96, median_E * 1.04)          # median_E computed in a first pass
-    for l in page.lines:
-        if l.type != AYAH: continue                                  # header/basmala art is drawn by the renderer
-        n = len(l.words)
-        if l.centered or n == 1:
-            total = sum(W[t][0]) + (n - 1) * gap_centered * 1000
-            l.scale = min(1, page.E / total); x0 = (page.E - total * l.scale) / 2
-            place(l, x0, gap_centered, steps=0); continue
-        if natural(l, gap_min) > page.E:                             # only after clamping
-            l.scale = page.E / natural(l, gap_min); assert 1 - l.scale <= line_shrink_max
-            place_even(l, scale=l.scale); continue
-        steps = {t: 0 for t in l.words}
-        gap = lambda: (page.E - sum(W[t][steps[t]] for t in l.words)) / (n - 1)
-        rounds = 0
-        while gap() > gap_target * 1000 and rounds < kashida_max_steps:
-            cand = sorted([t for t in l.words if W[t][1] > W[t][0] and steps[t] == rounds],
-                          key=lambda t: -W[t][0])[:ceil(n * kashida_max_words_frac)]
-            for t in cand:                                           # one step per word per round, longest first
-                if gap() <= gap_target * 1000: break
-                d = W[t][steps[t] + 1] - W[t][steps[t]]
-                if (page.E - sum_w(l, steps) - d) / (n - 1) < gap_min * 1000: continue   # never below min gap
-                steps[t] += 1
-            rounds += 1
-        g = gap()                                                     # spread the remainder evenly
-        x = page.E                                                    # RTL: first word at the right edge
-        for t in l.words:
-            w = W[t][steps[t]]
-            pos[t] = (left_frac=(x - w) / page.E, width_frac=w / page.E,
-                      features=f"'cv01' {steps[t]}" if steps[t] else None)
-            x -= w + g
-        assert abs(x + g) < 1e-6 * page.E                             # last word touches the left edge
+page_models = justify.solve(pages, A, INK, consts)  # doc 05 §4.3 pseudocode, line for line
+for w in words:                                     # integerise once, at the end
+    w.x0, w.x1 = round(w.x0_tw * 100_000), round(w.x1_tw * 100_000)               # kashida variant
+    w.x0_plain, w.x1_plain = round(w.x0p_tw * 100_000), round(w.x1p_tw * 100_000)
+# rounding is "round half to even" on exact decimals (Python round on Fraction) → byte-identical across machines
 ```
 
-Rationale: the layout is resolution-independent. Device x = `left_frac × lineWidthPx` and text size = `lineWidthPx / page.E × 1000 / upem` (r04 Rec 4). Precomputing these values makes rendering deterministic and makes the proof PDF identical to the device page, because the widths are equal (g04 §2.7).
+Pipeline report (CI artifact, doc 05 §4.3): the `gap_em` distribution per variant, the count of `scale < 1` lines (target ≤ 1 %), stretched words per line, the em spread, and any FAIL rows.
+
+Rationale: the layout is resolution-independent. Device x = `x / 100000 × textWidthPx`, and font px = `em_ratio × textWidthPx` (doc 05 §6.1). Precomputing these values makes rendering deterministic and makes the proof PDF identical to the device page, because the widths are equal (g04 §2.7).
 
 Alternatives considered:
 - Runtime fitting (D-05 Fallback 1) stays available in the app, keyed off the same `line` rows.
-- A global font size for the whole mushaf was rejected: one long line would shrink every page. The ±4 % clamp gives near-uniform size instead.
+- A global font size for the whole mushaf was rejected, because one long line would shrink every page. The percentile-plus-band page em gives near-uniform size instead.
+- Doc 08's earlier solver (median ±4 %, ⌈n/3⌉ stretched words, round-robin steps, REAL fractions) is withdrawn in favour of doc 05 §4.3, so there is one algorithm, one set of tunables and one column set.
 
-### 5.5 Markers and furniture (`markers.py`, `furniture.py`)
+### 5.5 Markers, page rows and furniture (`markers.py`, `furniture.py`)
+
+Enums and columns follow doc 05 §3.3. `margin_marker.kind` values are 0 RUKU, 1 PARA_START, 2 MANZIL_START, 3 QUARTER, 4 SAJDA and 5 SAJDA_SHAFII. `page.template` is 0 REGULAR or 1 SARLAUH. `page.outer_side` is 0 RIGHT or 1 LEFT.
 
 ```python
-loc = {word_index: (page, slot)}                      # from line ranges
-for r in rukus:     add(RUKU, loc[end_token(r.last_ayah_id)], n1=r.surah_ruku, n2=r.ayah_count, n3=r.para_ruku)   # 558
-for q in quarters:  anchor = word(q.ayah_id, q.word_pos) if q.word_pos else end_token(q.ayah_id)
-                    add(QUARTER, loc[anchor], n1=q.quarter)                                               # 90
-for s in sajdas:    add(SAJDA, loc[end_token(s.ayah_id)], n1=s.print_no, n2=int(s.kind == 'shafii_only'))  # 15
-for m in manzils[2:]: add(MANZIL_START, loc[header_or_first(m.start)], n1=m.id)                           # 6
-for p in paras[2:]:   add(PARA_START, loc[first_token(p.start_ayah_id)], n1=p.id)                         # 29
+loc = {word_id: (page_index, slot)}                   # from line ranges
+for r in rukus:     add(RUKU, loc[end_token(r.end_ayah_id)], ayah_id=r.end_ayah_id,
+                        n1=r.ruku_in_surah, n2=r.ayah_count, n3=r.ruku_in_para)                # 558 (Fatiha n3 NULL)
+for q in quarters:  anchor = word(q.ayah_id, q.after_word_pos) if q.after_word_pos else end_token(q.ayah_id)
+                    add(QUARTER, loc[anchor], anchor_word_id=anchor, ref_id=q.quarter)          # 90
+for s in sajdas:    add(SAJDA if s.kind == 'hanafi' else SAJDA_SHAFII,
+                        loc[end_token(s.ayah_id)], ref_id=s.number)                             # 15 (14 + 22:77)
+for m in manzils[1:]: add(MANZIL_START, loc[header_or_first(m.start_ayah_id)], ref_id=m.id)    # 6 (Manzils 2..7)
+for p in paras[1:]:   add(PARA_START, loc[first_token(p.start_ayah_id)], ref_id=p.id)          # 29 (Paras 2..30)
+# 0-based Python lists: [1:] skips only Manzil 1 / Para 1, which start on index 1 with the Fatiha
 for page in pages:
-    page.template = 'sarlauh' if page.index <= 2 else 'regular'
-    page.header_para = para_of(page.last_ayah_id); page.footer_manzil = manzil_of(page.last_ayah_id)
-    page.header_surahs = surahs_with_tokens_or_headers(page)
-    page.outer_margin = 'R' if (page.index + 1) % 2 == 0 else 'L'                       # label parity
-ayah_display_override = [(gid(1, a), 0) for a in 1..7]                                  # Taj: 7 empty circles (D-06)
+    page.page_label = page.page_index + 1                                                # Taj-16 offset 1
+    page.template   = SARLAUH if page.page_index <= 2 else REGULAR
+    page.para_id    = para_of(page.last_ayah_id); page.manzil_id = manzil_of(page.last_ayah_id)
+    page.surah_ids  = surahs_with_tokens_or_headers(page)                                # '102,103,104'
+    page.outer_side = RIGHT if page.page_label % 2 == 0 else LEFT                        # label parity
+surah_header = surah_headers.csv rows for layout 'indopak16_taj'                          # 114 (doc 05 §3.3)
+ayah_display_override = [(ayah_id(1, a), 0) for a in 1..7]                               # Taj: 7 empty circles (D-06)
+furniture_run, ornament_item = furniture.layout(pages, ornaments_manifest)               # doc 05 §4.4, verbatim
+calibration = seed rows from §5.2 vectors (الْكِتٰبُ 2060/2847/3615/4384, بِسْمِ 1216/1405/1594/1783)
 ```
+
+`furniture.layout` implements doc 05 §4.4:
+- header runs `HDR_RIGHT` / `HDR_CENTER` / `HDR_LEFT` and the `FOOTER` «منزل N»;
+- the `THREE_PART` / `TITLE` / `SARLAUH_TITLE` header runs and the `BASMALA` runs;
+- margin-marker stacking at `pitch_min`, which gives `y_center_slot`;
+- the ruku digit runs placed from `ornaments/manifest.json`;
+- `furniture_digits` chosen by font coverage.
 
 Waqf margin notes (e.g. «وقف لازم» beside p.358 L5) have no dataset and are **out of scope for v1**. The in-text waqf signs come from the DK text.
 
-### 5.6 Proof renders (`proof.py`)
+### 5.6 Page hashes, proof renders and device captures (`hashes.py`, `proof.py`)
 
-- **Vector SVG per page.** Glyph outlines come from fontTools `SVGPathPen` at the same positions and features as the pack. The page carries the page frame placeholder, header/footer text, the margin markers as text labels, a **page label + `build_id` + `page_hash[:8]` watermark**, and slot numbers 1–16 in the gutter.
+**Two hashes per page.** G5 certifies the **text layer**, not the ornament layer (lead ruling). Ornaments can therefore still be integrated or adjusted without voiding the certificate, but they must be final by the end of S5 so that hafiz round 2 sees the shipping look.
+
+```text
+text_hash(p) = sha256(canonical_json({
+    font_sha256,
+    lines: [(slot, type, header_variant, centered, surah_id, first_word_id, last_word_id, scale) for 16 slots],
+    words: [(id, text, slot, x0, x1, kashida, x0_plain, x1_plain) for words on p],      # word positions + glyph runs
+    markers: [(kind, anchor_slot, anchor_word_id, ayah_id, n1, n2, n3, ref_id) for markers on p],   # semantics only
+    furniture_text: [(role, text) for runs on p],                                       # header/footer/surah-title strings
+    surah_headers: [(surah_id, variant, title_text, right_text, left_text) for headers on p],
+    display_overrides: [(ayah_id, show_number) for overrides touching p],
+    content: [(word_index, ayah_id, display_number, is_kufan_end, disputed_end)          # content-DB ayah_marker rows on p
+              for markers of words on p] }))
+ornament_hash(p) = sha256(canonical_json(ornament_item rows, furniture_run geometry (x0, x1, y, size, rotation), y_center_slot))
+```
+
+The canonical JSON uses sorted keys, no whitespace, integers as-is and REALs formatted `%.6f`. `text_hash` is what the hafiz certifies and what `certified_pages.json` lists (§14). `ornament_hash` is informational: a change to it triggers a visual spot-check, not G5 re-review.
+
+**Proof renders (`proof.py`).**
+- **Vector SVG per page.** Glyph outlines come from fontTools `SVGPathPen`, at the same positions and features as the pack, using the same ornament SVGs. Each page carries the furniture, the margin markers, a **page label + `build_id` + `text_hash[:8]` watermark**, and slot numbers 1–16 in the gutter.
 - `--debug` adds word boxes and kashida step colours for engineers.
-- `cairosvg` → per-page PDF; `pypdf` → 30 files `proof/taj16/<build_id>/para-NN.pdf` plus PNG at 1260 px wide (screenshot baselines for doc 10).
-- `proof-manifest.json` holds `{page_index, page_label, page_hash, pdf_sha256}` ×548 and the font sha256.
-- `signoff.csv` template and `certificate-template.pdf` (layout, build_id, page count, reviewer name and qualification, statement mirroring Punjab Act 2011 s.5(3), signature/date; legal wording per doc 11).
-- `--changed-since <build_id>` renders only the pages whose `page_hash` changed (`delta-<build>.pdf`).
+- `cairosvg` renders each page to PDF. `pypdf` merges them into 30 files `build/proofing/indopak16_taj/<build_id>/para-NN.pdf`. A PNG at 1080 px wide is also written for each page (screenshot baselines for doc 10). Every proofing output, PDFs and PNGs alike, stays out of the repo and out of the APK.
+- `proof-manifest.json` holds `{page_index, page_label, text_hash, ornament_hash, pdf_sha256}` × 548, plus the font sha256.
+- `--changed-since <build_id>` renders only the pages whose `text_hash` changed, as `delta-<build>.pdf`. It also emits the **per-pack-version page-diff report** `page-diff-<old>-<new>.md`, listing changed pages with their reason (text, position, marker, furniture text, ornament only).
+- Templates: `signoff.csv` and `certificate-template.pdf`. The certificate records the layout, `build_id`, page count, reviewer name and qualification, a statement mirroring Punjab Act 2011 s.5(3), and signature/date. Legal wording is per doc 11 §5.4.
 
-`page_hash = sha256(canonical_json(page row minus page_hash, its 16 line rows, token texts as rendered, word_pos rounded to 1e-6, markers, overrides))`. A font change (new `font_sha256`) forces re-review of a 30-page sample (the first page of every Para) plus every page whose widths changed.
+**Device captures for hafiz round 2.** Round 2 and the G5 certificate cover device-rendered pages, not only the pipeline PDF (doc 09 ruling).
+- `crit mushaf device-captures` takes the Roborazzi or instrumented captures of all 548 pages from doc 10's harness, at 1080 px on the reference device.
+- It checks that each capture's embedded `text_hash` (drawn as a debug-build watermark) equals the pipeline's.
+- It bundles the captures per Para for the reviewer.
+- Acceptance 4 (§16) bounds the pixel difference between PDF and device.
+
+A font change (new `font_sha256`) changes every `text_hash`. It therefore forces a certificate addendum: re-review of a 30-page sample (the first page of every Para) plus every page whose word positions changed.
 
 ### 5.7 Fallback E: clean-room tooling (`rebreak.py`)
 
-This is built **only if G1 fails by 2026-11-19** (D-06). `rebreak.py` implements the g01 §2.5 dynamic-programming breaker: Σ(width − target)², the surah-final line free, no line starting with an ayah marker. It takes as input operator-captured anchors (per page: first DK token, header/basmala/empty slots) and emits the same `line` grid as §5.3. A small local web UI (photo beside pre-broken page, ← → to move line starts) writes `data/curated/taj16_cleanroom_lines.csv`. Clean-room rule: operators never open QUL, Waqar or QuranApp 16-line data. Effort 40–60 h plus 15–20 h hafiz QA, with 10 % double entry (g01 §2.8). Stages §5.4–5.6 then run unchanged.
+This is built **only if G1 fails by 2026-11-19** (D-06). `rebreak.py` implements the g01 §2.5 dynamic-programming breaker: Σ(width − target)², the surah-final line free, no line starting with an ayah marker. It takes as input operator-captured anchors (per page: first DK token, header/basmala/empty slots) and emits the same `line` grid as §5.3. A small local web UI (photo beside pre-broken page, ← → to move line starts) writes `data/curated/taj16_cleanroom_lines.csv`. Clean-room rule: operators never open QUL, Waqar or QuranApp 16-line data. The operator is therefore a second person (a contractor), never the owner, who has already seen QUL data. Doc 09 §5.3 plans about 7 weeks elapsed. Effort 40–60 h plus 15–20 h hafiz QA, with 10 % double entry (g01 §2.8). Stages §5.4–5.6 then run unchanged. Clean-room packs carry `basis: clean-room` and are the only layout source allowed in BETA/PUBLIC builds if G1 fails (§8.6).
 
 ### 5.8 Later layouts
 
@@ -633,20 +651,28 @@ This is built **only if G1 fails by 2026-11-19** (D-06). `rebreak.py` implements
 
 ## 6. Stage 3: translation and tafsir packs (`tools/packs`)
 
-### 6.1 Output: `tr.<lang>.<name>.<src>.sqlite` (Room `TranslationPackDb`)
+### 6.1 Output: `<id>@<ver>.db` (Room `TranslationPackDb` / `TafsirPackDb`; shape owned by doc 04 §7.3)
 
-```sql
-CREATE TABLE pack_info (k TEXT PRIMARY KEY NOT NULL, v TEXT NOT NULL);
--- id, type=translation, lang, dir(rtl/ltr), title, translator, upstream_version, pack_version, licence,
--- attribution_en, attribution_ur, notice, source_url, source_sha256, min_content_version,
--- eligibility_personal, eligibility_public, eligibility_monetized, has_footnotes, normalizer_version
-CREATE TABLE translation (ayah_id INTEGER PRIMARY KEY NOT NULL, text TEXT NOT NULL, footnotes TEXT,
-  text_norm TEXT NOT NULL);                -- normalised text + footnotes (search only, never displayed)
-CREATE VIRTUAL TABLE translation_fts USING FTS5(text_norm, tokenize=`unicode61`, content=`translation`, content_rowid=`ayah_id`);
-CREATE VIRTUAL TABLE translation_fts_tri USING FTS5(text_norm, tokenize=`trigram`, content=`translation`, content_rowid=`ayah_id`);  -- Urdu packs only (schema variant flag)
-```
+**Translation pack:** the doc 04 §7.3 shape, the same entity classes for **every** language. FTS tokenizer settings are part of Room's schema validation, so one schema serves all packs:
+- `pack_info(key, value)`;
+- `translation(ayah_id, text, footnotes)`;
+- `translation_search(ayah_id, text_norm)`;
+- `translation_fts` (FTS5 unicode61) and `translation_fts_tri` (FTS5 trigram), both external content over `translation_search`.
 
-Tafsir packs (P3) use `TafsirPackDb`: `tafsir(id PK, from_ayah_id, to_ayah_id, text)` with an index on `(from_ayah_id, to_ayah_id)`, the same `pack_info`, and no FTS in v1.
+There is no "Urdu only" schema variant: both FTS tables are filled for every pack. `text_norm` is the normalised text plus footnotes, used for search only and never displayed.
+
+`pack_info` keys are the doc 04 set:
+- `id`, `type=translation`, `version`, `schema_version`, `lang`, `dir`, `title`;
+- `licence`, `attribution`, `source_url`, `source_sha256`;
+- `min_content_version`, `built_at`.
+
+The pipeline adds:
+- `translator`, `upstream_version`;
+- `attribution_en`, `attribution_ur`, `notice`;
+- `licence_status` (5-value), `basis`, `eligibility_json`, `commercial_ok`;
+- `has_footnotes`, `normalizer_version`.
+
+**Tafsir packs** (P3) use doc 04's `TafsirPackDb`: `tafsir(id PK, from_ayah_id, to_ayah_id, text)` with an index on `(from_ayah_id, to_ayah_id)`, the same `pack_info`, and no FTS in v1.
 
 ### 6.2 Algorithm
 
@@ -660,49 +686,56 @@ def build_translation(pack_id):
     else:                                                  # Tanzil txt-2: "s|a|text", '#' comment lines = notice
         rows, notice = tanzil_trans.parse(fetch_pinned(src.url))
     assert len(rows) == 6236 and all(r.text.strip() for r in rows) and keys(rows) == all_kufan_keys()
-    out = []
+    trans, search = [], []
     for r in rows:                                         # VERBATIM (QuranEnc cond. 1 / Tanzil terms)
         norm = (ur_norm if reg.lang == "ur" else en_norm if reg.lang == "en" else generic_norm)(
                     strip_markup(r.text + " " + (r.footnotes or "")))
-        out.append((gid(r.sura, r.aya), r.text, r.footnotes or None, norm))
-    db = roomdb.create(out(f"{pack_id}.sqlite"), schema("TranslationPackDb"), master=True)
-    insert(db, out); pack_info(db, reg, meta); fts_rebuild_optimize(db); user_version; VACUUM
-    zip_deterministic(f"{pack_id}.sqlite")                # fixed mtime, sorted entries → .sqlite.zip + sha256
+        trans.append(dict(ayah_id=gid(r.sura, r.aya), text=r.text, footnotes=r.footnotes or None))
+        search.append(dict(ayah_id=gid(r.sura, r.aya), text_norm=norm))
+    schema = room_schema("TranslationPackDb")              # one schema for every language (doc 04 §7.3)
+    db = roomdb.create(out(f"{pack_id}@{reg.version}.db"), schema, master=True)
+    roomdb.insert_all(db, schema, {"translation": trans, "translation_search": search})
+    pack_info(db, reg, meta); fts_rebuild_optimize(db)    # both translation_fts and translation_fts_tri
+    user_version; VACUUM
+    zip_deterministic(f"{pack_id}@{reg.version}.db")      # fixed mtime, sorted entries → <id>-<ver>.zip + sha256
 ```
 
 - QuranEnc `english_saheeh` prefixes ayah numbers inside the text, e.g. "(2) [All] praise…". It is stored **verbatim**; only `text_norm` drops the prefix. Whether the display may strip it is a question for QuranEnc (open issue).
 - Hygiene: `text` is never altered. The app strips PUA and controls at copy/share time (D-08). The validator reports any such characters found.
 
-| Pack | Phase | Bundled? | Eligibility (registry; doc 03 confirms) |
-|---|---|---|---|
-| `tr.ur.junagarhi.qe` (v1.1.3, with Ahsan-ul-Bayan footnotes) | P1 | Yes | personal ✓ public ✓ monetized ✓ (QuranEnc terms) |
-| `tr.en.saheeh.qe` (v1.1.2, "Noor International Center") | P1 | Yes | ✓ ✓ ✓ |
-| `tr.ur.jalandhari.tz` | P2 | No | ✓ ✓ **✗ (Tanzil non-commercial)** |
-| `tr.ur.kanzuliman.tz`, `tr.en.pickthall.tz` | P2 | No | ✓ ✓ ✗ until a PD-clean source is proofread |
-| `tr.en.hilalikhan.qe`, `tr.hi.omari.qe`, `tr.id.affairs.qe`, `tr.tr.rwwad.qe` | P2 | No | ✓ ✓ ✓ |
-| `tr.bn.bengali.tz` | P2 | No | ✓ ✓ ✗ (QuranEnc has no Bangla: r05 §2.4.3) |
-| `tafsir.ur.saadi.qe` | P3 | No | ✓ ✓ ✓ |
+Pack ids follow doc 04 (`<lang>.<name>.<source>`, with `source` ∈ `qe` (QuranEnc) / `tanzil`). They are referenced by `UserSettings.translation` defaults, so they are permanent.
+
+| Pack id | Release | Bundled? | `licenceStatus` · `basis` | Eligibility personal / beta / public / monetized (registry; doc 03 confirms) |
+|---|---|---|---|---|
+| `ur.junagarhi.qe` (v1.1.3, with Ahsan-ul-Bayan footnotes) | v1.0 | Yes (D-09) | PERMITTED · QuranEnc republish terms | ✓ ✓ ✓ ✓ |
+| `en.saheeh.qe` (v1.1.2, "Noor International Center") | v1.0 | Yes (D-09) | PERMITTED · QuranEnc terms | ✓ ✓ ✓ ✓ |
+| `ur.jalandhari.tanzil` | v1.1 (F-TR-02/03) | No | PERMITTED · Tanzil translation terms | ✓ ✓ ✓ **✗** (`commercialOk = false` for every Tanzil translation file) |
+| `ur.kanzuliman.tanzil`, `en.pickthall.tanzil` | v1.1 | No | PERMITTED · Tanzil terms | ✓ ✓ ✓ ✗ |
+| `en.hilalikhan.qe`, `hi.omari.qe`, `id.affairs.qe`, `tr.rwwad.qe` | v1.1 | No | PERMITTED · QuranEnc terms | ✓ ✓ ✓ ✓ |
+| `bn.bengali.tanzil` | v1.1 | No | PERMITTED · Tanzil terms | ✓ ✓ ✓ ✗. A QuranEnc Bangla pack replaces it if one exists at build time (r05 §2.4.3 found none) |
+| `ur.saadi.qe` (type `tafsir`) | P3 | No | PERMITTED · QuranEnc terms | ✓ ✓ ✓ ✓ |
 
 ---
 
 ## 7. Stage 4: timing packs (`tools/audio-timing`)
 
-### 7.1 Output: `timing.<recitation_id>.sqlite` (Room `TimingPackDb`; r06 §2.8.2 + guards)
+### 7.1 Output: `timing.<recitationId>@<ver>.db` (plain SQLite; DDL owned by doc 06 §5.1)
 
-```sql
-CREATE TABLE properties (k TEXT PRIMARY KEY NOT NULL, v TEXT NOT NULL);
--- recitation_id, host, read_id, layout(gapless|gapped), pack_version, source_sha256s, attribution, onset_snapped(0/1),
--- normaliser_version, built_from_etags_hash
-CREATE TABLE ayah_timing (sura INTEGER NOT NULL, ayah INTEGER NOT NULL,   -- ayah 0 = intro (isti'adha/basmala) if any
-  start_ms INTEGER NOT NULL, end_ms INTEGER NOT NULL, words BLOB,          -- words NULL in v1 (F-AU-12 later)
-  PRIMARY KEY(sura, ayah)) WITHOUT ROWID;
-CREATE TABLE audio_file (sura INTEGER NOT NULL, ayah INTEGER NOT NULL,    -- ayah 0 = whole-surah file (gapless)
-  content_length INTEGER NOT NULL, etag TEXT, duration_ms INTEGER, sha256 TEXT, md5 TEXT,
-  PRIMARY KEY(sura, ayah)) WITHOUT ROWID;
-CREATE TABLE surah_status (sura INTEGER PRIMARY KEY NOT NULL, highlight INTEGER NOT NULL, reason TEXT);
-```
+**Schema = doc 06 §5.1, executed verbatim** from `tools/audio-timing/schema/timing-v1.sql`. That file is a byte copy of doc 06's DDL, and a pytest asserts it matches the doc's code block. The tables are:
+- `pack_info(key, value)`. Required keys: `schema=1`, `pack_id`, `recitation_id`, `version`, `source`, `source_fetched_at`, `built_at`, `pipeline_git_sha`, `attribution`, `onset_snapped`, `words`;
+- `audio_file(recitation_id, surah, url, content_length, etag, last_modified, duration_ms, bitrate_kbps, sample_rate_hz, cbr, highlight_ok, disabled_reason, fixes)`;
+- `ayah_timing(recitation_id, surah, ayah, start_ms, end_ms, words)`. `ayah = 0` is the intro. Rows exist only for surahs with `highlight_ok = 1`.
 
-Gapped recitations (everyayah/i.n.) produce the same pack type with **no** `ayah_timing` rows. `audio_file` then has one row per ayah with `md5` from `000_checksum.md5` (6,350 entries for Alafasy) and sizes from a one-off HEAD sweep at ≤ 2 req/s.
+**Plain SQLite, not Room.** The app reads timing packs through `androidx.sqlite` (`BundledSQLiteDriver`), so the file has **no `room_master_table`** and no Room identity hash. This is the one exception to "every pack is built from its Room-exported schema" (writer ruling; doc 04 §7.3 should note it). `PRAGMA user_version = 1` (schema 1), `VACUUM`.
+
+**Naming.**
+- The pack id is `timing.<recitationId>`, with recitation ids in doc 06's permanent format, e.g. `timing.alafasy.murattal.mp3q123`. This is the `timing.packId` in the catalogue.
+- The bundled file is `app/src/{personal,public}/assets/packs/timing/timing.<recitationId>@<ver>.db`.
+- On the CDN the pack follows the doc 04 index entry: `compression: "zip"`.
+
+**Gapless only.** Only `GAPLESS_SURAH` recitations with mp3quran timings get a timing pack. Gapped recitations (everyayah, islamic.network, King Fahd Complex) have **no** timing pack. Their integrity data lives in the catalogue `qualities[].checksums`:
+- for everyayah, an `MD5_MANIFEST` pointing at the host's `000_checksum.md5`, which `gapped_checks.py` verifies covers 6,236 ayahs plus basmala files;
+- for our R2 self-hosted sets, a `SHA256_MANIFEST` that the pipeline writes and uploads beside the audio (§10).
 
 ### 7.2 Algorithm (g03 §2.6, completed)
 
@@ -723,8 +756,12 @@ def build_timing(rec):                         # rec from reciters.yaml; host mu
             pcm = ffmpeg_decode(download_stream(f), rate=8000)  # sha256 computed while streaming
             status.rows = snap_starts_to_onset(status.rows, envelope(pcm), max_shift_ms=1500, lead_ms=150)
             f.sha256 = stream_sha256
-        pack.add(s, status, f)
-    validate_timing.run_all(pack); pack.write()
+        pack.add_audio_file(rec.id, s, url=f.url, content_length=f.content_length, etag=f.etag,
+                            last_modified=f.last_modified, duration_ms=f.duration_ms, bitrate_kbps=kbps(hdr),
+                            sample_rate_hz=rate(hdr), cbr=cbr, highlight_ok=status.ok,
+                            disabled_reason=status.reason, fixes=",".join(status.fixes))   # doc 06 §5.1 columns
+        if status.ok: pack.add_ayah_timing(rec.id, s, status.rows)   # rows only for highlight_ok = 1
+    validate_timing.run_all(pack); pack.write(schema="timing-v1.sql")   # plain SQLite, no Room tables
 
 def normalise(rec, s, rows, f, cbr):
     rows = sorted(rows, key=ayah)
@@ -732,8 +769,8 @@ def normalise(rec, s, rows, f, cbr):
     if k != 0 and gain >= 0.25 and r_k >= 0.6:
         rows = [r.with_ayah(r.ayah + k) for r in rows]; log("relabel", s, k)    # 51/31/112 s9, 31 s91
     if s == 1 and has(rows, 0) and not has(rows, 7): return DISABLE("basmala swallowed by intro")   # 118, 74
-    intro = pop(rows, 0)
-    if intro is None and rows[0].start > 300: intro = Row(0, 0, rows[0].start)  # implicit-gap convention → explicit ayah 0
+    intro = pop(rows, 0)                                        # explicit intro only; implicit-gap reads (123, 30, 54, 4,
+                                                                #   92, 89, 109) get NO ayah-0 row: lead-in = [0, start(1)) (doc 06)
     if {r.ayah for r in rows} != set(1..AYAH_COUNT[s]): return DISABLE("missing/extra ayahs")
     if any(r.end <= r.start for r in rows) or not strictly_increasing(starts(rows)): return DISABLE("non-monotonic")
     if any(rows[i].end > rows[i+1].start for i): rows = trim_overlaps(rows)       # set end = next start (logged)
@@ -757,7 +794,11 @@ def snap_starts_to_onset(rows, env, max_shift_ms, lead_ms):
 **Per-read expectations (regression tests from g03 §2.5.1).**
 - Clean: 123, 30, 54 (after clamp), 4, 89, 109, 159.
 - 51: s9 relabelled +1.
-- Disabled surahs: 118 {1, 21}; 112 {52, 53} (+ s9 relabel); 31 six surahs (incl. s65 missing 65:12, s12/40/80 mismatches); 92 {4}.
+- Disabled surahs (`highlight_ok = 0`):
+  - 118 {1, 21};
+  - **112 {9, 52, 53}**. s9 is relabelled +1, but its end still overshoots the file by +8,155 ms, which fails the > 1 s guard, so s9 **stays highlight-off** (g03 §2.5; doc 06 §4.2);
+  - 31 {12, 40, 65, 80, 83, 91}: s65 is missing 65:12, s12/40/80 are file mismatches, s91 has a label shift;
+  - 92 {4}.
 
 If a rebuild changes this list, CI fails until `reciters.yaml` is updated with a reason. Reads 54, 4, 89, 109 and 159 also get the 3-surah decode check (in-pause ratio ≥ 0.9 on surahs 36 and 67, against midpoint controls) plus one owner listening pass before public release (g03 Rec 2).
 

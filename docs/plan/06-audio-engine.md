@@ -10,11 +10,11 @@ Status: Draft v1 — 2026-10-19
   - Gapless uses `ClippingConfiguration`. Gapped uses one item per ayah.
   - Follow-along uses `PlayerMessage`s plus a binary search, published to a process-wide `PlaybackStateHub`.
   - CBR seeking flag; `USAGE_MEDIA` + `CONTENT_TYPE_SPEECH`; playback starts only from a user action.
-- **D-14**: Our own OkHttp downloader (Range resume, `.part` + atomic rename, MD5/SHA-256), hosted in UIDT on API 34+ and WorkManager `dataSync` on API ≤ 33. Wi-Fi only by default. Files go under `getExternalFilesDirs` + `.nomedia`. `SimpleCache` (256 MB LRU) is for streaming only.
+- **D-14**: Our own OkHttp downloader (Range resume, `.part` + atomic rename, MD5/SHA-256), hosted in UIDT on API 34+ and WorkManager `dataSync` on API ≤ 33. Wi-Fi only by default. Files go under `getExternalFilesDirs` + `.nomedia`. P1 runs the WorkManager host on all API levels; the UIDT host lands in S5, before any public build (doc 09 E-10-S05). `SimpleCache` (256 MB LRU) is for streaming only.
 - **D-02 / D-03**: OkHttp 5.5.0 everywhere. Media3's okhttp datasource is verified on 5.5.0 (g04 §2.5). No Ktor. Pure-Kotlin domain modules.
 - **D-07**: Every Para boundary comes from the **Indo-Pak Para table**, never from Madani juz.
 - **D-10 / D-24**: The catalogue and timing packs are signed static files on Cloudflare R2. A bundled copy ships in the APK.
-- **D-17 / D-20**: Free and ad-free, with no tracking SDKs. Recitations carry licence and build-eligibility flags that the app enforces at runtime and CI enforces at build time.
+- **D-17 / D-20**: Free and ad-free, with no tracking SDKs. Recitations carry the D-29 fields (5-value `licenceStatus`, `basis`, `eligibleTiers`, `commercialOk`, `fossOk`, `enabled`) that the app enforces at runtime against `BuildConfig.CONTENT_TIER` / `BuildConfig.MONETIZED` and CI enforces at build time (doc 04 §11).
 
 ---
 
@@ -22,7 +22,7 @@ Status: Draft v1 — 2026-10-19
 
 | ID | Requirement | Phase | Acceptance criteria (testable) |
 |---|---|---|---|
-| F-AU-01 | Reciter catalogue + favourite qari, chosen in onboarding (F-PL-01) | P1 | The picker lists only recitations eligible for this build channel (§3.4). Alafasy 123 is preselected. The choice persists across restarts. There are no reciter photos (D-12). Remote kill-switch takes effect ≤ 24 h after the catalogue is published. |
+| F-AU-01 | Reciter catalogue + favourite qari, chosen in onboarding (F-PL-01) | P1 | The picker lists only recitations eligible for this build's content tier (`BuildConfig.CONTENT_TIER`, §3.4). Alafasy 123 is preselected. The choice persists across restarts. There are no reciter photos (D-12). Remote kill-switch takes effect ≤ 24 h after the catalogue is published. |
 | F-AU-02 | Play scopes: Surah, Para, Manzil, Ruku, Page, ayah range, single ayah, play-from-here | P1 | Every scope builds a correct plan (§7). Para uses the Indo-Pak table: Para 4 starts at **3:92**, P7 5:83, P11 9:94, P14 15:2, P20 27:60, P21 29:45, P23 36:22. A Play button exists on every Surah, Para and Manzil index row (F-IX-01..03), on ruku navigation (F-IX-04), and in the ayah sheet (F-RD-04). |
 | F-AU-03 | Gapless playback + timing-driven highlight | P1 | The highlight changes within ±150 ms of the timing-table start (media time) in 95 % of transitions. Highlighting is off (playback still works) for surahs in `highlightDisabledSurahs`, for invalid packs, and when the ETag/length guard fails. |
 | F-AU-04 | Gapped verse-by-verse mode | P1 personal; public after G2 | Per-ayah items with item-exact highlight and the basmala rules (§7.4). Hidden in PUBLIC builds while `licenceStatus = PENDING`. |
@@ -31,7 +31,7 @@ Status: Draft v1 — 2026-10-19
 | F-AU-07 | Background play, media notification, lock screen, headset / BT | P1 | Playback survives app swipe-away while playing. Next/prev moves by ayah (setting: surah). Headset hook works. Audio pauses on becoming noisy. The system resume card works (`onPlaybackResumption`). |
 | F-AU-08 | Downloads (surah / Para / Manzil / full / popular pack), storage manager, Wi-Fi only | P1 | Kill the process mid-download and it resumes with an HTTP Range request. Corrupt files are rejected. Location can be internal or SD. Sizes shown come from catalogue-measured bytes, and the shown size matches the real size within ±1 %. |
 | F-AU-09 | Streaming cache | P1 | SimpleCache LRU at 256 MB by default (128 MB–2 GB). Downloaded files bypass the cache. A replayed surah plays in airplane mode while it is still in the cache. |
-| F-AU-10 | Arabic + Urdu translation-audio interleave | P1 personal; public P3 if permitted | Each Arabic ayah (×N) is followed by the Shamshad Ali Khan Urdu ayah. PERSONAL builds only (D-12). |
+| F-AU-10 | Arabic + Urdu translation-audio interleave | Personal build, v1.1 (doc 09 E-08-S10); public only if permitted, never before v1.1 | Each Arabic ayah (×N) is followed by the Shamshad Ali Khan Urdu ayah. PERSONAL builds only (D-12). |
 | F-AU-11 | Android Auto | P3 | Full browse tree + `automotive_app_desc.xml` (§8.9). P1 ships only a minimal root. |
 | F-AU-12 | Word-level highlight | P3 | Word segments in the `words` BLOB (§5.1), mapped to DigitalKhatt word tokens (D-06). |
 
@@ -50,9 +50,9 @@ flowchart LR
     IDX[Index rows / ayah sheet] -->|PlayRequest| AC
     PL[Mini + full player] --> AC
   end
-  AC[AudioController\n:core:audio-api] -->|MediaController\nplan: media id| SVC
-  subgraph SVC["QuranPlaybackService : MediaLibraryService (:core:audio)"]
-    CB[QuranSessionCallback] --> PE[PlanExpander\n:core:domain pure Kotlin]
+  AC[PlaybackController\ninterface :core:domain\nimpl :core:audio] -->|MediaController\nplan: media id| SVC
+  subgraph SVC["PlaybackService : MediaLibraryService (:core:audio)"]
+    CB[QuranSessionCallback] --> PE[PlanExpander\npure Kotlin, :core:audio]
     PE --> MAP[MediaItemMapper]
     MAP --> FP[QuranForwardingPlayer]
     FP --> EXO[ExoPlayer]
@@ -64,22 +64,22 @@ flowchart LR
   DS -->|file://| FILE[FileDataSource]
   DS -->|quran-audio://| CACHE[CacheDataSource\nSimpleCache 256 MB]
   CACHE --> MF[MirrorFailoverDataSource] --> OK[OkHttpDataSource]
-  CAT[CatalogueRepository] --> PE
+  CAT[AudioCatalogRepository] --> PE
   TIM[TimingRepository\n+ TimingGuard] --> PE
   TIM --> TRK
-  DL[DownloadCoordinator :core:download\nUIDT 34+ / WorkManager ≤33] --> FS[(AudioFileStore\nmanifests)]
+  DL[DownloadManagerImpl :core:remote\nUIDT 34+ / WorkManager ≤33] --> FS[(AudioFileStore\nmanifests)]
   FS --> DS
 ```
 
-**Module placement** (D-03; doc 04 owns the final graph):
+**Module placement** (D-03; doc 04 owns the module graph and the shared types; there is **no** `:core:audio-api` module):
 
 | Module | Contents (this doc) |
 |---|---|
-| `:core:model` (pure Kotlin) | `AyahKey`, `AudioLayout`, `RecitationStyle`, `BasmalaStrategy`, `LicenceStatus`, `BuildChannel`, `QualityTier`, `Reciter`, `Recitation`, `PlayScope`, `RepeatSpec`, `PauseRule`, `StopAt`, `PlayRequest` |
-| `:core:domain` (pure Kotlin) | `QuranStructure` and `TimingIndex` interfaces, `PlanExpander`, `PlayItem`, `ExpandedPlan`, `PlanError`. JVM-unit-tested |
-| `:core:audio-api` | `AudioController`, `PlaybackStateHub`, `NowPlaying`, `HighlightTarget`, `AudioError` (depends on model only) |
-| `:core:audio` | Service, player factory, `QuranForwardingPlayer`, `MediaItemMapper`, data sources, `AyahTracker`, repeat/pause/sleep controllers, `ResumeStore`, `TimingRepository`, `TimingGuard`, `CatalogueRepository` |
-| `:core:download` | `DownloadCoordinator`, `DownloadEngine`, `HttpRangeDownloader`, `ZipInstaller`, `ChecksumVerifier`, `AudioFileStore`, `StorageLocationManager`, `AudioDownloadJobService` (API 34+), `AudioDownloadWorker` (≤ 33), `downloads.db` |
+| `:core:model` (pure Kotlin) | Doc 04 §5 identity and request types used verbatim: `VerseKey`, `SurahId`, `ParaId`, `ManzilId`, `RukuId`, `MushafId`, `PageIndex`, `AyahRange`, `RecitationId`, `PlayScope`, `Until`, `RepeatSpec`, `PauseRule`, `PlayRequest`. Catalogue model owned here (§3.3): `AudioLayout`, `RecitationStyle`, `BasmalaStrategy`, `LicenceStatus`, `ContentTier`, `QualityTier`, `Reciter`, `Recitation` |
+| `:core:domain` (pure Kotlin) | Interfaces: `PlaybackController`, `PlaybackStateHub`, `PlaybackState`, `PlaybackEvent`, `HighlightTarget`, `Segment`, `AudioError`, `AudioCatalogRepository`, `DownloadManager` (doc 04 §6), `QuranStructure`, `TimingIndex`; the scope resolver `ResolvePlayScope` (doc 04 §5.4 = §7.2 here) |
+| `:core:audio` | `PlaybackService`, `PlaybackControllerImpl`, `PlaybackStateHubImpl`, **`PlanExpander`** (pure Kotlin, no `android.*` imports, plain JVM unit tests), player factory, `QuranForwardingPlayer`, `MediaItemMapper`, data sources, `AyahTracker`, repeat/pause/sleep controllers, `ResumeStore`, `TimingRepository`, `TimingGuard`, `AudioCatalogRepositoryImpl` |
+| `:core:remote` (splits into `:core:network` + `:core:download` at doc 04's ~4k LOC trigger) | `DownloadManagerImpl`, `DownloadEngine`, `HttpDownloader`, `ZipInstaller`, `ChecksumVerifier`, `AudioFileStore`, `StorageLocationManager`, `AudioDownloadJobService` (UIDT, API 34+), `DownloadWorker` (WorkManager), `downloads.db`; `SignedFileFetcher` (doc 04) for the catalogue |
+| `:core:designsystem` | Localised `AudioError` strings and player styling |
 | `:feature:audio` | Mini player, full player sheet, reciter picker, downloads/storage-manager screens (UI per doc 02) |
 
 **Threading rule.** Media3 1.11 requires session and player calls on the application (main) looper; getters throw otherwise (r07 §2.6). Timing and catalogue I/O run on `@IoDispatcher`. The service prefetches timings before it calls the synchronous `PlanExpander`.
@@ -90,10 +90,10 @@ flowchart LR
 
 ### 3.1 Files, hosting, signing, refresh
 
-- **Bundled copy.** `assets/audio/catalogue.json` + `catalogue.json.sig`. This is the source on first launch and offline. CI regenerates it from the same source as the R2 copy.
-- **Remote copy.** `https://cdn.<domain>/audio/v1/catalogue.json` + `.sig` on Cloudflare R2 (D-24). The domain is fixed at G3; `BuildConfig.CDN_BASE`. The signature is Ed25519 over the exact bytes, verified by the same verifier as the pack `index.json` (D-10; doc 04/08 own the key and envelope).
-- **Refresh.** A daily periodic WorkManager job (network connected) plus an on-demand fetch when the reciter picker opens and the copy is > 24 h old. It uses a conditional GET (`If-None-Match`).
-- **Acceptance.** A remote copy is accepted only if the signature is valid, `schema` is supported, and `catalogueVersion` > current. It then **replaces** the active catalogue wholesale; fields are never merged. It is persisted to `files/audio/catalogue.json`.
+- **Bundled copy.** `src/{public,personal}/assets/catalogue/catalogue.json` + `catalogue.json.sig` (doc 04 §7.1/§11.2; the APK asset is `catalogue/catalogue.json`). This is the source on first launch and offline. CI regenerates it from the same source as the R2 copy, and `verifyContentEligibility<Variant>` checks it.
+- **Remote copy.** `${CDN_BASE_URL}/v1/<channel>/catalogue.json` + detached `.sig` on Cloudflare R2 (D-24), where `<channel>` is `beta` or `public` per doc 04 §11 (including its monetized variant of `public`). `BuildConfig.CDN_BASE_URL` is doc 04's brand-neutral domain. PERSONAL builds fetch the `beta` channel; their personal-only entries come from the bundled `personal-overlay.json` and are **never uploaded to R2** (an overlay entry never overrides a remote entry with the same id). The signature is Ed25519 over the exact file bytes (detached `.sig`, two pinned public keys), checked by doc 04's `SignedFileFetcher`, the same path as `index.json` and `notices.json` (D-10, D-30).
+- **Refresh.** Doc 04's daily `RemoteRefreshWorker` (network connected) plus an on-demand fetch when the reciter picker opens and the copy is > 24 h old. It uses a conditional GET (`If-None-Match`).
+- **Acceptance** (`SignedFileFetcher`, doc 04 §7.6): the signature is valid, `kid` names a trusted key, `schema` is supported, `sequence` ≥ the last accepted `sequence` (anti-rollback) and `expires` is in the future. An expired file is not applied, and the last accepted (or bundled) copy stays active. An accepted copy **replaces** the active catalogue wholesale; fields are never merged. It is persisted to `files/remote/catalogue.json` (+ `.sig`, `.etag`). `catalogueVersion` is informational only (shown in diagnostics and Sources & Credits).
 - **Forward compatibility.** Parse with `ignoreUnknownKeys = true`. A recitation with an unknown enum value (style, layout, basmala, tier) is **skipped**; it never crashes the parse. `minAppVersionCode` hides entries that need a newer app.
 
 ### 3.2 Schema (JSON) with two real entries
@@ -101,13 +101,16 @@ flowchart LR
 ```json
 {
   "schema": 1,
+  "kid": "k1",
+  "sequence": 1,
+  "expires": "2027-04-19T00:00:00Z",
   "catalogueVersion": 1,
   "generatedAt": "2026-10-19T00:00:00Z",
   "hosts": {
     "mp3q": "https://cdn.mp3quran.net/audio",
     "ea":   "https://everyayah.com/data",
     "in":   "https://cdn.islamic.network/quran",
-    "r2":   "https://cdn.<domain>/audio"
+    "r2":   "<CDN_BASE_URL>/audio"
   },
   "defaults": { "PUBLIC": "alafasy.murattal.mp3q123", "BETA": "alafasy.murattal.mp3q123", "PERSONAL": "alafasy.murattal.mp3q123" },
   "reciters": [
@@ -128,10 +131,10 @@ flowchart LR
       "timing": { "packId": "timing.alafasy.mp3q123", "minVersion": 1, "source": "mp3quran ayat_timing read=123" },
       "highlightDisabledSurahs": [],
       "fallbackRecitationId": "alafasy.murattal.ea",
-      "licenceStatus": "HOST_GRANT", "buildEligibility": ["PERSONAL", "BETA", "PUBLIC"], "commercialUse": "UNKNOWN",
+      "licenceStatus": "HOST_GRANT", "eligibleTiers": ["PERSONAL", "BETA", "PUBLIC"], "commercialOk": false, "fossOk": true,
+      "basis": "mp3quran.net published host statement; archived evidence/mp3quran-privacy-2026-10-19.pdf sha256=… (host grant, not a reciter licence)",
       "attribution": { "en": "Recitation: Mishary Rashid Alafasy · Audio: mp3quran.net", "ur": "…" },
       "sourceUrl": "https://www.mp3quran.net/eng/privacy",
-      "licenceEvidence": "evidence/mp3quran-privacy-2026-10-19.pdf#sha256=…",
       "enabled": true, "killAction": "DISABLE", "minAppVersionCode": 0, "sortKey": 10, "tags": ["default", "popular-pk"]
     },
     {
@@ -153,7 +156,8 @@ flowchart LR
           "surahBytes": [ "…" ], "totalBytes": 1710000000 }
       ],
       "basmala": "SEPARATE_FILE", "basmalaPath": "bismillah.mp3",
-      "licenceStatus": "PENDING", "buildEligibility": ["PERSONAL", "BETA"],
+      "licenceStatus": "PENDING", "eligibleTiers": ["PERSONAL", "BETA"], "commercialOk": false, "fossOk": true,
+      "basis": "islamic.network written host terms; everyayah mirror; reciter/QF permission requested (G2)",
       "attribution": { "en": "Recitation: Mishary Rashid Alafasy · Audio: everyayah.com / Islamic Network CDN" },
       "sourceUrl": "https://alquran.cloud/terms-and-conditions", "enabled": true
     }
@@ -183,9 +187,8 @@ Never depend on `SSS000.mp3` intros; they are inconsistent across reciters (r06 
 enum class AudioLayout { GAPLESS_SURAH, GAPPED_AYAH }
 enum class RecitationStyle { MURATTAL, MUJAWWAD, MUALLIM, TRANSLATION }   // KIDS_REPEAT reserved (v1.x); unknown → entry skipped
 enum class BasmalaStrategy { EMBEDDED_INTRO, SEPARATE_FILE, USE_FATIHA_1_1, NONE }
-enum class LicenceStatus { PERMITTED, HOST_GRANT, PENDING, PERSONAL_ONLY }
-enum class BuildChannel { PERSONAL, BETA, PUBLIC }        // BuildConfig.CONTENT_CHANNEL (doc 04/11)
-enum class CommercialUse { ALLOWED, NOT_ALLOWED, UNKNOWN } // D-17: monetized builds require ALLOWED
+enum class LicenceStatus { PERMITTED, HOST_GRANT, PENDING, PERSONAL_ONLY, REVOKED }   // D-29 (doc 12 owns the enum)
+enum class ContentTier { PERSONAL, BETA, PUBLIC }        // = BuildConfig.CONTENT_TIER / BuildInfo.tier (doc 04 §11)
 enum class QualityTier { LOW, STANDARD, HIGH }
 enum class MirrorRole { PRIMARY, MIRROR, SELF_HOSTED }
 enum class KillAction { DISABLE, DISABLE_AND_PURGE }
@@ -193,10 +196,12 @@ enum class KillAction { DISABLE, DISABLE_AND_PURGE }
 @Serializable data class LocalizedText(val en: String, val ur: String? = null, val ar: String? = null)
 
 @Serializable data class AudioCatalogue(
-    val schema: Int, val catalogueVersion: Int, val generatedAt: String,
+    val schema: Int, val kid: String, val sequence: Long, val expires: String,   // checked by SignedFileFetcher (doc 04 §7.6)
+    val catalogueVersion: Int, val generatedAt: String,                          // informational
+
     val minAppVersionCode: Int = 0,
     val hosts: Map<String, String>,
-    val defaults: Map<BuildChannel, String>,
+    val defaults: Map<ContentTier, RecitationId>,
     val reciters: List<Reciter>,
     val recitations: List<Recitation>,
 )
@@ -205,7 +210,7 @@ enum class KillAction { DISABLE, DISABLE_AND_PURGE }
                                  val sortKey: Int = 1000)          // no photo field, by design (D-12)
 
 @Serializable data class Recitation(
-    val id: String,                         // immutable once published: user.db + download paths reference it
+    val id: RecitationId,                   // immutable once published: user.db + download paths reference it
     val reciterId: String,
     val style: RecitationStyle,
     val riwayah: String = "hafs",
@@ -216,14 +221,15 @@ enum class KillAction { DISABLE, DISABLE_AND_PURGE }
     val basmala: BasmalaStrategy,
     val basmalaPath: String? = null,
     val timing: TimingRef? = null,          // GAPLESS only; null = untimed (surah-level only)
-    val highlightDisabledSurahs: Set<Int> = emptySet(),   // pipeline output (§5.3)
-    val fallbackRecitationId: String? = null, // same reciter, GAPPED, used for verse-level slices of untimed surahs
+    val highlightDisabledSurahs: Set<SurahId> = emptySet(),   // pipeline output (§5.3)
+    val fallbackRecitationId: RecitationId? = null, // same reciter, GAPPED, used for verse-level slices of untimed surahs
     val licenceStatus: LicenceStatus,
-    val buildEligibility: Set<BuildChannel>,
-    val commercialUse: CommercialUse = CommercialUse.UNKNOWN,
+    val basis: String,                      // free text: why we may use it + evidence reference (D-29)
+    val eligibleTiers: Set<ContentTier>,
+    val commercialOk: Boolean = false,      // false until audited; MONETIZED builds require true (D-17)
+    val fossOk: Boolean = false,            // allowed in the foss distribution flavor (doc 11)
     val attribution: LocalizedText,
     val sourceUrl: String,
-    val licenceEvidence: String? = null,
     val enabled: Boolean = true,            // remote kill-switch
     val killAction: KillAction = KillAction.DISABLE,
     val killMessage: LocalizedText? = null,
@@ -252,29 +258,33 @@ enum class ChecksumType { MD5_MANIFEST, SHA256_MANIFEST }
 
 ### 3.4 Runtime rules
 
-1. **Visibility.** A recitation is visible iff all of these hold:
-   - `enabled`;
-   - `CONTENT_CHANNEL ∈ buildEligibility`;
+1. **Visibility.** A recitation is visible iff doc 04's single filter `ContentPolicy.allows(…)` passes, i.e. all of these hold:
+   - `enabled` and `licenceStatus != REVOKED`;
+   - `BuildConfig.CONTENT_TIER ∈ eligibleTiers`;
    - `appVersionCode ≥ minAppVersionCode`;
-   - for a monetized build (v1.5 supporter IAP, D-17), `commercialUse == ALLOWED`. Until audited this is effectively "never", so CI keeps the IAP build's eligibility rules separate (doc 10/11).
+   - for a monetized build (`BuildConfig.MONETIZED`, v1.5 supporter IAP, D-17), `commercialOk == true`. Until audited this is effectively "never", so CI keeps the monetized build's eligibility rules separate (doc 10/11);
+   - for the `foss` distribution flavor, `fossOk == true`.
 2. **Eligibility invariants** (CI-enforced, doc 10):
-   - `PUBLIC` requires `licenceStatus ∈ {PERMITTED, HOST_GRANT}`.
-   - `PENDING` → at most `{PERSONAL, BETA}`.
+   - `PUBLIC ∈ eligibleTiers` requires `licenceStatus ∈ {PERMITTED, HOST_GRANT}`.
+   - `PENDING` → at most `{PERSONAL, BETA}` (closed-test builds may carry PENDING audio; never PUBLIC; D-12/D-28/D-29).
    - `PERSONAL_ONLY` → `{PERSONAL}` only.
+   - `REVOKED` → `{}` (no tier). On device a `REVOKED` entry behaves like a kill-switch with `DISABLE_AND_PURGE` (rule 4).
 3. **Never pair timing and audio from different edits** (g03 §2.5.4). A `GAPLESS_SURAH` with `timing != null` may list only mirrors with `byteIdentical = true` (CI check). If runtime failover lands on a non-identical mirror, that surah is untimed for the session.
 4. **Kill-switch.** When a recitation becomes `enabled = false`:
    - current playback stops at the end of the current item, with a notice (`killMessage`);
-   - the favourite reverts to `defaults[channel]`;
+   - the favourite reverts to `defaults[BuildConfig.CONTENT_TIER]`;
    - downloads become unplayable at once;
    - with `DISABLE_AND_PURGE` (takedown requests; 48-hour removal promise per g03 template), the files are deleted on the next app open after a one-line notice.
-5. **Default reciter.** `defaults[channel]` = Alafasy 123. If Alafasy Berhad (ai@alafasy.co) refuses, flip `enabled` and set the default to `ghamdi.murattal.mp3q30` with one catalogue publish; no app update is needed.
+5. **Default reciter.** `defaults[tier]` = Alafasy 123. If Alafasy Berhad (ai@alafasy.co) refuses, flip `enabled` and set the default to `ghamdi.murattal.mp3q30` with one catalogue publish; no app update is needed.
 6. **Credits.** Every visible recitation's `attribution` + `sourceUrl` appears in Sources & Credits (F-PL-04) and as a one-line source caption in the full player.
 
 ---
 
 ## 4. v1 catalogue (per D-12)
 
-Sizes and hours are measured (g03 §2.5.1 for mp3quran; r06 §2.3 / §2.8.8 for everyayah). `~` means derived. Folder URLs are verified (`api/v3/ayat_timing/reads`). Average Para size = full / 30.
+Sizes and hours are measured (g03 §2.5.1 for mp3quran; r06 §2.3 / §2.8.8 for everyayah). `~` means derived. Average Para size = full / 30.
+
+**Folder slugs.** Only the slugs of reads **123** (`mishary-alafasy`), **30** (`saad-ghamdi`) and **51** (`abdulbasit-abdulsamad`) are verified (r06 §1.2, g03 sources). Every other slug in §4.1–4.2 (marked †) is illustrative and **to verify in pipeline**: doc 08's catalogue generator takes each read's `folder_url` from mp3quran `api/v3/ayat_timing/reads` at build time and writes it into the catalogue. Never hand-type a slug.
 
 ### 4.1 PUBLIC: gapless mp3quran, with highlighting (licence `HOST_GRANT`, eligibility PERSONAL+BETA+PUBLIC)
 
@@ -283,20 +293,20 @@ Sizes and hours are measured (g03 §2.5.1 for mp3quran; r06 §2.3 / §2.8.8 for 
 | 1 | `alafasy.murattal.mp3q123` | Mishary Alafasy · Murattal (**default**) | 123 · `mishary-alafasy/r1/{sss}.mp3` | 128 / 44.1 CBR | 1.72 GB / 29.8 h | all 114 | PASS (audio-validated); no ayah 0 (implicit intro gap) |
 | 2 | `ghamdi.murattal.mp3q30` | Saad Al-Ghamdi · Murattal | 30 · `saad-ghamdi/r1/{sss}.mp3` | **96 / 22.05** CBR | 1.07 GB / 24.8 h | all | PASS (audio-validated). Same recording as QUL 13, which is not used |
 | 3 | `abdulbasit.mujawwad.mp3q51` | Abdul Basit · Mujawwad | 51 · `abdulbasit-abdulsamad/r1/{sss}.mp3` | 128 / 44.1 | 3.49 GB / 60.6 h | all, after fix | **s9 relabel +1** (ayah 0 → 9:1); ayah 0 = intro in all surahs; onset snap recommended (speech starts +2.1–3.4 s) |
-| 4 | `sudais.murattal.mp3q54` | Abdur-Rahman As-Sudais | 54 · `abdulrahman-sudais/r1/{sss}.mp3` | 128 (s109: 320) | 1.22 GB / 21.2 h | all | Clamp end overshoot s94 (+341 ms), s111 (+330 ms) |
-| 5 | `shatri.murattal.mp3q4` | Abu Bakr Ash-Shatri | 4 · `abubakr-shatri/r1/{sss}.mp3` | 128 | 1.50 GB / 26.1 h | all | Structural PASS; decode check + listening pass before release |
-| 6 | `rifai.murattal.mp3q89` | Hani Ar-Rifai | 89 · `hani-rifai/r1/{sss}.mp3` | 128 | 1.48 GB / 25.7 h | all | Structural PASS; same pre-release check |
-| 7 | `ayyub.murattal.mp3q109` | Muhammad Ayyub | 109 · `muhammad-ayyub/r1/{sss}.mp3` | 96 / 22.05 | 1.40 GB / 32.5 h | all | Structural PASS; King Fahd Complex reciter |
-| 8 | `muhanna.murattal.mp3q159` | Khalid Al-Muhanna | 159 · `khalid-mohanna/r1/{sss}.mp3` | 48 / 22.05 | 0.64 GB / 29.8 h | all | Structural PASS; ayah 0 in 112 surahs (correct); low bitrate, labelled "Data saver" |
+| 4 | `sudais.murattal.mp3q54` | Abdur-Rahman As-Sudais | 54 · `abdulrahman-sudais/r1/{sss}.mp3` † | 128 (s109: 320) | 1.22 GB / 21.2 h | all | Clamp end overshoot s94 (+341 ms), s111 (+330 ms) |
+| 5 | `shatri.murattal.mp3q4` | Abu Bakr Ash-Shatri | 4 · `abubakr-shatri/r1/{sss}.mp3` † | 128 | 1.50 GB / 26.1 h | all | Structural PASS; decode check + listening pass before release |
+| 6 | `rifai.murattal.mp3q89` | Hani Ar-Rifai | 89 · `hani-rifai/r1/{sss}.mp3` † | 128 | 1.48 GB / 25.7 h | all | Structural PASS; same pre-release check |
+| 7 | `ayyub.murattal.mp3q109` | Muhammad Ayyub | 109 · `muhammad-ayyub/r1/{sss}.mp3` † | 96 / 22.05 | 1.40 GB / 32.5 h | all | Structural PASS; King Fahd Complex reciter |
+| 8 | `muhanna.murattal.mp3q159` | Khalid Al-Muhanna | 159 · `khalid-mohanna/r1/{sss}.mp3` † | 48 / 22.05 | 0.64 GB / 29.8 h | all | Structural PASS; ayah 0 in 112 surahs (correct); low bitrate, labelled "Data saver" |
 
 ### 4.2 PUBLIC: gapless mp3quran, highlight off in faulty surahs
 
 | # | Recitation id | Reciter | Read · template | kbps | Full / hours | `highlightDisabledSurahs` (expected; the pipeline's output is authoritative) | Notes |
 |---|---|---|---|---|---|---|---|
-| 9 | `husary.murattal.mp3q118` | Mahmoud Khalil Al-Husary | 118 · `mahmoud-husary/r1/{sss}.mp3` | 128 (s21: 48 kHz) | 2.47 GB / 42.8 h | 1, 21 | s1: ayah 0 swallows the basmala, 1:7 missing. s21: file swapped (+23.8 s) |
-| 10 | `minshawi.murattal.mp3q112` | Muhammad Siddiq Al-Minshawi | 112 · `muhammad-minshawi/r1/{sss}.mp3` | 128 (s53: 192) | 1.67 GB / 28.9 h | 52, 53 (+ **9**, see open issue 1) | s9 relabel +1, but s9 also overshoots by +8,155 ms (> 1 s rule) |
-| 11 | `shuraim.murattal.mp3q31` | Saud Ash-Shuraim | 31 · `saud-shuraim/r1/{sss}.mp3` | 128 | 1.05 GB / 18.3 h | 12, 40, 65, 80, 83, 91 | s9 relabel +1; 65:12 missing; s91 label shift |
-| 12 | `dosari.murattal.mp3q92` | Yasser Ad-Dosari | 92 · `yasser-dosari/r1/{sss}.mp3` | 128 (mixed 44.1/48 kHz, some 192) | 1.44 GB / 25.9 h | 4 | s4 replaced (24 kbps VBR); clamp ≤ +424 ms in 5 short surahs |
+| 9 | `husary.murattal.mp3q118` | Mahmoud Khalil Al-Husary | 118 · `mahmoud-husary/r1/{sss}.mp3` † | 128 (s21: 48 kHz) | 2.47 GB / 42.8 h | 1, 21 | s1: ayah 0 swallows the basmala, 1:7 missing. s21: file swapped (+23.8 s) |
+| 10 | `minshawi.murattal.mp3q112` | Muhammad Siddiq Al-Minshawi | 112 · `muhammad-minshawi/r1/{sss}.mp3` † | 128 (s53: 192) | 1.67 GB / 28.9 h | **9, 52, 53** | s9 is relabelled +1, but its +8,155 ms end overshoot still fails the > 1 s rule, so s9 stays off (open issue 1) |
+| 11 | `shuraim.murattal.mp3q31` | Saud Ash-Shuraim | 31 · `saud-shuraim/r1/{sss}.mp3` † | 128 | 1.05 GB / 18.3 h | 12, 40, 65, 80, 83, 91 | s9 relabel +1; 65:12 missing; s91 label shift |
+| 12 | `dosari.murattal.mp3q92` | Yasser Ad-Dosari | 92 · `yasser-dosari/r1/{sss}.mp3` † | 128 (mixed 44.1/48 kHz, some 192) | 1.44 GB / 25.9 h | 4 | s4 replaced (24 kbps VBR); clamp ≤ +424 ms in 5 short surahs |
 
 **Never used for timing:** read 74 (Huthaify; drops the last ayah in 112 surahs) and read 53 (Abdul Basit Murattal, 32 kbps / 11 kHz). Ajmy read 5 is held until an audio check (s4 and s42 anomalies). Akhdar read 1 and Minshawi-with-children (mp3quran r3) are v1.x.
 
@@ -394,24 +404,24 @@ CREATE TABLE ayah_timing (
 - mp3quran marks each start at the **beginning of the pause** before the ayah. With `onset_snapped = 1`, the pipeline moved starts to `onset − 150 ms` (max shift 1.5 s).
 - Size estimate: ~6,300 rows ≈ 0.3 MB raw, much less gzipped. The `recitation_id` column is constant per file, kept so packs can be merged later.
 
-**Bundling.** The 12 PUBLIC timing packs (§4.1–4.2) ship in `assets/audio/timing/`, about 1–4 MB. Highlighting therefore works offline from first launch. Updates arrive through the pack index (D-10).
+**Bundling.** The 12 PUBLIC timing packs (§4.1–4.2) ship as bundled packs in both tier source sets (`assets/packs/timing/<packId>@<ver>.db`, listed in `bundled.json`; doc 04 §7.7/§11.2), about 1–4 MB in all. `PackManager.ensureBundledInstalled()` copies them to `files/packs/timing/<packId>/<ver>/pack.db`. Highlighting therefore works offline from first launch. Updates arrive through the signed pack index (D-10; downloadable packs land in v1.1 per doc 09, while the signed catalogue's `highlightDisabledSurahs` override works from v1.0).
 
-**Why not Room for packs.** These are fixed read-only files with three queries. Reading them directly through `androidx.sqlite` (`BundledSQLiteDriver`, already in the stack) avoids coupling packs to Room identity hashes. Doc 04 may still choose Room for translation packs.
+**Why not Room for packs.** These are fixed read-only files with three queries. Reading them directly through `androidx.sqlite` (`BundledSQLiteDriver`, already in the stack) avoids coupling packs to Room identity hashes. **Ruling:** timing packs are the one plain-SQLite exception to doc 04's "every pack is built from its Room-exported schema" (no `room_master_table`); they still carry `pack_info` and are verified by sha256 before install. Translation and mushaf packs stay on Room.
 
 ### 5.2 Runtime loading and validation
 
 ```kotlin
 class TimingRepository @Inject constructor(packs: PackStore, private val guard: TimingGuard, private val q: QuranStructure) {
     /** Loads and validates one surah (≤ 287 rows). LRU of 8 surahs per recitation. */
-    suspend fun surah(recId: String, surah: Int): SurahTiming?   // null → untimed for this surah
+    suspend fun surah(recId: RecitationId, surah: SurahId): SurahTiming?   // null → untimed for this surah
 }
-data class SurahTiming(val recId: String, val surah: Int, val introEndMs: Long?,       // start(1) when > 0
+data class SurahTiming(val recId: RecitationId, val surah: SurahId, val introEndMs: Long?,   // start(1) when > 0
                        val starts: LongArray, val ends: LongArray,                    // index 0 = ayah 1
                        val durationMs: Long, val cbr: Boolean)
 ```
 
 **Validation on load.** Any failure → `null`, a local diagnostic is logged, and the surah is treated as untimed.
-1. **Pack level, once at install** (doc 04 pack installer):
+1. **Pack level, once at install** (doc 04 `PackManager` installer):
    - SHA-256 equals the index entry;
    - `pack_info.schema == 1`;
    - `pack_info.recitation_id == recitation.id`;
@@ -439,21 +449,22 @@ The pipeline's `normalise()` (g03 §2.6) emits `highlight_ok = 0` with a reason.
 
 ## 6. Request model
 
-```kotlin
-@Serializable data class AyahKey(val surah: Int, val ayah: Int) : Comparable<AyahKey>  // doc 04 owns; id() = Kufan 1..6236
+Doc 04 §5 publishes these types (FINAL SHARED-TYPES RULING); this doc uses them verbatim. Identity types are doc 04's value types (`VerseKey` is Kufan, `id()` 1..6236; `SurahId`, `ParaId` (Indo-Pak), `ManzilId`, `RukuId` 1..558, `MushafId`, `PageIndex`, `AyahRange(from, to)`, `RecitationId`). There is no `AyahKey` and no raw `Int` id in these APIs.
 
-@Serializable sealed interface PlayScope {
-    @Serializable data class Surah(val surah: Int) : PlayScope
-    @Serializable data class Para(val para: Int) : PlayScope                       // 1..30, Indo-Pak table (D-07)
-    @Serializable data class Manzil(val manzil: Int) : PlayScope                   // 1..7
-    @Serializable data class Ruku(val rukuId: Int) : PlayScope                     // 1..558 (QF/QUL set)
-    @Serializable data class Page(val mushafId: Int, val pageIndex: Int) : PlayScope  // QUL page_index (not label)
-    @Serializable data class AyahRange(val from: AyahKey, val to: AyahKey) : PlayScope
-    @Serializable data class Ayah(val key: AyahKey) : PlayScope
-    @Serializable data class FromHere(val start: AyahKey, val stopAt: StopAt) : PlayScope
+```kotlin
+@Serializable sealed interface PlayScope {                                        // :core:model (doc 04 owns)
+    @Serializable data class Surah(val surah: SurahId) : PlayScope
+    @Serializable data class Para(val para: ParaId) : PlayScope                    // Indo-Pak table (D-07)
+    @Serializable data class Manzil(val manzil: ManzilId) : PlayScope
+    @Serializable data class Ruku(val ruku: RukuId) : PlayScope
+    @Serializable data class Page(val mushaf: MushafId, val page: PageIndex) : PlayScope   // PageIndex, not the label
+    @Serializable data class Range(val range: AyahRange) : PlayScope
+    @Serializable data class Ayah(val key: VerseKey) : PlayScope
+    @Serializable data class FromHere(val start: VerseKey, val until: Until = Until.CONTINUOUS) : PlayScope
+    @Serializable data class Passage(val ranges: List<AyahRange>, val titleRes: String) : PlayScope  // multi-range, played in list order
     @Serializable data object Quran : PlayScope                                    // 1:1..114:6, windowed
 }
-enum class StopAt { END_OF_SURAH, END_OF_PARA, CONTINUOUS }        // setting; default CONTINUOUS
+enum class Until { END_OF_SURAH, END_OF_PARA, CONTINUOUS }   // default CONTINUOUS: "play from here" runs until stopped
 
 @Serializable sealed interface PauseRule {
     @Serializable data object None : PauseRule
@@ -467,49 +478,56 @@ enum class StopAt { END_OF_SURAH, END_OF_PARA, CONTINUOUS }        // setting; d
     val cumulative: Boolean = false,    // hifz chain 1, 1–2, 1–3 … (F-CP-12, P3)
 )
 @Serializable data class PlayRequest(
-    val recitationId: String,
     val scope: PlayScope,
+    val recitation: RecitationId? = null,       // null = favourite; PlaybackController resolves it before encoding the plan id
     val repeat: RepeatSpec = RepeatSpec(),
-    val translationVoiceId: String? = null,   // F-AU-10 (PERSONAL builds)
-    val tier: QualityTier? = null,            // null → policy (§8.4)
-    val startAt: AyahKey? = null,             // resume / "start at this ayah inside the scope"
+    val speed: Float = 1f,                      // initial speed; callers pass settings.audio.speed (§10.2)
+    val translationVoice: RecitationId? = null, // F-AU-10 (PERSONAL builds)
+    val startAt: VerseKey? = null,              // resume / "start at this ayah inside the scope"; must lie inside the scope
+    val startOffsetMs: Long = 0,                // resume: offset into startAt's ayah (first repetition, first pass)
 )
 ```
+
+- **Recitation resolution.** `PlaybackControllerImpl.play()` replaces `recitation = null` with the current favourite, so the plan media id, `PlaybackResume` and the "Continue listening" card always carry a concrete `RecitationId`. A later favourite change never alters a resumed plan.
+- **Quality tier** is not part of the request: `QualityPolicy.tierFor(rec)` decides it from settings and the network (§8.4).
+- **Speed** in the request is applied once at start; a speed change during playback calls `setPlaybackSpeed` and persists `settings.audio.speed` (§10.2).
 
 Where requests come from:
 
 | Entry point | Request |
 |---|---|
-| Surah row Play (F-IX-01) | `Surah(s)` |
-| Para row (F-IX-02) | `Para(n)` |
-| Manzil row (F-IX-03) | `Manzil(m)` |
-| Ruku nav (F-IX-04) | `Ruku(id)` |
-| Reader toolbar "Play page" | `Page(mushaf, idx)` |
-| Ayah sheet (F-RD-04) | "Play from here" → `FromHere(key, settings.stopAt)`; "Play this ayah" → `Ayah(key)`; "Play range…" → `AyahRange` |
-| Quick-access (F-IX-08) | Ayatul Kursi = `Ayah(2:255)`; last two ayat of Baqarah = `AyahRange(2:285, 2:286)`; Manzil dua = the alias table's range |
+| Surah row Play (F-IX-01) | `Surah(SurahId(s))` |
+| Para row (F-IX-02) | `Para(ParaId(n))` |
+| Manzil row (F-IX-03) | `Manzil(ManzilId(m))` |
+| Ruku nav (F-IX-04) | `Ruku(RukuId(id))` |
+| Reader toolbar "Play page" | `Page(mushaf, pageIndex)` |
+| Ayah sheet (F-RD-04) | "Play from here" → `FromHere(key, settings.audio.playFromHereUntil)` (default `CONTINUOUS`); "Play this ayah" → `Ayah(key)`; "Play range…" → `Range(AyahRange(from, to))` |
+| Quick-access (F-IX-08) | Ayatul Kursi = `Ayah(2:255)`; last two ayat of Baqarah = `Range(2:285..2:286)`; Manzil dua = `Passage(ranges = passage("manzil-dua").ranges /* 18 ranges, 79 ayahs */, titleRes = "passage_manzil_dua")` from the content DB `Passage` table (doc 04 §5.3) |
+| Listen tab "Whole Quran" | `Quran` |
+| Home "Continue listening" / `onPlaybackResumption` | the saved request with `startAt` + `startOffsetMs` (§10.3) |
 
 ---
 
 ## 7. PlanExpander
 
-`PlanExpander` lives in `:core:domain`. It is pure and deterministic: the same catalogue, timing versions and request always give the same items. It takes synchronous lookups only. The service first calls `timingRepository.prefetch(recId, surahsOf(range))`, then expands.
+`PlanExpander` lives in `:core:audio` (doc 04's module table) but is written as pure Kotlin with no `android.*` or Media3 imports, so its tests are plain JVM unit tests. It is deterministic: the same catalogue, timing versions and request always give the same items. It takes synchronous lookups only. The service first calls `timingRepository.prefetch(recId, surahsOf(ranges))`, then expands.
 
 ```kotlin
-interface QuranStructure {                          // implemented in :core:data from quran_content.db, loaded once into memory
-    fun ayahCount(surah: Int): Int
-    fun paraStart(para: Int): AyahKey                // Indo-Pak table: P4 = 3:92 …
-    fun manzilStart(manzil: Int): AyahKey            // 1:1, 5:1, 10:1, 17:1, 26:1, 37:1, 50:1
-    fun ruku(id: Int): ClosedRange<AyahKey>
-    fun pageRange(mushafId: Int, pageIndex: Int): ClosedRange<AyahKey>   // ayah of first word .. ayah of last word
-    fun paraOf(key: AyahKey): Int
-    fun prev(key: AyahKey): AyahKey?; fun next(key: AyahKey): AyahKey?
-    val last: AyahKey                                // 114:6
+interface QuranStructure {      // :core:domain; impl in :core:data = doc 04 QuranMeta + rukus/pages from quran_content.db and the layout pack, loaded once
+    fun ayahCount(surah: SurahId): Int
+    fun paraStart(para: ParaId): VerseKey            // Indo-Pak table: P4 = 3:92 …
+    fun manzilStart(manzil: ManzilId): VerseKey      // 1:1, 5:1, 10:1, 17:1, 26:1, 37:1, 50:1
+    fun ruku(id: RukuId): AyahRange
+    fun pageRange(mushaf: MushafId, page: PageIndex): AyahRange   // first ayah STARTING on the page (or the ayah the page begins inside) .. ayah of last word
+    fun paraOf(key: VerseKey): ParaId
+    fun prev(key: VerseKey): VerseKey?; fun next(key: VerseKey): VerseKey?
+    val last: VerseKey                               // 114:6
 }
-interface TimingIndex { fun surah(recId: String, surah: Int): SurahTiming? }     // prefetched, guard-aware
+interface TimingIndex { fun surah(recId: RecitationId, surah: SurahId): SurahTiming? }     // prefetched, guard-aware
 
 enum class ItemKind { INTRO, BASMALA, AYAH, TRANSLATION, SURAH_CLIP, RANGE_CLIP }
-data class PlayItem(
-    val seq: Int, val recitationId: String, val tier: QualityTier, val kind: ItemKind,
+data class PlayItem(                                         // internal to :core:audio (raw ints are fine here)
+    val seq: Int, val recitationId: RecitationId, val tier: QualityTier, val kind: ItemKind,
     val surah: Int, val firstAyah: Int, val lastAyah: Int,   // AYAH/TRANSLATION: first == last; INTRO/BASMALA: 0
     val clipStartMs: Long = 0, val clipEndMs: Long? = null,  // null = end of source; gapped items unclipped
     val rep: Int = 1, val repOf: Int = 1, val pass: Int = 1,
@@ -517,23 +535,31 @@ data class PlayItem(
 )
 data class ExpandedPlan(val request: PlayRequest, val items: List<PlayItem>, val repeatMode: Int /*Player.REPEAT_MODE_*/,
                         val pauseRule: PauseRule, val window: SurahWindow?, val warnings: List<PlanWarning>,
-                        val title: PlanTitle, val estDurationMs: Long?)
-sealed interface PlanError { data class UnknownRecitation(val id: String); data class NotEligible(val id: String)
-    data class VerseLevelUnavailable(val surah: Int, val alternatives: List<String>); data class InvalidScope(val why: String) }
-sealed interface PlanWarning { data class HighlightOff(val surah: Int); data class UsedVerseByVerse(val surah: Int, val recId: String) }
+                        val title: PlanTitle, val estDurationMs: Long?,
+                        val startItemIndex: Int, val startPositionMs: Long)   // where playback begins (startAt + startOffsetMs)
+sealed interface PlanError { data class UnknownRecitation(val id: RecitationId); data class NotEligible(val id: RecitationId)
+    data class VerseLevelUnavailable(val surah: SurahId, val alternatives: List<RecitationId>); data class InvalidScope(val why: String) }
+sealed interface PlanWarning { data class HighlightOff(val surah: SurahId); data class UsedVerseByVerse(val surah: SurahId, val recId: RecitationId) }
 ```
 
 ### 7.1 Top-level algorithm
 
 ```kotlin
-fun expand(req: PlayRequest, window: SurahWindow? = null): Outcome<ExpandedPlan> {
-    val rec = catalogue[req.recitationId] ?: return Err(UnknownRecitation(req.recitationId))
+fun expand(req: PlayRequest, window: SurahWindow? = null): AppResult<ExpandedPlan> {
+    val recId = req.recitation ?: return Err(InvalidScope("recitation not resolved"))   // controller resolves the favourite first (§6)
+    val rec = catalogue[recId] ?: return Err(UnknownRecitation(recId))
     if (!catalogue.isVisible(rec)) return Err(NotEligible(rec.id))
-    val voice = req.translationVoiceId?.let { catalogue[it]?.takeIf(catalogue::isVisible) }
-    val range = resolve(req.scope) ?: return Err(InvalidScope(...))            // §7.2
-    val tier = req.tier ?: policy.tierFor(rec)                                  // §8.4
-    val slices = sliceBySurah(range)                                            // [(s, a0, a1)]
-    val win = window ?: if (estimateItems(rec, slices, req) > 1_200) SurahWindow(firstIdx = 0, count = 2) else null
+    val voice = req.translationVoice?.let { catalogue[it]?.takeIf(catalogue::isVisible) }
+    val ranges = resolve(req.scope) ?: return Err(InvalidScope(...))           // §7.2; List<AyahRange> (Passage → many)
+    val start = req.startAt
+    if (start != null && ranges.none { start in it }) return Err(InvalidScope("startAt outside scope"))
+    val tier = policy.tierFor(rec)                                              // §8.4
+    val slices = ranges.flatMap(::sliceBySurah)                                 // [(s, a0, a1)] in scope order
+    val startSlice = start?.let { k -> slices.indexOfFirst { k in it } } ?: 0   // resume lands in the right window
+    val needsWindow = req.scope is PlayScope.Quran ||
+        (req.scope is PlayScope.FromHere && req.scope.until == Until.CONTINUOUS) ||
+        estimateItems(rec, slices, req) > 1_200
+    val win = window ?: if (needsWindow) SurahWindow(firstIdx = startSlice, count = 2) else null
     val items = mutableListOf<PlayItem>(); val warnings = mutableListOf<PlanWarning>()
     for (slice in win?.let { slices.subList(it.firstIdx, min(it.firstIdx + it.count, slices.size)) } ?: slices) {
         when (val strategy = chooseStrategy(rec, slice, req)) {                 // §7.6
@@ -542,37 +568,51 @@ fun expand(req: PlayRequest, window: SurahWindow? = null): Outcome<ExpandedPlan>
         }
     }
     val (finalItems, repeatMode) = applyRangeRepeat(items, req.repeat.rangeTimes, windowed = win != null)
-    return Ok(ExpandedPlan(req, finalItems.renumbered(), repeatMode, req.repeat.pauseAfterAyah, win, warnings, title(req), estimate(finalItems)))
+    val numbered = finalItems.renumbered()
+    // Start item: the first item (pass 1, rep 1) that contains startAt; a clip may contain several ayahs.
+    val startIdx = if (start == null || window != null) 0
+                   else numbered.indexOfFirst { it.pass == 1 && it.rep == 1 && it.covers(start) }.coerceAtLeast(0)
+    val startPos = if (start == null || window != null) 0L
+                   else numbered[startIdx].offsetOf(start, timings) + req.startOffsetMs   // clip: start(a) − clipStart; per-ayah item: 0
+    return Ok(ExpandedPlan(req, numbered, repeatMode, req.repeat.pauseAfterAyah, win, warnings, title(req),
+                           estimate(numbered), startItemIndex = startIdx, startPositionMs = startPos))
 }
 
-fun sliceBySurah(r: ClosedRange<AyahKey>) = (r.start.surah..r.endInclusive.surah).map { s ->
-    Slice(s, a0 = if (s == r.start.surah) r.start.ayah else 1,
-             a1 = if (s == r.endInclusive.surah) r.endInclusive.ayah else q.ayahCount(s))
+fun sliceBySurah(r: AyahRange) = (r.from.surah..r.to.surah).map { s ->
+    Slice(s, a0 = if (s == r.from.surah) r.from.ayah else 1,
+             a1 = if (s == r.to.surah) r.to.ayah else q.ayahCount(SurahId(s)))
 }
 ```
 
+- **`startAt` / `startOffsetMs`.** Non-windowed plans materialise the whole scope and start at `startItemIndex` / `startPositionMs`, so "previous ayah" still works before the resume point. Windowed plans (`Quran`, `FromHere(CONTINUOUS)`, > 1,200 items) open the window **at the slice containing `startAt`**, so resuming Para 30 gapped at 112:1 or the whole Quran at 36:1 materialises the right surahs. Appended windows (`window != null`) always start at index 0 of the appended part.
+- **Passage.** Each range is sliced by surah and emitted in list order; basmala rules (§7.4) apply per slice, so a Passage slice starting at ayah 1 of a surah ≠ 1, 9 gets a basmala item in gapped mode. The Manzil dua (18 ranges, 79 ayahs) is one plan.
+
 ### 7.2 Scope resolution (pseudocode per scope)
 
+This is doc 04's `ResolvePlayScope` in `:core:domain`; `PlanExpander` calls the same pure function. It returns a **list** of ranges so that `Passage` is expressible (doc 04 must widen its return type from `AyahRange` to `List<AyahRange>`).
+
 ```kotlin
-fun resolve(scope: PlayScope): ClosedRange<AyahKey>? = when (scope) {
-    is Surah     -> AyahKey(scope.surah, 1)..AyahKey(scope.surah, q.ayahCount(scope.surah))
+fun resolve(scope: PlayScope): List<AyahRange>? = when (scope) {
+    is Surah     -> listOf(AyahRange(VerseKey(scope.surah.value, 1), VerseKey(scope.surah.value, q.ayahCount(scope.surah))))
     is Para      -> {                                                    // crosses surah boundaries
         val start = q.paraStart(scope.para)                              // P4 → 3:92 (NOT Madani 3:93)
-        val end = if (scope.para == 30) q.last else q.prev(q.paraStart(scope.para + 1))!!   // P4 → 4:23
-        start..end
+        val end = if (scope.para.value == 30) q.last else q.prev(q.paraStart(ParaId(scope.para.value + 1)))!!   // P4 → 4:23
+        listOf(AyahRange(start, end))
     }
-    is Manzil    -> q.manzilStart(scope.manzil)..(if (scope.manzil == 7) q.last else q.prev(q.manzilStart(scope.manzil + 1))!!)
-    is Ruku      -> q.ruku(scope.rukuId)
-    is Page      -> q.pageRange(scope.mushafId, scope.pageIndex)         // from the mushaf layout pack's verse range;
-                                                                         // includes the ayah continuing from the previous page
-    is AyahRange -> if (scope.from <= scope.to) scope.from..scope.to else null
-    is Ayah      -> scope.key..scope.key
-    is FromHere  -> scope.start..when (scope.stopAt) {
-        StopAt.END_OF_SURAH -> AyahKey(scope.start.surah, q.ayahCount(scope.start.surah))
-        StopAt.END_OF_PARA  -> resolve(Para(q.paraOf(scope.start)))!!.endInclusive
-        StopAt.CONTINUOUS   -> q.last                                    // windowed (estimate > 1,200 items or > 2 surahs gapless)
-    }
-    Quran        -> AyahKey(1, 1)..q.last
+    is Manzil    -> listOf(AyahRange(q.manzilStart(scope.manzil),
+                        if (scope.manzil.value == 7) q.last else q.prev(q.manzilStart(ManzilId(scope.manzil.value + 1)))!!))
+    is Ruku      -> listOf(q.ruku(scope.ruku))
+    is Page      -> listOf(q.pageRange(scope.mushaf, scope.page))        // from the mushaf layout pack's verse range; a page that
+                                                                         // begins mid-ayah starts at that ayah, from its start
+    is Range     -> scope.range.takeIf { it.from <= it.to }?.let(::listOf)
+    is Ayah      -> listOf(AyahRange(scope.key, scope.key))
+    is FromHere  -> listOf(AyahRange(scope.start, when (scope.until) {
+        Until.END_OF_SURAH -> VerseKey(scope.start.surah, q.ayahCount(SurahId(scope.start.surah)))
+        Until.END_OF_PARA  -> resolve(Para(q.paraOf(scope.start)))!!.single().to
+        Until.CONTINUOUS   -> q.last                                     // windowed; runs until stopped (or 114:6)
+    }))
+    is Passage   -> scope.ranges.takeIf { it.isNotEmpty() && it.all { r -> r.from <= r.to } }   // list order kept; overlaps allowed
+    Quran        -> listOf(AyahRange(VerseKey(1, 1), q.last))            // windowed
 }
 ```
 
@@ -655,8 +695,8 @@ Item counts (test fixtures):
 | Feature | Gapped | Gapless |
 |---|---|---|
 | **Ayah ×N** | N duplicated items (`rep/repOf`); the notification shows "2/3" | Per-ayah clips duplicated N× (§7.3) |
-| **Range ×M** | If `items × M ≤ 2,000`: duplicate the whole list with `pass = 1..M`. Else, or when windowed: `REPEAT_MODE_ALL` + `RepeatController` counts wraps in `onMediaItemTransition(reason = REPEAT)` and stops after M passes | Same, on clip items |
-| **Range ∞** | `rangeTimes = 0` → `REPEAT_MODE_ALL` (`REPEAT_MODE_ONE` when the plan has one item) | Same |
+| **Range ×M** | If `items × M ≤ 2,000` and not windowed: duplicate the whole list with `pass = 1..M`. Else, if not windowed: `REPEAT_MODE_ALL` + `RepeatController` counting passes (rule below) and stopping after M. Windowed: see the windowing bullets | Same, on clip items |
+| **Range ∞** | `rangeTimes = 0` → `REPEAT_MODE_ALL` (`REPEAT_MODE_ONE` when the plan has one item); windowed plans restart window 0 at the end | Same |
 | **Pause after ayah** | `exo.setPauseAtEndOfMediaItems(true)`. `HifzPauseController` sees `onPlayWhenReadyChanged(false, PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM)`, then `postDelayed(play, d)` | Same (forces per-ayah clips) |
 | **Cumulative chain** (P3) | `cumulativeChain(a0,a1)` = [[a0],[a0,a0+1],…] | Same |
 | **Interleave** (F-AU-10) | Arabic ×N, then the Urdu voice ×1 | Same (forces per-ayah clips) |
@@ -670,7 +710,13 @@ Item counts (test fixtures):
 **Windowing** applies to `FromHere(CONTINUOUS)`, `Quran`, and any plan estimated at > 1,200 items (a full gapped Quran is 6,348 items).
 - The window materialises the current surah slice plus the next one.
 - On `onMediaItemTransition` into the last window surah, the service calls `expand(req, window.advance())` and `player.addMediaItems(...)`. Appends never change existing indices, so scheduled `PlayerMessage`s stay valid.
-- A range ×M on a windowed plan uses the counter path: the plan restarts from window 0.
+- A range ×M (or ∞) on a windowed plan never uses `REPEAT_MODE_ALL`, because the playlist only holds the current window. When the **last** window reaches `STATE_ENDED`, `RepeatController` increments `rangePass` and, if passes remain, calls `setMediaItems(expand(req.copy(startAt = null), SurahWindow(0, 2)).items, 0, 0)`.
+
+**Pass counting** (`RepeatController`, non-windowed `REPEAT_MODE_ALL` / `ONE` plans). Media3 reports `MEDIA_ITEM_TRANSITION_REASON_REPEAT` only when the **same** item repeats; a last→first wrap of a multi-item playlist under `REPEAT_MODE_ALL` arrives as `MEDIA_ITEM_TRANSITION_REASON_AUTO`. So a pass completes when:
+- `reason == AUTO && newIndex < previousIndex` (multi-item wrap), or
+- `reason == REPEAT` (one-item plan under `REPEAT_MODE_ONE`).
+
+User seeks (`reason == SEEK`) never count. When the wrap into pass M is seen (`rangePass` becomes M), the controller sets `REPEAT_MODE_OFF`, so the playlist ends naturally after its last item and the hub emits `PlaybackEvent.PlanEnded`. `rangeTimes = 0` never switches the mode off.
 
 **Mid-playback changes.**
 - Repeat or interleave changes re-expand the plan, find the item for the current ayah (rep 1), and call `setMediaItems(items, idx, offsetIntoAyah)`.
@@ -683,21 +729,21 @@ fun chooseStrategy(rec, slice, req): Strategy {
     if (rec.layout == GAPPED_AYAH) return Strategy.Gapped(rec)
     val whole = slice.a0 == 1 && slice.a1 == q.ayahCount(slice.surah)
     val needsPerAyah = req.repeat.ayahTimes > 1 || req.repeat.pauseAfterAyah != PauseRule.None ||
-                       req.repeat.cumulative || req.translationVoiceId != null
-    val t = timings.surah(rec.id, slice.surah)          // null if no pack, disabled, invalid, or guard failed
+                       req.repeat.cumulative || req.translationVoice != null
+    val t = timings.surah(rec.id, SurahId(slice.surah)) // null if no pack, disabled, invalid, or guard failed
     return when {
         t != null && needsPerAyah -> Strategy.PerAyahClips(t)
         t != null                 -> Strategy.Clip(t)
-        whole && !needsPerAyah    -> Strategy.Clip(null).also { warn(HighlightOff(slice.surah)) }   // surah-level, no highlight
-        else -> catalogue.fallbackFor(rec)?.let { Strategy.Gapped(it).also { warn(UsedVerseByVerse(slice.surah, it.id)) } }
-             ?: Strategy.Error(VerseLevelUnavailable(slice.surah, catalogue.alternativesWithAyahGranularity(rec.reciterId)))
+        whole && !needsPerAyah    -> Strategy.Clip(null).also { warn(HighlightOff(SurahId(slice.surah))) }   // surah-level, no highlight
+        settings.verseFallbackConsent ->                  // the user agreed once (sheet below); otherwise ask first (doc 01 F-AU-03)
+            catalogue.fallbackFor(rec)?.let { Strategy.Gapped(it).also { warn(UsedVerseByVerse(SurahId(slice.surah), it.id)) } }
+                ?: Strategy.Error(VerseLevelUnavailable(SurahId(slice.surah), catalogue.alternativesWithAyahGranularity(rec.reciterId)))
+        else -> Strategy.Error(VerseLevelUnavailable(SurahId(slice.surah), catalogue.alternativesWithAyahGranularity(rec.reciterId)))
     }
 }
 ```
 
-**UX rule.** A verse-level scope in an untimed surah never silently plays the whole surah. Two cases arise:
-- **A visible gapped fallback exists** (PERSONAL/BETA): it is used for that slice, and the player shows "Verse-by-verse audio used for An-Nisa".
-- **No fallback exists:** the request fails with a sheet: "Verse-level playback isn't available for An-Nisa with Yasser Ad-Dosari", plus buttons for alternative qaris.
+**UX rule** (doc 01 F-AU-03: fall back only after asking). A verse-level scope in an untimed or kill-switched surah never silently plays the whole surah or another recitation. The request first fails with a sheet: "Timing isn't available for An-Nisa with Yasser Ad-Dosari — play with Alafasy?", with buttons for the alternative timed qaris, **[Play the whole surah]**, and, when a visible gapped fallback of the same reciter exists (PERSONAL/BETA builds while it is `PENDING`), **[Verse-by-verse with this qari]** plus a "remember" checkbox that sets `settings.audio.verseFallbackConsent`. With consent, later plans use the fallback for that slice only, and the player shows "Verse-by-verse audio used for An-Nisa".
 
 Qari Sadaqat Ali (untimed) therefore supports Surah scopes and any Para or Manzil whose boundaries are whole surahs (e.g. Para 30, Manzil 7).
 
@@ -709,7 +755,7 @@ Qari Sadaqat Ali (untimed) therefore supports Surah scopes and any Para or Manzi
 
 ```kotlin
 @AndroidEntryPoint
-class QuranPlaybackService : MediaLibraryService() {
+class PlaybackService : MediaLibraryService() {          // doc 04 name; com.chughtai.criterion.core.audio.PlaybackService
     @Inject lateinit var playerFactory: QuranPlayerFactory
     @Inject lateinit var callback: QuranSessionCallback
     @Inject lateinit var tracker: AyahTracker
@@ -746,9 +792,9 @@ class QuranPlaybackService : MediaLibraryService() {
 | Callback | Behaviour |
 |---|---|
 | `onConnect` | **App package:** default session and player commands plus the custom commands. **External controllers** (SystemUI, BT, Auto): default commands plus `TOGGLE_REPEAT_AYAH` and `SLEEP_TIMER` buttons. |
-| `onSetMediaItems(…, items, startIndex, startPositionMs)` | If `items.single().mediaId` starts with `plan:`: decode, prefetch timings, `PlanExpander.expand`, `MediaItemMapper.map`, then return `MediaItemsWithStartPosition(items, idx(startAt), offset)`. Bridge coroutine to `ListenableFuture` with `serviceScope.future {}` (kotlinx-coroutines-guava 1.11.0). On a `PlanError`: fail the future with `SessionError` and post the error to the hub. |
+| `onSetMediaItems(…, items, startIndex, startPositionMs)` | If `items.single().mediaId` starts with `plan:`: decode, prefetch timings, `PlanExpander.expand`, `MediaItemMapper.map`, then return `MediaItemsWithStartPosition(items, plan.startItemIndex, plan.startPositionMs)` (§7.1: derived from `startAt` + `startOffsetMs`; both 0 for a fresh plan). Bridge coroutine to `ListenableFuture` with `serviceScope.future {}` (kotlinx-coroutines-guava 1.11.0). On a `PlanError`: fail the future with `SessionError` and post the error to the hub. |
 | `onAddMediaItems` | Same resolution, for Auto search in P3. |
-| `onPlaybackResumption(session, controller, isForPlayback)` | Load `PlaybackResume`, re-expand, start at `(verseKey, offsetMs)` (§10.3). |
+| `onPlaybackResumption(session, controller, isForPlayback)` | Load `PlaybackResume`, re-expand `request.copy(startAt = verseKey, startOffsetMs = offsetIntoAyahMs)` (§10.3). |
 | `onCustomCommand` | `criterion.TOGGLE_REPEAT_AYAH` (×1 ↔ ×3, the last-used N); `criterion.SET_REPEAT` (args `repeat` = RepeatSpec JSON); `criterion.SET_SLEEP_TIMER` (args `spec` JSON) / `criterion.CANCEL_SLEEP`; `criterion.SET_DUCKING` (bool); `criterion.SET_SKIP_MODE` (AYAH/SURAH) |
 | `onGetLibraryRoot` / `onGetChildren` / `onGetItem` | §8.9 |
 
@@ -824,7 +870,7 @@ val quranDataSourceFactory = ResolvingDataSource.Factory(routed) { spec ->
 - **Tier policy** (`QualityPolicy.tierFor(rec)`):
   - On Wi-Fi: `STANDARD`, else the highest tier that exists.
   - On a metered network: `LOW` when it exists ("Data saver" on by default for cellular). mp3quran rows have a single tier.
-  - `settings.streamOnCellular ∈ {ALLOW (default), ASK, NEVER}`. ASK shows a one-time sheet with the estimated MB.
+  - `settings.audio.streamOnCellular ∈ {ASK (default), ALLOW, NEVER}`. ASK shows doc 02's `audio_mobile_data` sheet with the estimated MB once per app session; the answer holds until the process ends.
 - **Data cost shown** = kbps × 0.45 MB/h: 128 kbps ≈ 58 MB/h, 96 ≈ 43, 64 ≈ 29, 48 ≈ 22 (r06 §2.6 rule of thumb).
 
 ### 8.5 `MediaItemMapper`
@@ -875,9 +921,9 @@ It extends Media3's `ForwardingSimpleBasePlayer`, the state-consistent forwardin
 
 ### 8.8 Compose UI (`:feature:audio`, visuals per doc 02)
 
-- **Controller connection.** `AudioControllerImpl` (in `:core:audio`) builds `MediaController.Builder(ctx, SessionToken(ctx, ComponentName(ctx, QuranPlaybackService::class.java))).buildAsync()`. It connects on `ProcessLifecycleOwner` ON_START and releases on ON_STOP (it never holds the service alive). The resulting `MediaController` is the `Player` passed to the composables.
+- **Controller connection.** `PlaybackControllerImpl` (in `:core:audio`) builds `MediaController.Builder(ctx, SessionToken(ctx, ComponentName(ctx, PlaybackService::class.java))).buildAsync()`. It connects on `ProcessLifecycleOwner` ON_START and releases on ON_STOP (it never holds the service alive). The resulting `MediaController` is the `Player` handed to the composables through doc 04's `PlaybackController.playerForUi()`.
 - **Components.** Use `media3-ui-compose-material3` 1.11.1: `MiniController`, `ProgressSlider`, `PlaybackSpeedToggleButton` and `PlaybackSpeedControl` (r06 §2.7). Wrap them in `:core:designsystem` styling. If `MiniController`'s slots can't carry the ayah line and repeat badge, build the bar from the `media3-ui-compose` button state holders instead.
-- **Positions.** The UI reads `player.currentPosition` on a 250 ms tick only while visible. Positions never pass through the hub.
+- **Positions.** The UI reads `player.currentPosition` on a 250 ms tick only while visible. The hub never ticks: `PlaybackState.positionMs` is a sample taken at emission time, which the reader extrapolates with `speed` (§9.2).
 
 ```
 Mini player (above bottom nav / in reader chrome)
@@ -920,10 +966,10 @@ Full player sheet
 | Clip without timing | `Segment.SurahOnly(s)`, highlight off |
 
 ```kotlin
-exo.createMessage { _, payload -> hub.onAyah(payload as AyahKey) }
+exo.createMessage { _, payload -> hub.onAyah(payload as VerseKey) }
     .setLooper(Looper.getMainLooper())
     .setPosition(itemIndex, max(0, start(a) - clipStart))
-    .setPayload(AyahKey(s, a))
+    .setPayload(VerseKey(s, a))
     .setDeleteAfterDelivery(false)
     .send()
 ```
@@ -936,45 +982,72 @@ exo.createMessage { _, payload -> hub.onAyah(payload as AyahKey) }
 
 **Alternatives considered.** Polling `currentPosition` every 100 ms (quran_android's approach) costs main-thread wakeups and up to 100 ms of jitter. PlayerMessages are exact and idle-free.
 
-### 9.2 `PlaybackStateHub` contract (`:core:audio-api`)
+### 9.2 `PlaybackStateHub` contract (`:core:domain`; impl `PlaybackStateHubImpl` in `:core:audio`)
+
+This is the one shape in the FINAL SHARED-TYPES RULING (doc 04 publishes it; docs 02, 05, 07 consume it). `PlaybackController.state` **is** `hub.state`.
 
 ```kotlin
-interface PlaybackStateHub { val nowPlaying: StateFlow<NowPlaying>; val events: SharedFlow<PlaybackEvent> }
+interface PlaybackStateHub { val state: StateFlow<PlaybackState>; val events: SharedFlow<PlaybackEvent> }
 
-data class NowPlaying(
+data class PlaybackState(
     val status: Status,                       // IDLE, PREPARING, BUFFERING, PLAYING, PAUSED, ENDED, ERROR
     val planId: Long?,                        // changes on every new plan
     val request: PlayRequest?,
-    val recitationId: String?,
-    val segment: Segment?,                    // Intro(s) | Basmala(s) | Ayah(key, rep, repOf) | Translation(key) | SurahOnly(s)
+    val recitation: RecitationId?,
+    val segment: Segment?,                    // Intro | Basmala | Ayah(key, rep, repOf) | Translation(key) | SurahOnly
     val highlight: HighlightTarget?,          // what the reader should paint; null = nothing
     val highlightAvailable: Boolean,          // false → reader shows "highlighting off for this surah"
-    val rangePass: Int, val rangeOf: Int,     // 0 = infinite
+    val ayahStartMs: Long?, val ayahEndMs: Long?,  // current ayah in the current item's time base; null when untimed
+    val positionMs: Long,                     // player.currentPosition sampled at emission (never ticked)
+    val durationMs: Long,                     // current item (clip) duration; 0 while unknown
+    val ayahRep: Int, val ayahRepOf: Int,     // "2/3"
+    val rangePass: Int, val rangeOf: Int,     // rangeOf 0 = infinite
     val speed: Float,
     val sleep: SleepTimerState?,
     val error: AudioError?,
     val seq: Long,                            // increments on every emission (animation keys)
-)
-sealed interface HighlightTarget {
-    data class Ayah(val key: AyahKey) : HighlightTarget            // also used while its TRANSLATION item plays
-    data class BasmalaLine(val surah: Int) : HighlightTarget       // BASMALA item, or INTRO of surahs ≠ 1, 9
-    // v1.x: data class Word(val key: AyahKey, val tokenOrdinal: Int)
+) {
+    val isPlaying get() = status == Status.PLAYING
+    enum class Status { IDLE, PREPARING, BUFFERING, PLAYING, PAUSED, ENDED, ERROR }
 }
-sealed interface PlaybackEvent { data class AyahCompleted(val key: AyahKey, val recId: String, val atEpochMs: Long) : PlaybackEvent }
+sealed interface Segment {
+    data class Intro(val surah: SurahId) : Segment
+    data class Basmala(val surah: SurahId) : Segment
+    data class Ayah(val key: VerseKey, val rep: Int, val repOf: Int) : Segment
+    data class Translation(val key: VerseKey) : Segment
+    data class SurahOnly(val surah: SurahId) : Segment        // untimed clip
+}
+sealed interface HighlightTarget {
+    data class Ayah(val key: VerseKey) : HighlightTarget            // also used while its TRANSLATION item plays
+    data class BasmalaLine(val surah: SurahId) : HighlightTarget    // BASMALA item, or INTRO of surahs ≠ 1, 9
+    // v1.x (F-AU-12): data class Word(val key: VerseKey, val wordId: WordIndex) : HighlightTarget
+}
+sealed interface PlaybackEvent {
+    data class AyahCompleted(val key: VerseKey, val recitation: RecitationId, val atEpochMs: Long) : PlaybackEvent
+    data object PlanEnded : PlaybackEvent
+    data class Error(val error: AudioError) : PlaybackEvent
+}
 ```
+
+**Time fields** (consumed by doc 05 §8.6's proportional page turn). All three share the time base of `player.currentPosition` for the current item:
+- timed gapless clip: `ayahStartMs = start(a) − clipStart`, `ayahEndMs = end(a) − clipStart` (from `SurahTiming`);
+- gapped item or per-ayah clip: `ayahStartMs = 0`, `ayahEndMs = item duration` (`durationMs`);
+- untimed clip, INTRO, BASMALA: `null`.
+
+The reader computes the live position as `positionMs + (now − emittedAt) × speed` while `isPlaying`.
 
 **Contract.**
 1. It is updated only on the main thread.
-2. It emits on segment, status, plan, sleep or error changes; **never on position ticks** (≤ a few emissions per second).
+2. It emits on segment, status, plan, repeat-counter, speed, sleep or error changes; **never on position ticks** (≤ a few emissions per second). Every emission re-samples `positionMs`, so a seek inside the current ayah also emits (doc 05 cancels a stale pending turn on any new `seq`).
 3. The highlight is **kept while paused**; it is cleared on IDLE / ENDED / stop.
 4. It is a Hilt `@Singleton` in the app process. The reader reads it directly, without IPC. When the service isn't running, the state is `IDLE`.
-5. `AyahCompleted` fires when an ayah's last repetition ends. Doc 07 may use it for stats, which stay on-device (D-20).
+5. `AyahCompleted` fires when an ayah's last repetition ends; `PlanEnded` when the plan finishes (after the last range pass); `Error` mirrors `state.error`. Doc 07 may use these for stats and hifz, which stay on-device (D-20).
 
 ### 9.3 Reader rules (implemented by doc 05; specified here)
 
 - **Painting.** The reader maps `HighlightTarget.Ayah(key)` to its glyph boxes through `MushafLayoutRepository` in the current mushaf, via Kufan keys (g03 risk: Indo-Pak display numbering ≠ keys).
-- **Auto page-turn.** It happens when `pageOfAyahStart(key) != currentPage` **and** the user hasn't touched the pager in the last **8 s** **and** follow mode is on. Otherwise a "Follow recitation" chip appears; tapping it re-attaches and jumps.
-- **An ayah spanning two pages** is painted on both. The turn happens at the next ayah's start, because v1 has no word timing.
+- **Auto page-turn.** The reader owns it. It happens when `pageOfAyahStart(key) != currentPage` **and** the user hasn't touched the pager in the last **8 s** **and** follow mode is on. Otherwise a "Follow recitation" chip appears; tapping it re-attaches and jumps. Page-turn lock (F-RD-07) blocks user swipes, never this audio turn.
+- **An ayah spanning two pages** is painted on both. The turn to the second page is proportional (doc 05 §8.6): `turnAt = ayahStartMs + (wordsOnStartPage / wordCount) × (ayahEndMs − ayahStartMs)`, scheduled `(turnAt − positionMs) / speed` after the emission; each new emission (repeat, seek) cancels and recomputes it, so repetition 2 turns back to the start page first. v1.x word timing replaces the estimate.
 - **No highlight.** When `highlightAvailable == false`, the reader shows a dismissible inline notice once per surah and doesn't auto-turn.
 
 ---
@@ -996,13 +1069,13 @@ sealed interface PlaybackEvent { data class AyahCompleted(val key: AyahKey, val 
 
 - `exo.setPlaybackSpeed(x)` keeps pitch (PlaybackParameters pitch = 1).
 - Presets are 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, with a fine slider in 0.05 steps.
-- `settings.audio.speed` persists globally.
+- `settings.audio.speed` persists globally. New plans pass it as `PlayRequest.speed`; a change during playback updates both the player and the setting.
 
 ### 10.3 Resume position and queue persistence
 
-- **What is persisted.** The **plan, not the expanded items**: `PlaybackResume(request, planVersionInfo, verseKey, offsetIntoAyahMs, itemSeqHint, savedAt)`. It lives in its own `DataStore<PlaybackResume>` (`files/datastore/playback_resume.json`, excluded from Auto Backup).
+- **What is persisted.** The **plan, not the expanded items**: `PlaybackResume(request, planVersionInfo, verseKey, offsetIntoAyahMs, itemSeqHint, savedAt)`, where `request.recitation` is already concrete (§6). It lives in its own `DataStore<PlaybackResume>` (`files/datastore/playback_resume.json`, excluded from Auto Backup). It is device-local listening state; doc 04's user.db must not duplicate it (no `listening_position` table needed).
 - **When it is written:** on pause, on every item transition, every 15 s while playing, and in `onDestroy`.
-- **Restoring.** Re-expand and seek by **(verseKey, offset)**. The item index is only a hint, so restore survives a new catalogue or timing version and is deterministic.
+- **Restoring.** Re-expand `request.copy(startAt = verseKey, startOffsetMs = offsetIntoAyahMs)`. `PlanExpander` opens the right window for windowed plans and returns `startItemIndex` / `startPositionMs` (§7.1). The item index is only a hint, so restore survives a new catalogue or timing version and is deterministic. If `verseKey` is no longer inside the scope (should not happen), the plan starts from its beginning.
 - **Where it is used:** `onPlaybackResumption` (the system resume card / BT play), and the home "Continue listening: Para 12 · Hud 11:58 · Alafasy" card (F-IX-09), which issues the same request with `startAt`.
 - **Repeat and sleep state.** RepeatSpec is persisted inside the request. The sleep timer is never persisted.
 
@@ -1013,7 +1086,7 @@ sealed interface PlaybackEvent { data class AyahCompleted(val key: AyahKey, val 
 | Condition | Detection | Behaviour | User sees |
 |---|---|---|---|
 | Offline, item not downloaded | **Pre-flight:** `AvailabilityChecker.check(plan)` when offline. **Runtime:** `ERROR_CODE_IO_NETWORK_CONNECTION_FAILED` / `_TIMEOUT` | Pre-flight: if no item is local, don't start; if some are, ask. Runtime: pause at the failing item. On reconnect, auto-retry `prepare(); play()` **only if an activity is visible** and the error is < 5 min old (Android 17 rule, §12). | "You're offline. This part isn't downloaded." [Download when online] [Retry] |
-| Cellular with `streamOnCellular = ASK / NEVER` | Pre-flight | Ask once per plan, or refuse | Sheet with MB estimate |
+| Cellular with `streamOnCellular = ASK (default) / NEVER` | Pre-flight | Ask once per app session, or refuse | `audio_mobile_data` sheet with MB estimate (doc 02) |
 | HTTP 404/410 on one mirror | `MirrorFailoverDataSource` | Next mirror; mirror marked unhealthy for 10 min | Nothing |
 | All mirrors fail | `ERROR_CODE_IO_BAD_HTTP_STATUS` | **Gapped:** skip that ayah item after one retry and continue (log `missing(rec, s, a)`). **Gapless:** stop with an error card. | Toast "Audio for 2:255 unavailable"; or a card with [Try another qari] |
 | 5xx / timeout | LoadErrorHandlingPolicy | 3 retries with backoff, then failover | Buffering spinner |
@@ -1025,7 +1098,7 @@ sealed interface PlaybackEvent { data class AyahCompleted(val key: AyahKey, val 
 | Plan error (`VerseLevelUnavailable`, `NotEligible`) | `onSetMediaItems` future fails | Hub `error` set; nothing plays | Alternatives sheet |
 | Catalogue signature invalid | Verifier | Keep the previous catalogue; local diagnostic | — |
 
-`AudioError` maps onto `AppError { Network, NoSpace, Integrity, NotFound, PermissionDenied, Unknown }` (r07 §2.11). Localised strings live in `:core:ui`.
+`AudioError` (in `:core:domain`) maps onto doc 04 §4.3 `AppError { Offline, Network, NoSpace, Integrity, NotFound, PermissionDenied, Unavailable(reason), Unknown }`: offline → `Offline`, kill-switch / not eligible / `PENDING` hidden → `Unavailable(KILL_SWITCHED | NOT_ELIGIBLE_FOR_BUILD | LICENCE_PENDING)`. Localised strings live in `:core:designsystem`.
 
 ---
 
@@ -1051,7 +1124,7 @@ sealed interface PlaybackEvent { data class AyahCompleted(val key: AyahKey, val 
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
-<service android:name=".audio.QuranPlaybackService" android:exported="true"
+<service android:name="com.chughtai.criterion.core.audio.PlaybackService" android:exported="true"
          android:foregroundServiceType="mediaPlayback">
   <intent-filter>
     <action android:name="androidx.media3.session.MediaLibraryService"/>
@@ -1061,7 +1134,7 @@ sealed interface PlaybackEvent { data class AyahCompleted(val key: AyahKey, val 
 <receiver android:name="androidx.media3.session.MediaButtonReceiver" android:exported="true">
   <intent-filter><action android:name="android.intent.action.MEDIA_BUTTON"/></intent-filter>
 </receiver>
-<service android:name=".download.AudioDownloadJobService" android:exported="false"
+<service android:name="com.chughtai.criterion.core.remote.AudioDownloadJobService" android:exported="false"
          android:permission="android.permission.BIND_JOB_SERVICE"/>
 <service android:name="androidx.work.impl.foreground.SystemForegroundService"
          android:foregroundServiceType="dataSync" tools:node="merge"/>
@@ -1105,15 +1178,15 @@ The adhan player (doc 07, D-16) is a **separate** service with `USAGE_ALARM`. It
 - `manifest.json` = `{recitationId, entries: {"002": {tier, bytes, etag, sha256|md5, method, ayahs:"1-286", verifiedAt}}}`. `AudioFileStore` loads all manifests at startup into an in-memory index, which `ResolvingDataSource` consults.
 - r07 §2.5 sketched `audio/<reciter>/<gapped|gapless>/`. This doc uses `audio/<recitationId>/`, because the id already encodes the layout.
 
-### 13.3 Queue database (`downloads.db`, Room, owned by `:core:download`)
+### 13.3 Queue database (`downloads.db`, Room, owned by `:core:remote`)
 
-`downloads.db` is device-local and **excluded from Auto Backup**. Restoring queue rows without the files would lie.
+`downloads.db` is device-local and **excluded from Auto Backup**. Restoring queue rows without the files would lie. It is the only download queue: doc 04's user.db must not carry `download_task` / `audio_file` tables (they would be backed up and claim files that don't exist after a restore).
 
 ```sql
 CREATE TABLE download_request (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   recitation_id TEXT NOT NULL, tier TEXT NOT NULL,
-  scope_json TEXT NOT NULL,                 -- PlayScope JSON (Surah/Para/Manzil/AyahRange/Quran/Popular)
+  scope_json TEXT NOT NULL,                 -- PlayScope JSON (Surah/Para/Manzil/Range/Passage/Quran); popular pack = Passage of whole surahs
   title TEXT NOT NULL,                      -- "Para 30 · Alafasy"
   priority INTEGER NOT NULL,                -- 0 NOW, 1 USER, 2 BULK
   wifi_only INTEGER NOT NULL, charging_only INTEGER NOT NULL,
@@ -1125,6 +1198,7 @@ CREATE TABLE download_unit (
   method TEXT NOT NULL,                     -- FILE|ZIP|AYAH_FILES
   state TEXT NOT NULL,                      -- QUEUED|RUNNING|VERIFYING|DONE|FAILED|PAUSED
   priority INTEGER NOT NULL,                -- min over referencing requests
+  not_before INTEGER NOT NULL DEFAULT 0,    -- retry backoff: not runnable before this epoch ms
   bytes_total INTEGER, bytes_done INTEGER NOT NULL DEFAULT 0,
   etag TEXT, mirror_id TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT,
   volume_uuid TEXT,                         -- StorageVolume uuid; NULL = primary
@@ -1142,39 +1216,90 @@ Units are de-duplicated, so Para 1 and Para 2 share one Al-Baqarah unit. A reque
 ### 13.4 Engine algorithm
 
 ```kotlin
-suspend fun drain(progress: (Progress) -> Unit): DrainResult = coroutineScope {
-    val sem = Semaphore(2)
+const val MAX_PARALLEL_UNITS = 2
+
+// One drain loop per process. kick() (§13.5) never starts a second host while this runs.
+suspend fun drain(progress: (Progress) -> Unit): DrainResult {
+    if (!draining.compareAndSet(false, true)) return DrainResult.ALREADY_RUNNING
+    dao.resetStaleRunning()                                               // RUNNING rows left by a killed process → QUEUED
     while (true) {
-        val unit = dao.nextRunnable(constraintsNow()) ?: break          // ORDER BY priority, created_at
-        if (!space.hasRoom(unit.volume, unit.remainingBytes + 50.MB)) { dao.pauseAll(NoSpace); notify.noSpace(); return@coroutineScope NO_SPACE }
-        sem.withPermit { launch { runUnit(unit, progress) } }
+        rekick.set(false)
+        val r = drainOnce(progress)
+        if (r != DrainResult.DONE) { draining.set(false); return r }
+        draining.set(false)
+        // A kick() that raced the end of drainOnce either set rekick (we loop) or saw draining=false (it scheduled a host).
+        if (!rekick.get() || !draining.compareAndSet(false, true)) return finalResult()
     }
-    DONE
+}
+private suspend fun finalResult() = if (dao.hasQueued()) DrainResult.NEEDS_RESCHEDULE else DrainResult.DONE   // backoff rows wait
+
+private suspend fun drainOnce(progress: (Progress) -> Unit): DrainResult = coroutineScope {
+    val finished = Channel<Unit>(Channel.UNLIMITED)                       // one message per finished unit (never conflated)
+    var active = 0                                                        // touched only by this loop's coroutine
+    while (true) {
+        // claimNextRunnable: one transaction; WHERE state = 'QUEUED' AND not_before <= now AND constraints hold
+        // ORDER BY priority, created_at; sets state = RUNNING. RUNNING/PAUSED rows are never returned.
+        val unit = if (active < MAX_PARALLEL_UNITS) dao.claimNextRunnable(constraintsNow()) else null
+        if (unit != null) {
+            if (!space.hasRoom(unit.volume, unit.remainingBytes + 50.MB)) {
+                coroutineContext.cancelChildren(); dao.pauseAll(NoSpace); notify.noSpace()   // RUNNING + QUEUED → PAUSED
+                return@coroutineScope DrainResult.NO_SPACE
+            }
+            active++
+            launch {
+                try { runUnit(unit, progress) }                           // sets DONE / FAILED / QUEUED + not_before itself
+                finally { finished.trySend(Unit) }
+            }
+            continue
+        }
+        if (active == 0) break                                            // nothing runnable now, nothing running
+        finished.receive(); active--                                      // wait for a slot, then look again
+    }
+    DrainResult.DONE
 }
 
-suspend fun downloadFile(urls: List<String>, dest: File, expect: Expect): Result {
+sealed interface Fetch { data object Downloaded : Fetch; data object Next : Fetch; data object Retry : Fetch }
+
+suspend fun downloadFile(unit: DownloadUnit, urls: List<String>, dest: File, expect: Expect): Result {
     val part = File(dest.path + ".part")
     for (url in urls.filterHealthy()) {
-        var have = part.length()
-        val req = Request.Builder().url(url).header("User-Agent", UA).apply {
-            if (have > 0) { header("Range", "bytes=$have-"); unit.etag?.let { header("If-Range", it) } }
-        }.build()
-        okHttp.newCall(req).executeAsync().use { resp ->               // OkHttp 5; cancellable from coroutine
-            when (resp.code) {
-                206 -> require(resp.contentRangeStart() == have)        // append
-                200 -> { part.truncate(); have = 0; unit.etag = resp.header("ETag") }   // server ignored Range or file changed
-                416 -> if (have == expect.size) return verifyAndCommit(part, dest, expect) else { part.delete(); return@use RETRY }
-                404, 410 -> { mirrorHealth.markBad(url); return@use NEXT }
-                in 500..599 -> { backoff(attempt); return@use RETRY }
+        var attempt = 0
+        mirror@ while (true) {
+            when (fetchOnce(unit, url, part, expect)) {
+                Fetch.Downloaded -> {
+                    val r = verifyAndCommit(part, dest, expect)
+                    if (r == OK) return OK
+                    part.delete(); dao.incAttempts(unit); break@mirror      // integrity failure → next mirror
+                }
+                Fetch.Next  -> break@mirror
+                Fetch.Retry -> if (++attempt < 3) backoff(attempt) else break@mirror
             }
-            part.appendingSink().buffer().use { sink ->                 // 64 KiB chunks
-                resp.body.source().readAll(sink) { n -> dao.addBytes(unit, n); progress.throttled(1.s) ; ensureActive() }
-            }
-            part.fsync()
         }
-        return verifyAndCommit(part, dest, expect)                      // delete + attempts++ + NEXT on failure
     }
-    return FAILED
+    return FAILED                                                         // runUnit schedules the unit retry (§13.6)
+}
+
+private suspend fun fetchOnce(unit: DownloadUnit, url: String, part: File, expect: Expect): Fetch {
+    val have = part.length()
+    val req = Request.Builder().url(url).header("User-Agent", UA).apply {
+        if (have > 0) { header("Range", "bytes=$have-"); unit.etag?.let { header("If-Range", it) } }
+    }.build()
+    return okHttp.newCall(req).executeAsync().use { resp ->              // OkHttp 5; cancellable from coroutine
+        when (resp.code) {
+            206 -> if (resp.contentRangeStart() != have) { part.delete(); return@use Fetch.Retry }   // append below
+            200 -> { part.truncate(); unit.etag = resp.header("ETag") }   // server ignored Range or file changed
+            416 -> return@use if (have > 0 && have == expect.size) Fetch.Downloaded else { part.delete(); Fetch.Retry }
+            404, 410 -> { mirrorHealth.markBad(url); return@use Fetch.Next }
+            408, 429, in 500..599 -> return@use Fetch.Retry               // honour Retry-After, capped at 60 s
+            else -> { mirrorHealth.markBad(url); return@use Fetch.Next }  // 401/403, leftover 3xx, anything else: never append the body
+        }
+        // Only 200 and 206 reach this point.
+        part.appendingSink().buffer().use { sink ->                       // 64 KiB chunks
+            resp.body.source().readAll(sink) { n -> dao.addBytes(unit, n); progress.throttled(1.s); ensureActive() }
+        }
+        part.fsync()
+        Fetch.Downloaded
+    }
 }
 
 fun verifyAndCommit(part: File, dest: File, e: Expect): Result {
@@ -1204,15 +1329,21 @@ fun verifyAndCommit(part: File, dest: File, e: Expect): Result {
 
 An ETag that differs from the timing pack still yields a **valid download**, but the surah's timing guard fails (highlight off) until the pack is rebuilt.
 
-### 13.5 Hosts: UIDT on API 34+, WorkManager on ≤ 33
+### 13.5 Hosts: UIDT on API 34+ (from S5), WorkManager on ≤ 33 (and on all APIs in P1)
 
 ```kotlin
-class DownloadCoordinator @Inject constructor(...) {
-    suspend fun enqueue(req: DownloadRequestSpec): Long {             // called from a visible UI action
-        val id = dao.insertRequestWithUnits(req, planUnits(req)); kick(fromForeground = true); return id
+class DownloadManagerImpl @Inject constructor(...) : DownloadManager {   // doc 04 §6 interface; :core:remote
+    override suspend fun enqueue(request: DownloadRequest): AppResult<DownloadId> {   // called from a visible UI action
+        val id = dao.insertRequestWithUnits(request, planUnits(request)); kick(fromForeground = true); return AppResult.Ok(id)
     }
-    fun kick(fromForeground: Boolean) =
-        if (Build.VERSION.SDK_INT >= 34 && fromForeground) scheduleUidt() else enqueueWorker()
+    fun kick(fromForeground: Boolean) {
+        // Never (re)schedule while a drain loop runs: JobScheduler.schedule() with the ID of a RUNNING job (4201)
+        // STOPS it (onStopJob, STOP_REASON_CANCELLED_BY_APP) and interrupts transfers. The running loop picks up the
+        // new rows itself (§13.4 rekick). When nothing is draining, schedule() replaces a not-yet-started job, which
+        // is what we want: the new request may have changed the network/charging constraints.
+        if (engine.signalIfDraining()) return                         // sets rekick; true while drain() is running
+        if (Build.VERSION.SDK_INT >= 34 && fromForeground && flags.uidtEnabled /* S5 */) scheduleUidt() else enqueueWorker()
+    }
     @RequiresApi(34) private fun scheduleUidt() = jobScheduler.schedule(
         JobInfo.Builder(JOB_ID_AUDIO_DOWNLOADS /*4201*/, ComponentName(ctx, AudioDownloadJobService::class.java))
             .setUserInitiated(true)
@@ -1220,8 +1351,9 @@ class DownloadCoordinator @Inject constructor(...) {
             .setRequiresCharging(anyChargingOnly())                         // SP-A3: confirm UIDT accepts it; else hide option on 34+
             .setEstimatedNetworkBytes(dao.remainingBytes(), 0)
             .build())
-    private fun enqueueWorker() = workManager.enqueueUniqueWork("audio-downloads", ExistingWorkPolicy.APPEND_OR_REPLACE,
-        OneTimeWorkRequestBuilder<AudioDownloadWorker>().setConstraints(Constraints(
+    // REPLACE is safe only because kick() returned above while a drain runs; it updates a pending worker's constraints.
+    private fun enqueueWorker() = workManager.enqueueUniqueWork("audio-downloads", ExistingWorkPolicy.REPLACE,
+        OneTimeWorkRequestBuilder<DownloadWorker>().setConstraints(Constraints(
             requiredNetworkType = if (anyWifiOnly()) NetworkType.UNMETERED else NetworkType.CONNECTED,
             requiresCharging = anyChargingOnly(), requiresStorageNotLow = true)).build())
 }
@@ -1239,18 +1371,22 @@ class AudioDownloadJobService : JobService() {
     override fun onStopJob(p: JobParameters): Boolean { job?.cancel(); return p.stopReason != JobParameters.STOP_REASON_USER }
 }
 
-@HiltWorker class AudioDownloadWorker @AssistedInject constructor(@Assisted c: Context, @Assisted p: WorkerParameters,
+@HiltWorker class DownloadWorker @AssistedInject constructor(@Assisted c: Context, @Assisted p: WorkerParameters,
         private val engine: DownloadEngine, private val n: DownloadNotifications) : CoroutineWorker(c, p) {
     override suspend fun doWork(): Result {
         runCatching { setForeground(ForegroundInfo(NOTIF_DOWNLOADS, n.progress(Progress.Starting), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)) }
             .onFailure { /* API 31–33 background start refused: continue non-foreground; units are resumable */ }
-        return when (engine.drain { setProgress(it.toData()); n.update(it) }) { DONE -> Result.success(); else -> Result.retry() }
+        return when (engine.drain { setProgress(it.toData()); n.update(it) }) {
+            DONE, ALREADY_RUNNING -> Result.success(); NO_SPACE -> Result.success() /* paused; user action resumes */; else -> Result.retry()
+        }
     }
 }
 ```
 
 **Rules:**
+- **Phasing (doc 09).** P1 ships the WorkManager host on all API levels (E-10-S02). The UIDT host (E-10-S05, SP-A3) lands in S5, before any public build; `flags.uidtEnabled` switches it on.
 - UIDT must be scheduled while the app is visible (r06 §2.7). Background-originated work (repairs, resumption after reboot) uses the WorkManager path on all API levels.
+- Doc 04 names the worker's unique work per task (`dl-<taskId>`); audio units use the single `audio-downloads` drain worker above, because units are de-duplicated across requests (§13.3). Pack downloads keep doc 04's per-task naming.
 - Job ID 4201 is reserved for this job.
 - A user stop from the Task Manager (`STOP_REASON_USER`) pauses the queue. It is not rescheduled.
 - Catalogue, timing and pack refreshes use plain periodic WorkManager, not this host.
@@ -1346,61 +1482,74 @@ Rule of thumb: **MB ≈ kbps × hours × 0.45** (r06 §2.6). A gapless Para down
 
 ## 15. Kotlin interfaces (consolidated)
 
+Doc 04 §6 owns the interface names; the members marked `+` are what this doc needs in addition (doc 04 should add them).
+
 ```kotlin
-// :core:audio-api
-interface AudioController {
-    val state: StateFlow<NowPlaying>                     // = PlaybackStateHub.nowPlaying
-    suspend fun play(request: PlayRequest): Outcome<Unit>
+// :core:domain (interfaces; impls in :core:audio unless noted)
+interface PlaybackController {
+    val state: StateFlow<PlaybackState>                  // = PlaybackStateHub.state
+    suspend fun play(request: PlayRequest): AppResult<Unit>   // user-initiated only (Android 17); resolves recitation = null → favourite
     fun pause(); fun resume(); fun stop()
-    fun next(); fun previous()                           // ayah or surah per settings
-    fun seekToAyah(key: AyahKey)                         // within current plan, else re-plans FromHere(key)
-    fun setRepeat(spec: RepeatSpec); fun setSpeed(speed: Float)
-    fun setSleepTimer(spec: SleepTimerSpec?)             // Minutes(n) | EndOf(AYAH|SURAH|PARA|PLAN) | null = cancel
-    fun setTranslationVoice(recId: String?)
+    fun seekTo(key: VerseKey)                            // within current plan, else re-plans FromHere(key)
+    fun nextAyah(); fun previousAyah()                   // ayah, or surah when settings.audio.skipBy == SURAH
+    fun setSpeed(speed: Float); fun setRepeat(spec: RepeatSpec)
+    fun setSleepTimer(timer: SleepTimer?)                // Minutes(n) | EndOf(AYAH|SURAH|PARA|PLAN) | null = cancel
+    fun playerForUi(): Flow<Any?>                        // androidx.media3.common.Player for :feature:audio
+    fun setTranslationVoice(id: RecitationId?)           // +
 }
-interface PlaybackStateHub { val nowPlaying: StateFlow<NowPlaying>; val events: SharedFlow<PlaybackEvent> }
+interface PlaybackStateHub { val state: StateFlow<PlaybackState>; val events: SharedFlow<PlaybackEvent> }   // §9.2
 
-// :core:domain
-class PlanExpander(q: QuranStructure, catalogue: CatalogueSnapshot, timings: TimingIndex, policy: QualityPolicy) {
-    fun expand(req: PlayRequest, window: SurahWindow? = null): Outcome<ExpandedPlan>
+interface AudioCatalogRepository {                       // doc 04 §6; impl AudioCatalogRepositoryImpl (:core:audio)
+    fun recitations(): Flow<List<Recitation>>            // ContentPolicy + kill-switch filtered (§3.4)
+    suspend fun recitation(id: RecitationId): Recitation?
+    fun favourite(): Flow<RecitationId>
+    suspend fun timing(id: RecitationId, surah: SurahId): SurahTiming?   // null ⇒ no highlight for that surah (§5.2)
+    suspend fun highlightEnabled(id: RecitationId, surah: SurahId): Boolean
+    suspend fun refresh(force: Boolean = false): AppResult<Boolean>      // + via SignedFileFetcher (§3.1)
+    fun fallbackFor(rec: Recitation): Recitation?                        // +
 }
 
-// :core:audio
-interface CatalogueRepository {
-    val catalogue: StateFlow<CatalogueSnapshot>          // filtered by channel; bundled until a valid remote arrives
-    suspend fun refresh(force: Boolean = false): Outcome<Boolean>
-    fun recitation(id: String): Recitation?
-    fun visibleRecitations(): List<Recitation>
-    fun fallbackFor(rec: Recitation): Recitation?
-}
-interface TimingGuard { fun state(recId: String, surah: Int): GuardState; fun report(recId: String, surah: Int, totalLength: Long?, etag: String?) }
-class AyahTracker; class QuranForwardingPlayer; class MediaItemMapper; class MirrorFailoverDataSource
-class HifzPauseController; class RepeatController; class SleepTimer; class ResumeStore; class AvailabilityChecker
-
-// :core:download
-interface DownloadRepository {
-    fun requests(): Flow<List<DownloadRequestUi>>
-    fun recitationStatus(recId: String): Flow<RecitationDownloadStatus>   // per-surah: NONE/PARTIAL/QUEUED/RUNNING(p)/DONE
-    suspend fun enqueue(spec: DownloadRequestSpec): Long
-    suspend fun pause(requestId: Long?); suspend fun resume(requestId: Long?); suspend fun cancel(requestId: Long)
-    suspend fun delete(recId: String, scope: PlayScope? = null)           // null = whole recitation
-    suspend fun deleteAllExcept(recIds: Set<String>)
+interface DownloadManager {                              // doc 04 §6; impl DownloadManagerImpl (:core:remote)
+    suspend fun enqueue(request: DownloadRequest): AppResult<DownloadId>   // must be called while UI visible (UIDT rule)
+    suspend fun cancel(id: DownloadId); suspend fun pauseAll(); suspend fun resumeAll()
+    fun tasks(): Flow<List<DownloadTask>>
+    fun audioStorage(): Flow<List<RecitationStorage>>
+    suspend fun deleteAudio(id: RecitationId, surahs: Set<SurahId>? = null /*null = all*/)
     suspend fun cleanPartials(): Long
-    fun estimate(spec: DownloadRequestSpec): SizeEstimate               // from catalogue surahBytes minus already-downloaded
+    fun storageVolumes(): List<StorageVolume>
+    suspend fun pause(id: DownloadId); suspend fun resume(id: DownloadId)            // + per request (§13.6)
+    fun recitationStatus(id: RecitationId): Flow<RecitationDownloadStatus>          // + per surah: NONE/PARTIAL/QUEUED/RUNNING(p)/DONE
+    suspend fun deleteAllExcept(ids: Set<RecitationId>)                             // +
+    fun estimate(request: DownloadRequest.Audio): SizeEstimate                      // + catalogue surahBytes minus downloaded
+    suspend fun selectVolume(uuid: String?, moveExisting: Boolean)                  // + (§13.8)
 }
+// + DownloadRequest.Audio's AudioUnit also needs Range(AyahRange) (gapped ayah ranges) and Passage(code) (popular pack).
+
+// :core:audio (internal)
+class PlanExpander(q: QuranStructure, catalogue: CatalogueSnapshot, timings: TimingIndex, policy: QualityPolicy) {
+    fun expand(req: PlayRequest, window: SurahWindow? = null): AppResult<ExpandedPlan>   // pure Kotlin (§7)
+}
+interface TimingGuard { fun state(recId: RecitationId, surah: SurahId): GuardState
+                        fun report(recId: RecitationId, surah: SurahId, totalLength: Long?, etag: String?) }
+class AyahTracker; class QuranForwardingPlayer; class MediaItemMapper; class MirrorFailoverDataSource
+class HifzPauseController; class RepeatController; class SleepTimerController; class ResumeStore; class AvailabilityChecker
+
+// :core:remote (internal)
 interface AudioFileStore { fun localFile(logical: Uri): File?; fun isLocal(id: ItemId): Boolean; fun usage(): Flow<StorageUsage> }
 interface StorageLocationManager { fun volumes(): List<VolumeInfo>; suspend fun select(uuid: String?, moveExisting: Boolean) }
 
 // Settings slice (doc 04 owns UserSettings)
 @Serializable data class AudioSettings(
-    val favouriteRecitationId: String? = null, val preferredLayoutByReciter: Map<String, AudioLayout> = emptyMap(),
-    val speed: Float = 1f, val skipBy: SkipBy = SkipBy.AYAH, val playFromHereStopAt: StopAt = StopAt.CONTINUOUS,
+    val favouriteRecitation: RecitationId? = null, val preferredLayoutByReciter: Map<String, AudioLayout> = emptyMap(),
+    val speed: Float = 1f, val skipBy: SkipBy = SkipBy.AYAH, val playFromHereUntil: Until = Until.CONTINUOUS,
     val surahAutoContinue: Boolean = false, val duckInsteadOfPause: Boolean = false,
-    val streamOnCellular: CellularPolicy = CellularPolicy.ALLOW, val dataSaverOnCellular: Boolean = true,
+    val streamOnCellular: CellularPolicy = CellularPolicy.ASK, val dataSaverOnCellular: Boolean = true,
     val wifiOnlyDownloads: Boolean = true, val chargingOnlyDownloads: Boolean = false,
     val downloadVolumeUuid: String? = null, val streamCacheMb: Int = 256, val autoRepair: Boolean = true,
-    val followRecitation: Boolean = true, val translationVoiceId: String? = null, val lastRepeat: RepeatSpec = RepeatSpec(),
+    val followRecitation: Boolean = true, val translationVoice: RecitationId? = null, val lastRepeat: RepeatSpec = RepeatSpec(),
+    val verseFallbackConsent: Boolean = false,           // §7.6 "remember" choice
 )
+enum class CellularPolicy { ASK, ALLOW, NEVER }          // ASK = doc 02 "Ask" (once per app session)
 ```
 
 **Flow: "Play Para 4" from the index.**
@@ -1408,13 +1557,13 @@ interface StorageLocationManager { fun volumes(): List<VolumeInfo>; suspend fun 
 ```mermaid
 sequenceDiagram
   participant UI as Para row
-  participant AC as AudioController
+  participant AC as PlaybackController
   participant S as SessionCallback
   participant T as TimingRepository
   participant PE as PlanExpander
   participant P as ExoPlayer
   participant H as PlaybackStateHub
-  UI->>AC: play(PlayRequest(rec=alafasy.mp3q123, Para(4)))
+  UI->>AC: play(PlayRequest(Para(ParaId(4)), recitation = alafasy.murattal.mp3q123))
   AC->>S: setMediaItem(plan:v1:…) + prepare + play
   S->>T: prefetch(rec, surahs 3..4)
   S->>PE: expand → [RANGE_CLIP 3:92–3:200, RANGE_CLIP 4:1–4:23]
@@ -1508,7 +1657,7 @@ Fixtures:
 
 ### 16.5 Service tests (Robolectric; the pattern was proven in the g04 spike)
 
-- `@AndroidEntryPoint` `QuranPlaybackService` built via `Robolectric.buildService`, with `MediaSession.ControllerInfo.createTestOnlyControllerInfo` (g04 build log 09 pattern).
+- `@AndroidEntryPoint` `PlaybackService` built via `Robolectric.buildService`, with `MediaSession.ControllerInfo.createTestOnlyControllerInfo` (g04 build log 09 pattern).
 - `onSetMediaItems(plan:v1:…)` returns the expanded items.
 - `onCustomCommand(SET_REPEAT)` re-expands and keeps the current ayah.
 - `onPlaybackResumption` rebuilds from `ResumeStore`.

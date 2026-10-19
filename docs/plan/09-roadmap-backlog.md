@@ -2,14 +2,17 @@
 
 **Purpose.** This doc turns the Decision Register (D-01…D-25), the gates (G1–G6) and the Feature Catalogue into a dated, capacity-checked delivery plan. It runs from Sprint 0 (Tuesday 2026-10-20) to the public v1.0 "Ramadan launch" (staged rollout from 2027-02-01), then continues at milestone level through v1.x (P3) and v2 (P4). It covers: the roadmap and Gantt chart, gate dates with fallbacks, phase exit criteria, a sprint-by-sprint plan, the complete backlog (epics → stories → tasks, with estimates and dependencies), capacity math, the scope-cut ladder, the critical path, a day-by-day checklist for the first 10 working days, external lead times, and the Definitions of Ready and Done. The owner decides scope with it. The owner and the AI coding agents pick the next story from it.
 
-**Status: Draft v1 — 2026-10-19**
+**Status: Draft v2 — 2026-10-19 (revised after the feasibility, coverage and consistency reviews)**
 
 **Key decisions in this doc**
 - Phases and dates follow **D-25** exactly. Sprints are 2 weeks long and run Tuesday → Monday. S4 is a 1-week hardening sprint, so P1 can end on 2026-12-21.
-- **Capacity:** 32.5 h/week ÷ 6 h per ideal day = **5.4 id/week**, with no separate admin allowance; outreach and admin are stories. **The full D-25 scope is ~100 id against ~80 id available to v1.0.** The plan of record (POR) therefore pre-applies part of the scope-cut ladder (§5), and P1 carries 10.75 id of P1-catalogue items into S5–S7 ("C" tier).
-- **v1.0 POR =** Quran core (all P1 features) + compliance floor + Tier A companion (prayer times with Sehri/Iftar, Hijri with PK feed, Ramadan core, khatam planner). **Adhan alarms, Qibla, widgets, reminders, azkar and share-image** default to **v1.1 (2027-03-22)**. They are pulled into v1.0 only if they can reach the closed-test build by 2027-01-18.
-- **Risk first.** The renderer spike, device smoke test, content pipeline and all permission emails happen in S0. The audio spike happens in the first days of S1. The proofreading PDF goes out on 2026-11-30, because the hafiz review (G5) is the longest human lead time on the critical path.
-- **Gate timing (D-25):** G1 decision 2026-11-19; G3 2026-12-14; G2 (public catalogue) 2027-01-04; G6 2027-01-11; G4 and G5 2027-01-18; Go/No-Go 2027-01-25. If any gate is open at Go/No-Go, **Ramadan runs as a closed test and the public launch follows after the gate clears** (D-25).
+- **Capacity:** 32.5 h/week ÷ 6 h per ideal day = **5.4 id/week**, with no separate admin allowance; outreach and admin are stories. The full D-25 scope is **≈ 105.5 id** against **≈ 80.2 id** available to v1.0. The plan of record (POR) is **79.75 id**. It pre-cuts the stretch rungs L1–L4 and L9 (§5), and carries 11.5 id of P1-catalogue items into S5–S7 ("C" tier).
+- **Honest estimate statement (§4.3).** The specialist docs (02, 04, 05, 06, 07, 08, 10) add up to **≈ 1.8–2× the POR**. By their estimates the Quran core alone (P0 + P1 + C) is **≈ 90–110 id**. The POR plans it at **≈ 56 id**, which assumes AI-assisted work runs at ≈ 0.5–0.6× the specialist estimates. That velocity (5.4 id/week at these estimates) is **unproven**. Even at plan rate, P2 has a **3.5 id merge-deadline shortfall** (§4.1), funded by lever 1 and then by rungs L5–L6.
+- **Pre-agreed launch rule (§4.2), decided at the S2 checkpoint on 2026-11-30.** Overrun ratio r = actual ÷ planned id for the stories closed in S0–S2. **If r ≥ 1.3, or G1 is not granted on 2026-11-19 and the clean-room track is not on plan:** Ramadan 1448 becomes a **closed-test/beta release** (owner, family and testers; PERSONAL and BETA builds), and **public v1.0 moves to 2027-03-22**, merged with v1.1 scope. **If r < 1.3:** the Ramadan public plan continues. The freelancer lever is decided the same day.
+- **v1.0 POR =** Quran core (all P1 features) + compliance floor (incl. F-PL-11 signed notices) + Tier A companion (prayer times with Sehri/Iftar, Hijri with PK feed, Ramadan core, khatam planner). These default to **v1.1 (2027-03-22)**: adhan alarms, Qibla, widgets, reminders, azkar, share-image, translator choice/packs, the rating prompt (F-PL-10) and launcher shortcuts (F-PL-12). A v1.1 item is pulled into v1.0 only if it is merged into the closed-test build by 2027-01-18. **Tier A follows the same 01-18 rule.**
+- **Risk first.** S0 holds the renderer spike, the device smoke test (with doc 04 spikes S-1…S-5 and the HijrahDate check), the content pipeline, test-device procurement, the neutral domain and all permission emails. The audio spike happens in the first days of S1. The proofreading PDF goes out on 2026-11-30, because the hafiz review (G5) is the longest human lead time on the critical path.
+- **Gate timing (FINAL; docs 11 and 12 align):** G1 decision 2026-11-19 (emails out by 10-23, follow-up 11-02, clean-room fallback starts 11-20); G3 2026-12-14; G2 (public catalogue) 2027-01-04; G6 2027-01-11; G4 and G5 2027-01-18; Go/No-Go 2027-01-25. If any gate is open at Go/No-Go, the gate ladder applies (§5.3).
+- **Play account and closed test:** account decision on **2026-11-23**: Organization if the entity and D-U-N-S are both in hand, otherwise personal. The closed test opens **2026-12-28 if G1 is granted and the build is ready**, otherwise on **2027-01-11** at the latest. **On a personal account, a public launch before Ramadan is possible only with the 12-28 opening**, because it needs 12 testers × 14 days plus Google's production-access review plus the first production review. The store listing, content rating, Data safety and privacy-policy URL are completed **before the first closed-test release** (S5).
 - **Ramadan freeze:** from 2027-02-05 to Eid (≈ 2027-03-10), hotfixes only. v1.1 ships after Eid.
 
 ---
@@ -18,10 +21,11 @@
 
 | Item | Convention |
 |---|---|
-| **id** (ideal day) | 6 focused hours of the owner working *with AI coding agents* (doc 13). The AI leverage is already in the estimate: boilerplate UI and DAO work is estimated low, while pipeline, renderer, audio-timing and OEM work is estimated as careful human-reviewed work. P3/P4 estimates are rough (±40%). |
-| Epic / story / task IDs | `E-xx` epics (this doc owns the numbering), `E-xx-Syy` stories. Tasks are listed inline in each story's "key tasks" cell. When a story is opened as a GitHub issue, each task becomes a checklist item `E-xx-Syy-Tn`. |
-| Tiers | **P0**, **P1** = committed to that phase · **C** = P1-catalogue item carried into S5–S7 (part of the v1.0 floor) · **F** = v1.0 floor; never cut, so if it is late the public launch moves · **A** = v1.0 Tier A companion (committed; ladder rungs L5–L8) · **S** = v1.0 stretch (ladder rungs L1–L4; pre-cut) · **B** = v1.1 by default (pull-in list B1–B17) · **X** = conditional (only if a gate fails) · **ADM** = owner admin/outreach (counted in capacity) |
-| Milestones / ladder rungs | `M0…M14` (milestones) and `L1…L9` / `B1…B17` (ladder) are local to this doc. |
+| **id** (ideal day) | 6 focused hours of the owner working *with AI coding agents* (doc 13). The AI leverage is already in the estimate: boilerplate UI and DAO work is estimated low, while pipeline, renderer, audio-timing and OEM work is estimated as careful human-reviewed work. Overall the plan assumes **≈ 0.5–0.6× the specialist docs' estimates** (§4.3). This is an assumption, measured from S1 onward. P3/P4 estimates are rough (±40%). Other docs that give "dev-days" mean the same unit (1 dev-day = 1 id = 6 focused h). |
+| Epic / story / task IDs | `E-xx` epics (this doc owns the numbering), `E-xx-Syy` stories. Tasks are listed inline in each story's "key tasks" cell. When a story is opened as a GitHub issue, each task becomes a checklist item `E-xx-Syy-Tn`. Branch names slugify the story ID (`E-05-S03` → `e05-s03`, doc 13). |
+| Tiers | **P0**, **P1** = committed to that phase · **C** = P1-catalogue item carried into S5–S7 (part of the v1.0 floor) · **F** = v1.0 floor; never cut, so if it is late the public launch moves · **A** = v1.0 Tier A companion (committed; may be dropped only via rungs L5–L8) · **S** = pre-cut (stretch rungs L1–L4 and Should-polish rung L9); restored only with spare capacity · **B** = v1.1 by default (pull-in list B1–B19) · **X** = conditional (only if a gate or spike fails) · **ADM** = owner admin/outreach (counted in capacity) |
+| Release labels | Doc 01's Release column uses **v1.0** (P0/P1/C/F/A), **v1.0-stretch** (S) and **v1.1** (B). |
+| Milestones / ladder rungs | `M0…M14` (milestones) and `L1…L9` / `B1…B19` (ladder) are local to this doc. |
 | Sprint IDs | `S0` … `S7` up to v1.0. |
 | Spec doc | Every story names the plan doc that specifies it: [01](01-product-requirements.md) · [02](02-ux-ui-spec.md) · [03](03-content-data-licensing.md) · [04](04-architecture.md) · [05](05-mushaf-rendering-engine.md) · [06](06-audio-engine.md) · [07](07-companion-engagement-features.md) · [08](08-data-pipelines.md) · [10](10-quality-testing-ci.md) · [11](11-release-compliance-business.md) · [12](12-decisions-risks.md) · [13](13-ai-assisted-build-playbook.md) |
 
@@ -33,7 +37,7 @@
 |---|---|---|---|
 | **P0 Foundations** | 2026-10-20 → 2026-11-02 (S0) | Prove the stack on real devices; content DB v0; start every long-lead dependency | Nothing user-facing; CI + spikes |
 | **P1 Personal MVP** | 2026-11-03 → 2026-12-21 (S1–S4) | Daily-use build: reader, indexes, audio with highlight, downloads, translation view, bookmarks | Sideload / internal track (personal-build content allowed) |
-| **P2 v1.0 Ramadan launch** | 2026-12-22 → 2027-02-01 (S5–S7) | P1 carry-over, public-readiness floor, Tier A companion, closed test, store, staged rollout | v1.0 on Play: closed test from ≤ 2027-01-11, production from 2027-02-01 (if gates clear) |
+| **P2 v1.0 Ramadan launch** | 2026-12-22 → 2027-02-01 (S5–S7) | P1 carry-over, public-readiness floor, Tier A companion, closed test, store, staged rollout | v1.0 on Play: closed test from 2026-12-28 (if G1 granted) or ≤ 2027-01-11; production from 2027-02-01 if the gates clear and the 11-30 launch rule did not fire (otherwise Ramadan = closed test, public 2027-03-22) |
 | **P3 v1.x** | 2027-02-02 → 2027-06-30 | Ramadan support, Tier B (v1.1), Hifz (v1.2), extra layouts / tablet / sync (v1.3), supporter IAP (v1.5) | v1.1 2027-03-22 · v1.2 2027-05-03 · v1.3 2027-06-07 · v1.5 2027-06-28 |
 | **P4 v2** | H2 2027 | AI follow-along, tajweed colours, Madani mode, word-by-word (if permitted), Noorani Qaida, Wear OS | v2.0 ≈ 2027-10 |
 
@@ -57,8 +61,11 @@ gantt
     S5 public-readiness         :s5, 2026-12-22, 14d
     S6 closed test and Tier A   :s6, 2027-01-05, 14d
     S7 release                  :s7, 2027-01-19, 14d
-    section Gates
+    section Gates and decisions
+    G1 follow-up                :milestone, g1f, 2026-11-02, 0d
     G1 mushaf data decision     :milestone, crit, g1, 2026-11-19, 0d
+    Play account decision       :milestone, acct, 2026-11-23, 0d
+    Launch-rule checkpoint      :milestone, crit, lr, 2026-11-30, 0d
     G3 brand decision           :milestone, g3, 2026-12-14, 0d
     G2 public audio catalogue   :milestone, g2, 2027-01-04, 0d
     G6 legal advice             :milestone, g6, 2027-01-11, 0d
@@ -68,9 +75,10 @@ gantt
     Clean-room layout only if G1 fails :cr, 2026-11-20, 2027-01-08
     Designer ornaments R1 and final    :d1, 2026-11-09, 2026-12-31
     Hafiz proofreading round 1         :crit, h1, 2026-12-01, 2026-12-21
-    Proofreading fixes                 :h2, 2026-12-22, 2027-01-04
+    Proofreading fixes + final ornaments :h2, 2026-12-22, 2027-01-04
     Hafiz proofreading round 2         :crit, h3, 2027-01-05, 2027-01-15
-    Closed test 14 days                :crit, ct, 2027-01-11, 14d
+    Closed test if G1 granted          :ct1, 2026-12-28, 14d
+    Closed test latest start           :crit, ct, 2027-01-11, 14d
     Play review and staged rollout     :crit, pr, 2027-01-26, 2027-02-07
     section Milestones
     M1 first typeset page on device    :milestone, m1, 2026-10-30, 0d
@@ -90,15 +98,15 @@ gantt
 |---|---|---|---|
 | M0 | 2026-11-02 | P0 exit — Foundations | P0 exit checklist (§3) all green |
 | M1 | 2026-10-30 | First typeset page on device | Printed pp. 2, 3 and 20 drawn by our renderer on API 24/25 and 26/27 devices, with kashida visible; photos in `docs/spikes/` |
-| M2 | 2026-11-30 | Reader alpha | All 548 pages swipe RTL with labels 2–549; Surah/Para/Manzil index rows open the right page; proof PDF of 548 pages handed to the hafiz |
+| M2 | 2026-11-30 | Reader alpha + **launch-rule checkpoint** | All 548 pages swipe RTL with labels 2–549; Surah/Para/Manzil index rows open the right page; pipeline proof PDF of 548 pages handed to the hafiz; overrun ratio r computed and the launch rule applied (§4.2) |
 | M3 | 2026-12-14 | Audio alpha | "Play Para 4" starts at **3:92** (Indo-Pak boundary) with ayah highlight and auto page-turn; a downloaded surah plays in airplane mode |
-| M4 | 2026-12-21 | **Daily-use build (P1 exit)** | Owner's daily routine script (§6, S4) passes on the owner's phone; build sideloaded or on the internal track |
-| M5 | 2027-01-11 | Closed test live | Floor feature-complete build on the closed track; ≥ 12 testers opted in (15–20 invited) |
-| M6 | 2027-01-22 | v1.0 code-complete cut-off | Anything not merged and green moves to v1.1 per the ladder |
+| M4 | 2026-12-21 | **Daily-use build (P1 exit)** | Owner's daily routine script (§6, S4) passes on the owner's phone (`fossPersonalRelease`, sideloaded); a `publicRelease` BETA build also assembles |
+| M5 | 2026-12-28 (if G1 granted) / ≤ 2027-01-11 | Closed test live | BETA build on the closed track (store listing, content rating, Data safety and privacy URL already done in S5); ≥ 12 testers opted in (15–20 invited) |
+| M6 | 2027-01-22 | v1.0 code-complete cut-off | Anything not merged and green moves to v1.1 per the ladder (a floor item moves the public date instead) |
 | M7 | 2027-01-25 | RC + Go/No-Go | Gate table (§2) all cleared; 14 closed-test days complete; P2 exit criteria met |
-| M8 | 2027-02-01 | v1.0 staged rollout | 10% → 50% (02-03) → 100% (02-05) if vitals are clean |
+| M8 | 2027-02-01 | v1.0 staged rollout | 10% → 50% (02-03) → 100% (02-05) if vitals are clean. If Play does not allow staging on the first production release, use managed publishing and go 100% on 02-01; halt by pausing the release |
 | M9 | ≈ 2027-02-08/09 | Ramadan 1448 begins | Ramadan freeze: hotfixes only until Eid (≈ 2027-03-10) |
-| M10 | 2027-03-22 | v1.1 | Tier B pull-ins + opt-in crash reports (F-PL-09) |
+| M10 | 2027-03-22 | v1.1 | Tier B items not pulled into v1.0, pre-cut and cut ladder rungs, F-PL-09 opt-in crash reports, F-PL-10 rating prompt, F-PL-12 launcher shortcuts. **If the launch rule fired: also the public v1.0 launch** |
 | M11 | 2027-05-03 | v1.2 "Hifz" | F-CP-12 core, 15-line layout (gated), Android Auto |
 | M12 | 2027-06-07 | v1.3 | 13-line layout, tablet spread, word highlight, QF sync, realtime group khatam |
 | M13 | 2027-06-28 | v1.5 "Support" | Supporter IAP (play flavor) after commercial-content audit; AI spike report |

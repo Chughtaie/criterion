@@ -55,15 +55,18 @@ It is a process document. Product scope lives in [PRD](01-product-requirements.m
 
 ```
 /                       root Gradle build (Criterion), CLAUDE.md, .claude/
-app/                    :app — Application, MainActivity (AppCompatActivity), NavDisplay host, flavors foss/play
-core/<name>/            :core:* modules (doc 04 owns the list; start lean, split later — D-03)
+app/                    :app — Application, MainActivity (AppCompatActivity), NavDisplay host, flavors
+                        distribution {play, foss} × tier {personal, public}; src/personal|public/assets/packs/
+core/<name>/            :core:* modules (doc 04 §3.2 owns the list; start lean, split later — D-03)
 feature/<name>/         :feature:* modules (never depend on each other)
 build-logic/convention/ convention plugins (criterion.*)
 baselineprofile/        :baselineprofile (P1 end / P2)
-tools/                  Python pipelines (doc 08): content DB, mushaf pack, timing packs, catalogue/index signing
+tools/                  Python pipelines (doc 08; `crit` CLI via uv, `just` aliases): content DB, mushaf pack,
+                        timing packs, catalogue/index/notices builders (signing + publish = owner machine only)
 data/curated/           hand-curated CSVs (Para, Manzil, Ruku, Sajda, quarters, aliases, headers) — owner-reviewed
 data/pins.lock          upstream input pins (URL, sha256, licence)
-data/private/           gitignored: QUL exports, owner-only downloads — never committed
+out/                    gitignored pipeline outputs, reports and proof renders (doc 08 §2)
+~/criterion-data/       OUTSIDE the repo: private inputs (QUL exports, KFC ZIPs, oracles, evidence) — never committed
 docs/plan/              THE PLAN (source of truth) — this file is 13
 docs/research/          evidence reports (read-only)
 spikes/toolchain-spike/ verified reference build (read-only; not included in the root build)
@@ -100,21 +103,29 @@ If code and plan disagree: stop, tell the owner, and propose a plan edit in the 
 
 ## Commands
 ```bash
-./gradlew quickCheck        # spotlessCheck + all debug unit/Robolectric tests + Roborazzi verify (local loop)
-./gradlew prCheck           # quickCheck + lint + assembleFossDebug/assemblePlayDebug (what CI runs on PRs)
-# explicit equivalents (library modules have no flavors; :app has foss/play):
-./gradlew spotlessCheck testDebugUnitTest testFossDebugUnitTest verifyRoborazziDebug verifyRoborazziFossDebug :app:lintFossDebug
+./gradlew quickCheck        # spotlessCheck + library testDebugUnitTest + :app:testFossPersonalDebugUnitTest
+                            # + verifyRoborazziDebug (local loop)
+./gradlew prCheck           # quickCheck + lintFossPersonalDebug lintPlayPublicDebug + testPlayPublicDebugUnitTest
+                            # + checkModuleBoundaries + verifyContentEligibilityPlayPublicRelease
+                            # + assembleFossPersonalDebug assemblePlayPublicDebug (what CI's `ci/check` runs)
+# explicit equivalents. Library modules have no flavors; :app has distribution {play, foss} × tier
+# {personal, public}; playPersonal* is disabled (doc 04 §11):
+./gradlew spotlessCheck testDebugUnitTest :app:testFossPersonalDebugUnitTest :app:testPlayPublicDebugUnitTest verifyRoborazziDebug :app:lintFossPersonalDebug :app:lintPlayPublicDebug
 ./gradlew spotlessApply                                  # format before committing
 ./gradlew :core:content:testDebugUnitTest                # content-DB invariants + schema-validation tests
-./gradlew :app:assembleFossRelease                       # R8 release build (must stay green)
-./gradlew buildEnvironment | grep 'kotlin-gradle-plugin:2.2.10 -> 2.4.21'   # Kotlin lift guard
-./gradlew :app:installFossDebug && adb shell monkey -p com.chughtai.criterion -c android.intent.category.LAUNCHER 1
+./gradlew :app:assembleFossPersonalRelease               # R8 release build; the owner's daily sideloaded build
+./gradlew :app:bundlePlayPublicRelease                   # closed-test build (CONTENT_TIER = BETA); PUBLIC only with
+                                                         # -Pcriterion.release=production (owner + release workflow only)
+./gradlew verifyKotlinGradlePlugin                       # Kotlin lift guard (asserts 2.2.10 -> 2.4.21)
+./gradlew :app:installFossPersonalDebug && adb shell monkey -p com.chughtai.criterion.personal.debug -c android.intent.category.LAUNCHER 1
 adb exec-out screencap -p > build/shots/<name>.png       # then OPEN the PNG and describe what you see
 ```
-Goldens: `recordRoborazzi<Variant>` ONLY when the story intends a visual change; see "Goldens" below.
+Goldens: `recordRoborazziDebug` (per module) ONLY when the story intends a visual change; see "Goldens" below.
 Robolectric NATIVE-graphics tests run one SDK per JVM (`-ProboSdks=N`, spike pattern).
-Python pipelines (tools/, doc 08): always `python3 -I …` from the pinned venv, via the targets documented
-in tools/README.md. Pipelines read only pinned inputs (data/pins.lock); never fetch upstream ad hoc.
+Python pipelines (tools/, doc 08): `cd tools && uv run --frozen python -I -m crit <stage> <cmd>`, or the
+`just` aliases (`just content`, `just mushaf`, `just proof`, `just timing`, `just validate`, `just assets`,
+`just ci`). Pipelines read only pinned inputs (data/pins.lock); never fetch upstream ad hoc.
+`crit sign` / `crit publish` (`just sign`, `just publish`) are OWNER-ONLY: never run them.
 
 ## Toolchain (frozen — D-02; changing any version needs an ADR in doc 12 and owner approval)
 AGP 9.4.1 · Gradle 9.8.1 · Kotlin 2.4.21 lifted via root `alias(libs.plugins.kotlin.jvm) apply false`
@@ -127,14 +138,19 @@ adhan2 0.0.7. NO Ktor. AGP > 9.4 does not sync in stable Android Studio (Rabbit 
 ## Module conventions (doc 04 is authoritative)
 - `:app` → `:feature:*` → `:core:*`. Features NEVER depend on features (the `criterion.root` check fails the build).
 - All `NavKey`s live in `:core:navigation`. Cross-feature navigation = NavKeys only.
-- `:core:model`, `:core:common`, `:core:domain` are pure Kotlin (`criterion.jvm.library`), no Android, no DI annotations.
+- `:core:model` and `:core:domain` are pure Kotlin (`criterion.jvm.library`), no Android, no DI annotations.
+  Interfaces (repositories, `PlaybackController`, `PlaybackStateHub`, `HijriCalendar`) live in `:core:domain`;
+  implementations live in `:core:data`, `:core:audio`, `:core:prayer`, …
 - Each core module exposes interfaces; implementations are `internal`, bound in that module's Hilt module.
   `QuranContentDb` and all Room types stay `internal` to their module (no `api(room3-runtime)` leaks).
 - New module = a convention plugin from build-logic only; no copy-pasted android {} blocks.
 - Add the new module to this file's module list (below) in the same PR.
-Modules today: :app :core:model :core:common :core:content :core:database :core:datastore :core:data
-:core:designsystem :core:ui :core:navigation :core:testing :feature:home
-(AP-01 state = :app only; the PR that adds/removes a module updates this list.)
+Modules today (doc 04 §3.2 P0 set): :app :core:model :core:domain :core:content :core:database :core:data
+:core:designsystem :core:navigation :core:testing
+(AP-01 state = :app only. Clock/dispatchers go in :core:domain, DataStore<UserSettings> in :core:database,
+model-bound rows in :core:designsystem. P1 adds :core:remote :core:mushaf-render :core:audio, the six
+features and :baselineprofile; P2 adds :core:prayer :feature:prayer :feature:companion. Never invent a module
+name that is not in doc 04 §3; the PR that adds/removes a module updates this list.)
 
 ## Coding standards
 - Kotlin official style, enforced by Spotless + ktlint 1.8.0 + compose-rules 0.6.8; Android Lint + Slack
@@ -162,11 +178,14 @@ Modules today: :app :core:model :core:common :core:content :core:database :core:
 2. NO QF/QURAN.COM CONTENT IN SHIPPED DATA. Never bundle or cache-as-database anything from api.quran.com /
    Quran Foundation content APIs. No client secret in the app, ever.
 3. NO HOTLINKING OUTSIDE THE CATALOGUE. Audio/pack URLs come only from the signed catalogue.json /
-   index.json entry whose buildEligibility includes this build tier and whose kill-switch is enabled.
+   index.json entry (detached `.sig`, Ed25519 over the exact file bytes) whose buildEligibility includes
+   BuildConfig.CONTENT_TIER (PERSONAL | BETA | PUBLIC) and whose kill-switch is enabled.
    No hard-coded third-party media URLs in Kotlin. Never pair a timing file and audio from different hosts.
 4. LICENCE MANIFEST FOR EVERY PACK/ASSET. Every pack, font, dataset and audio source has licence,
+   licenceStatus (PERMITTED | HOST_GRANT | PENDING | PERSONAL_ONLY | REVOKED) + free-text basis,
    attribution, sha256, size and eligibility flags (personal/beta/public/monetized) in the manifest;
-   CI fails a build that contains content ineligible for its tier.
+   `verifyContentEligibility<Variant>` fails a build that contains content ineligible for its tier.
+   QUL-derived layout data lives only in `src/personal/assets/` until G1; never in `src/main/assets/`.
 5. QURAN TEXT IS PIPELINE-ONLY. Never type, paste, "fix", normalize or reformat Arabic Quran text
    (ayah text, tokens, layout lines) in any source, test, fixture or data file. Do not output Quran text
    from memory. Refer to text by verse key / token key and read it from the content DB or the pipeline.
@@ -176,9 +195,12 @@ Modules today: :app :core:model :core:common :core:content :core:database :core:
    Regenerate via the pipeline/KSP.
 7. KEEP GOLDENS GREEN. Never re-record a golden to make a failing test pass. Re-record only when the story
    intends the visual change; attach the diff images to the PR and explain each one.
-8. KUFAN VERSE KEYS EVERYWHERE. `VerseKey(surah, ayah)` in Kufan numbering (1..6236; 1:1 = basmala).
-   Never DK/QUL display numbering, never database row ids in user.db or in the API between modules.
-   Page references = (mushafId, page_index); show page_label (= index + 1 for taj16) in all UI.
+8. KUFAN VERSE KEYS EVERYWHERE. `VerseKey(surah, ayah)` in Kufan numbering (id() 1..6236; 1:1 = basmala).
+   Use doc 04 §5's identity types verbatim (VerseKey, SurahId, ParaId, ManzilId, RukuId, MushafId, PageIndex,
+   PageLabel, AyahRange, RecitationId); no `AyahKey`, no raw Int ids in public APIs. Never DK/QUL display
+   numbering, never database row ids in user.db or in the API between modules. Page references =
+   (MushafId, PageIndex), e.g. INDOPAK_16_TAJ (code `indopak16_taj`); show page_label (= index + 1 for
+   taj16) in all UI.
 9. PARA = THE INDO-PAK TABLE (content DB `para`). Never derive Para from Madani juz (QuranKit Juz,
    quran.com juz, any API). 7 boundaries differ: P4 3:92, P7 5:83, P11 9:94, P14 15:2, P20 27:60,
    P21 29:45, P23 36:22. Madani juz/hizb/rub exist only for Madani mode (v2).
@@ -198,7 +220,8 @@ Modules today: :app :core:model :core:common :core:content :core:database :core:
 One story per session. Start in plan mode: restate goal, list files, list tests, list verification.
 Wait for approval. Implement in small commits. Then run the verification ladder required for the story
 type (doc 13 §5) and paste the evidence block. Never say "done" without the commands' actual output.
-Branch `<story-id>-<slug>` from `main`; Conventional Commits `type(scope): summary [<story-id>]`;
+Branch `<story-slug>-<slug>` from `main` (doc 09 ID lower-cased, e.g. E-05-S03 → `e05-s03-page-golden`);
+Conventional Commits `type(scope): summary [<story-id>]` (ID verbatim, e.g. [E-05-S03]);
 PR uses .github/pull_request_template.md. Never push to `main`, never force-push, never merge.
 
 ## Ask the owner (stop and ask) when
@@ -211,9 +234,9 @@ you would need network data that is not pinned · you are about to delete or rew
 
 | Path | Content (short) |
 |---|---|
-| `tools/CLAUDE.md` | Python 3, pinned venv, run everything with `python3 -I`, and use only the documented targets. Inputs come only from `data/pins.lock`; check sha256 before use. Outputs go to `build/` or the asset paths in doc 08 and are never hand-edited. Every stage ends with its invariant checks (doc 08) and exits non-zero on failure. **Never print Quran text into logs or diffs.** Log keys and counts instead. QUL exports live in `data/private/` and never go in git or CI artefacts. Taj scans never enter the repo. Proof PDFs go to `build/proofing/`. |
+| `tools/CLAUDE.md` | Python 3.12 via uv. Run everything as `uv run --frozen python -I -m crit <stage> <cmd>` or its `just` alias (doc 08 §3.1); no other entry points. Inputs come only from `data/pins.lock`; `crit fetch` checks sha256 before use. Outputs go to `out/` and reach module asset dirs only through `crit install-assets` (Git LFS-committed, doc 08 §2); they are never hand-edited. Every stage ends with its invariant checks (`crit validate all`, doc 08 V-* checks) and exits non-zero on failure. **Never print Quran text into logs or diffs.** Log keys and counts instead. Private inputs (QUL exports, KFC ZIPs, oracles) live in `~/criterion-data/`, outside the repo, and never go in git or CI artefacts. Taj scans never enter the repo. Proofs go to `out/proof/taj16/<build_id>/`. `crit sign` and `crit publish` are owner-only. |
 | `core/mushaf-render/CLAUDE.md` | Draw only from precomputed `PageLayout`: no runtime justification except Fallback 1, and that only behind a flag. Keep three separate layers: furniture/ornaments, text, highlight/selection. Draw with `drawTextRun` per word, with `cv01` only on stretched words. Margin side = `page_label % 2 == 0 ? RIGHT : LEFT`. Every visual change ships with Roborazzi goldens for the page set in doc 10, and the agent opens and inspects the PNGs. Performance budgets are in doc 05. |
-| `core/audio/CLAUDE.md` | Media3 runs on the main looper. Player state goes out through `PlaybackStateHub` only. Para scope uses the Indo-Pak table. Basmala strategy is per surah (none for surah 9; Fatiha 1:1 is the basmala). `AudioAttributes` are USAGE_MEDIA + CONTENT_TYPE_SPEECH (pause on focus loss, no ducking). Enable `FLAG_ENABLE_CONSTANT_BITRATE_SEEKING`. Never pair timing and audio from different hosts, and never use mp3quran reads 74 or 53 for timing. |
+| `core/audio/CLAUDE.md` | Media3 runs on the main looper. Player state goes out only through `PlaybackStateHub.state: StateFlow<PlaybackState>` (+ `events`); the interfaces and `PlaybackState` shape are doc 04's, in `:core:domain` (no `:core:audio-api` module), and `PlaybackController.state` = `hub.state`. Para scope uses the Indo-Pak table. Basmala strategy is per surah (none for surah 9; Fatiha 1:1 is the basmala). `AudioAttributes` are USAGE_MEDIA + CONTENT_TYPE_SPEECH (pause on focus loss, no ducking). Enable `FLAG_ENABLE_CONSTANT_BITRATE_SEEKING`. Never pair timing and audio from different hosts, and never use mp3quran reads 74 or 53 for timing. |
 | `data/curated/CLAUDE.md` | These CSVs are print-verified. Agents may add or modify rows **only by script, from a cited source, with a `verified_source` value**. Never retype Arabic names or labels. Any PR that changes these files gets the `content-review` label and is listed in the next hafiz packet. |
 
 ### 2.3 `.claude/settings.json` (permissions and guard hook)
@@ -222,12 +245,15 @@ you would need network data that is not pinned · you are about to delete or rew
 {
   "permissions": {
     "allow": [
-      "Bash(./gradlew:*)", "Bash(python3 -I:*)", "Bash(adb:*)", "Bash(git status)", "Bash(git diff:*)",
+      "Bash(./gradlew:*)", "Bash(python3 -I:*)", "Bash(uv run --frozen python -I -m crit:*)", "Bash(just:*)",
+      "Bash(adb:*)", "Bash(git status)", "Bash(git diff:*)",
       "Bash(git log:*)", "Bash(git add:*)", "Bash(git commit:*)", "Bash(git switch:*)", "Bash(git worktree:*)",
       "Bash(gh pr create:*)", "Bash(gh pr view:*)", "Bash(gh run view:*)"
     ],
     "deny": [
       "Bash(git push --force:*)", "Bash(git push -f:*)", "Bash(git push origin main:*)", "Bash(gh pr merge:*)",
+      "Bash(just sign:*)", "Bash(just publish:*)", "Bash(uv run --frozen python -I -m crit sign:*)",
+      "Bash(uv run --frozen python -I -m crit publish:*)", "Bash(uv run --frozen python -I -m crit keys:*)",
       "Read(./**/*.jks)", "Read(./**/*.keystore)", "Read(./**/signing/**)", "Read(./**/*ed25519*private*)"
     ]
   },
@@ -242,12 +268,12 @@ you would need network data that is not pinned · you are about to delete or rew
 
 `tools/agent-hooks/guard_paths.py` reads the hook JSON from stdin and takes `tool_input.file_path`. It exits with **code 2**, which blocks the edit and returns the reason to the agent, when the path matches any of these:
 - `spikes/**`, `docs/research/**`;
-- `**/*.db`, `**/*.ttf`, `**/*.otf`, `**/schemas/**/*.json`;
-- `data/pins.lock`, `data/private/**`, `build/proofing/**`.
+- `**/*.db`, `**/*.sqlite`, `**/*.ttf`, `**/*.otf`, `**/schemas/**/*.json`;
+- `data/pins.lock`, `data/keys/**`, `out/**`, and anything that resolves outside the repo (e.g. `~/criterion-data/**`).
 
 `data/curated/**` is allowed, but the hook prints a warning that the PR needs the `content-review` label.
 
-**Second guard: CI's `quran_text_guard`** (owned by doc 10's PR workflow).
+**Second guard: CI's `quran_text_guard`** (`tools/ci/quran_text_guard.py`, run in the scan step of doc 10's `android.yml` next to `cleanroom_scan.py` and `no_qf_hosts.py`).
 - It scans **added lines** in `*.kt`, `*.kts`, `*.xml` and `*.csv` for runs that contain Arabic harakat. The ranges are U+064B–U+0652, U+0670 and U+06D6–U+06ED.
 - It fails the build if such a run appears outside the allowlist `data/curated/**` (and then only with the `content-review` label).
 - Urdu UI strings normally carry no tashkeel, so they pass.
@@ -268,23 +294,24 @@ you would need network data that is not pinned · you are about to delete or rew
 ## 3. Before the first session (owner, ~2 h, 2026-10-20)
 
 1. **Create the GitHub repo**, private, "all rights reserved" (D-18; the licence decision is gate G4). Protect `main`:
-   - require PRs, the `ci/check` status and a linear history;
+   - require PRs, the `ci/check` status (the `check` job of doc 10's `android.yml`; `tools.yml` checks too when they trigger) and a linear history;
    - no force-push;
    - disable merge commits (squash only).
 2. **Install the tools:** Android Studio Rabbit 1 (2026.2.1), JDK 21 and SDK `platforms;android-37.0` + `build-tools;37.0.0`. Create these AVDs:
    - **API 36 Pixel-class** (main);
    - **API 24** and **API 26** (smoke tests, if the host has KVM);
    - **a sw600dp tablet**.
-3. **Tools:** `python3` (pinned version per doc 08) and `gh` (authenticated).
-4. **Physical devices:** at least one API 24/25 phone and one API 26–27 phone (g04 rec 10). By P2, add at least one Infinix, Tecno or Xiaomi phone for adhan testing.
-5. **Owner-only P0 tasks, started on day 1 because they have lead times** (doc 03 has the tracker and templates):
-   - create the QUL account and export resource 11 into `data/private/`;
+3. **Tools:** `uv` (version per `tools/.uv-version`; it installs the pinned Python 3.12, doc 08 §3.1), `just`, Git LFS (generated assets are LFS-committed, doc 08 §2) and `gh` (authenticated).
+4. **Physical devices:** at least one API 24/25 phone and one API 26–27 phone (g04 rec 10), procured by 2026-10-28 for the AP-06 smoke test. Later (v1.1 adhan work, or earlier if the freelancer lever pulls adhan into v1.0), add at least one Infinix, Tecno or Xiaomi phone for adhan testing.
+5. **Owner-only P0 tasks, started on day 1 because they have lead times** (doc 03 has the tracker and templates; doc 09 §7 has the day-by-day list):
+   - create the QUL account and export resource 11 into `~/criterion-data/qul/<date>/`, outside the repo, recording SHA-256s;
    - send the G1 email (support@tarteel.ai cc naveed.ahmad@tarteel.ai) and open the GitHub issue;
    - email DigitalKhatt (ananeamine@gmail.com);
-   - email for audio rights: Alafasy Berhad (ai@alafasy.co), Quran Foundation (developers@quran.com) and King Fahd Complex;
-   - send the translation permission requests listed in D-09.
+   - email for audio rights (G2): Alafasy Berhad (ai@alafasy.co), Quran Foundation (developers@quran.com) and King Fahd Complex;
+   - buy the brand-neutral domain in week 1 (needed for the Organization-account verification email and the CDN);
+   - send the translation permission requests listed in D-09 (doc 09 schedules them in S1).
 
-   Everything in this group must be sent by 2026-11-02. G1 decision date: 2026-11-19.
+   The G1 emails go out on 2026-10-20 and the G2 emails on 2026-10-21; both groups must be out by 2026-10-23 at the latest. First follow-up 2026-11-02. G1 decision date: 2026-11-19 (clean-room fallback starts 2026-11-20). G2 catalogue freeze: 2027-01-04.
 
 ---
 
@@ -313,7 +340,7 @@ flowchart LR
 | 0. Pick | The owner picks the next story from doc 09 and confirms the Definition of Ready. That means the spec section exists, the dependencies are merged, and no gate blocks it (or the story is personal-tier). | Story ID |
 | 1. Load context | `/clear`, then `/story <id>`. The agent reads `CLAUDE.md`, the story, the linked spec sections, and the existing code it will touch. It reads **only** the research it needs (grep, not whole reports). | — |
 | 2. Plan (plan mode) | The plan covers: goal; files to create or change; public interfaces with signatures; tests to add; the verification level and commands; risks; open questions. It stays within one screen. | Plan the owner approves |
-| 3. Implement | Work goes on branch `<story-id>-<slug>`, in commits small enough to revert. Run `spotlessApply` before each commit. No drive-by refactors outside the story. Note any you find for the PR's "follow-ups" list. | Commits |
+| 3. Implement | Work goes on branch `<story-slug>-<slug>` (§4.2), in commits small enough to revert. Run `spotlessApply` before each commit. No drive-by refactors outside the story. Note any you find for the PR's "follow-ups" list. | Commits |
 | 4. Verify | Run the §5 ladder to the story's required level. On a failure, fix the root cause; never weaken a test to make it pass. | Evidence block |
 | 5. Self-review | Apply the §9 checklists that fit. For large PRs, run MA-2 (§8.3). | Checklist in the PR |
 | 6. Doc sync | Mark the story done in doc 09 and update any spec that changed. Propose an ADR if a decision moved (§10). | Doc diffs in the same PR |
@@ -336,7 +363,7 @@ flowchart LR
 
 | Item | Convention |
 |---|---|
-| Branch | `<story-id>-<short-slug>`, using doc 09's story ID verbatim (e.g. `<E-xx story>-page-golden`). Spikes: `spike/<topic>`. Docs only: `docs/<topic>` |
+| Branch | `<story-slug>-<short-slug>`: doc 09's `E-xx-Syy` story ID, lower-cased with the first hyphen dropped (`E-05-S03` → `e05-s03-page-golden`). Spikes: `spike/<topic>`. Docs only: `docs/<topic>` |
 | Commit | Conventional Commits: `feat(reader): draw ayah markers [<story-id>]`. Types: feat, fix, test, refactor, build, ci, docs, chore, data (pipeline/curated data). The agent's attribution trailer is added automatically by Claude Code. |
 | PR size | Aim for ≤ 600 changed lines excluding generated files and goldens; hard ceiling about 1,200. Above that, split. |
 | Labels | `content-review` (touches curated data, the pipeline text path, or the renderer output), `licence` (new dependency, asset or pack), `policy` (manifest, permissions, FGS, Data safety), `golden-update` |
@@ -372,10 +399,10 @@ Level reached: V? (see doc 13 §5)
 
 | Level | Name | Commands / actions | Who |
 |---|---|---|---|
-| **V0** | Compiles and is formatted | `./gradlew spotlessCheck assembleFossDebug` | Agent |
-| **V1** | Unit tests | `testDebugUnitTest testFossDebugUnitTest`, or the module's JVM tests. New logic has new tests, and the agent shows they fail without the change where practical (red → green). | Agent |
+| **V0** | Compiles and is formatted | `./gradlew spotlessCheck :app:assembleFossPersonalDebug` | Agent |
+| **V1** | Unit tests | `./gradlew quickCheck`, or the module's `testDebugUnitTest` / JVM `test` task (`:app:testFossPersonalDebugUnitTest` for app code). New logic has new tests, and the agent shows they fail without the change where practical (red → green). | Agent |
 | **V2** | Integration (Robolectric/Room/Media3/Work) | Room open/validation tests (with **and** without `room_master_table`), migration tests, service tests, MockWebServer tests | Agent |
-| **V3** | Goldens | `verifyRoborazziDebug verifyRoborazziFossDebug`. Any re-record follows §5.3. | Agent, then the owner reviews the images |
+| **V3** | Goldens | `verifyRoborazziDebug` (library modules; the PR set of ~60 rule-selected pages for the renderer). Any re-record follows §5.3. | Agent, then the owner reviews the images |
 | **V4** | Emulator run | Install, launch and exercise the story's flow on API 36, plus API 24/26 AVDs if available. `adb exec-out screencap`, plus `adb logcat -d` checked for crashes and StrictMode violations. The agent **opens every screenshot** and writes one line per shot on what it verified. | Agent (local session) |
 | **V5** | Physical device / long-running | The checklist the agent produces, run by the owner. Examples: API 24/25 kashida widths, background audio with the screen off for 30 min, airplane-mode downloads, the 7-day adhan run on OEM phones, a TalkBack pass. | Owner |
 
@@ -424,13 +451,13 @@ VERIFICATION — <story-id> — level reached: V4
 
 ### 5.3 Golden-image protocol (renderer and UI)
 
-1. Goldens live next to their tests and are committed. Roborazzi 1.76.0 runs on Robolectric 4.17 with `@GraphicsMode(NATIVE)` for mushaf pages, one SDK per JVM. The page set is in doc 10.
+1. Goldens live next to their tests and are committed. Roborazzi 1.76.0 runs on Robolectric 4.17 with `@GraphicsMode(NATIVE)` for mushaf pages, one SDK per JVM. The page set is in doc 10: about 60 rule-selected pages on every PR (zero tolerance) and all 548 pages nightly.
 2. **A failing verify is a bug until proven otherwise.** The agent opens the `*_compare.png` and `*_actual.png` files Roborazzi produces and classifies each diff as one of:
    - **intended**: the story changed this;
    - **regression**: fix the code;
    - **environment**: a library or Robolectric bump. This should not happen under a frozen toolchain, so stop and ask.
 3. Re-recording is allowed only for "intended". The PR lists each re-recorded golden with a one-line reason and embeds the compare image. The owner approves by eye.
-4. **When the pipeline output changes** (new mushaf-pack version), the PR also carries the pipeline's page-diff report: the pages whose token positions or images changed (doc 08). Any page whose **text** changed goes into the next hafiz packet (AP-25).
+4. **When the pipeline output changes** (new mushaf-pack version), the PR also carries the pipeline's page-diff output: `crit mushaf proof taj16 --changed-since <build_id>` lists the pages whose `page_hash` changed and renders them as `delta-<build>.pdf` (doc 08 §5.6; `tools.yml` uploads it). Any page whose **text** changed goes into the next hafiz packet (AP-25). Text or layout fixes always ship as an app update with a new bundled pack, never as a remote change (D-30).
 5. The agent reviews **layout**: alignment, overlaps, clipping, the margin side, header and footer furniture, tofu boxes (☐), line widths, and highlight placement. **The agent never certifies Arabic correctness.** Only the hafiz certificate (G5) does.
 
 ### 5.4 On-device check recipes (V4/V5)
@@ -441,7 +468,7 @@ VERIFICATION — <story-id> — level reached: V4
 | Reader | Cold start into the last page. Swipe 20 pages both ways. Rotation lock (phone) and page-turn lock. Night/AMOLED themes. Pinch zoom with pan. Immersive toggle. Keep-screen-on. A tablet AVD with sw ≥ 600dp hides the rotation lock (D-23). |
 | Audio | Play Para 4: the first ayah must be 3:92. Play a Manzil. Play an ayah range with repeat ×3. Lock the screen for 30 min. Headset button. Notification controls. Speed 0.5×/2×. Sleep timer at end of surah. An incoming-call focus loss pauses playback. Highlight follows and the page auto-turns; touching the pager suspends auto-turn for 8 s. |
 | Downloads | Download a Para over Wi-Fi. Kill the app mid-download and confirm it resumes (Range). Airplane mode: play the downloaded audio. The storage manager shows sizes, and deleting frees space. Wi-Fi-only blocks downloads on cellular. |
-| Adhan (P2) | Run 7 consecutive days on each OEM phone: alarms fire on time with the screen off, after a reboot, after a timezone change, after revoking and re-granting the exact-alarm permission. The health check reports OEM guidance. |
+| Adhan (v1.1 by default; v1.0 only if the 2026-11-30 freelancer lever pulls it in, then starting by 2027-01-04) | Run 7 consecutive days on each OEM phone: alarms fire on time with the screen off, after a reboot, after a timezone change, after revoking and re-granting the exact-alarm permission. The health check reports OEM guidance. |
 | Accessibility / RTL | Do a TalkBack pass on home, index, reader (ayah semantics read the reference and translation) and player. Font scale 200%. Switch the UI to Urdu: the UI mirrors and the mushaf stays RTL; check numerals and bidi isolation. Run the pseudo-locales `en-XA` and `ar-XB` in debug. |
 
 ---
@@ -485,36 +512,38 @@ DELIVERABLES
 
 ## 7. Ready-to-use prompts per epic
 
-Doc 09 owns the epic numbers (E-xx) and story IDs. These prompts are keyed by epic **name**, and the owner pastes the story ID into `<story-id>`. Each prompt is the CONTEXT/GOAL/CONSTRAINTS/ACCEPTANCE/VERIFICATION body. Run it after `/clear`, and answer the plan before any code is written. Larger epics take several sessions, one story each; split as doc 09 does.
+Doc 09 owns the epic numbers (E-xx) and story IDs (`E-xx-Syy`). The table maps each prompt to its doc 09 epic and stories (doc 09 is authoritative if they drift), and the owner pastes the story ID into `<story-id>`. The **Release** column applies the final v1.0 scope: `v1.0` = Quran core + compliance floor + Tier A (prayer times with Sehri/Iftar, Hijri + PK feed, Ramadan core, khatam planner); `stretch` = v1.0-stretch (ladder L1–L4, pre-cut); `v1.1` = Tier B by default (2027-03-22). Run a stretch or v1.1 part only when doc 09 schedules it. Each prompt is the CONTEXT/GOAL/CONSTRAINTS/ACCEPTANCE/VERIFICATION body. Run it after `/clear`, and answer the plan before any code is written. Larger epics take several sessions, one story each; split as doc 09 does.
 
-| # | Prompt | Doc 09 epic (by name) | Features | Phase | Spec |
-|---|---|---|---|---|---|
-| AP-01 | Toolchain upgrade from spike | Toolchain & skeleton | — | P0 | 04, g04 |
-| AP-02 | Module skeleton + build-logic | Toolchain & skeleton | — | P0 | 04 |
-| AP-03 | CI on GitHub Actions | CI & quality gates | — | P0 | 10 |
-| AP-04 | Content-DB pipeline | Content DB pipeline | F-IX-*, F-SR-01 | P0 | 08, 03, 04 |
-| AP-05 | Mushaf-pack pipeline | Mushaf pack pipeline | F-RD-01 | P0→P1 | 08, 05 |
-| AP-06 | Device smoke test (kashida + FTS5 + desugaring) | Mushaf renderer | F-RD-01 | P0 | 05, g04 |
-| AP-07 | Renderer v0 — single-page golden | Mushaf renderer | F-RD-01 | P1 | 05 |
-| AP-08 | Renderer templates & furniture | Mushaf renderer | F-RD-01, F-IX-06/07 | P1 | 05 |
-| AP-09 | Pager & reader chrome | Reader UX | F-RD-01…07 | P1 | 02, 05 |
-| AP-10 | Indexes & navigation | Indexes & navigation | F-IX-01…06, 08, 09 | P1 | 02, 04 |
-| AP-11 | Bookmarks & last-read | Bookmarks & progress | F-BM-01, 02, 06 | P1 | 04 |
-| AP-12 | Catalogue + PlanExpander | Audio engine | F-AU-01, 02, 05 | P1 | 06 |
-| AP-13 | Media3 service & player UI | Audio engine | F-AU-03, 05, 06, 07, 09 | P1 | 06 |
-| AP-14 | Timing-pack pipeline | Audio engine | F-AU-03 | P1 | 08, 06 |
-| AP-15 | Follow-along highlight & auto page-turn | Audio engine / Reader UX | F-RD-05 | P1 | 06, 05 |
-| AP-16 | Downloads engine & pack manager | Downloads & packs | F-AU-08, F-PL-06 | P1 | 06, 04 |
-| AP-17 | Translation view | Translation view | F-RD-08, F-TR-01, F-RD-04 | P1 | 02, 03 |
-| AP-18 | Search | Search | F-SR-01…03 | P1 | 04, 08 |
-| AP-19 | Onboarding, settings, Urdu UI | Onboarding, settings & Urdu | F-PL-01…03, 07 | P1 | 02 |
-| AP-20 | Prayer times & adhan | Prayer times & adhan | F-CP-01, 02 | P2 | 07 |
-| AP-21 | Qibla, Hijri, tasbeeh, azkar, Ramadan | Companion essentials | F-CP-03…07 | P2 | 07 |
-| AP-22 | Widgets & reminders | Widgets & reminders | F-CP-08, 09 | P2 | 07 |
-| AP-23 | Khatam planner, credits, report-error | Bookmarks & progress / Credits & compliance | F-BM-04, F-PL-04, F-PL-05 | P2 | 07, 03, 11 |
-| AP-24 | Release prep | Release & store | — | P2 | 11, 10 |
-| AP-25 | Hafiz proofreading packet (non-code) | Proofreading | — | P1→P2 | 03, 08, 10 |
-| AP-26 | Permission-email follow-ups (non-code) | Permission outreach | — | P0→P2 | 03 |
+| # | Prompt | Doc 09 epic · stories | Features | Phase · sprint | Release | Spec |
+|---|---|---|---|---|---|---|
+| AP-01 | Toolchain upgrade from spike | E-01 · S01 | — | P0 · S0 | v1.0 | 04, g04 |
+| AP-02 | Module skeleton, build-logic & variants | E-01 · S02–S04 | — | P0 · S0 | v1.0 | 04 |
+| AP-03 | CI on GitHub Actions | E-02 · S01 (S04 gates wired as stubs) | — | P0 · S0 | v1.0 | 10 |
+| AP-04 | Content-DB pipeline | E-03 · S01, S02, S05, S08, S09; E-02-S02 | F-IX-*, F-SR-01, F-TR-01 | P0 → P1 | v1.0 | 08, 03, 04 |
+| AP-05 | Mushaf-pack pipeline | E-03 · S03, S04, S06, S07 (S11 only if G1 fails) | F-RD-01 | P0 → P1 | v1.0 | 08, 05 |
+| AP-06 | Device smoke test (kashida + FTS5 + desugaring) | E-01 · S05 | F-RD-01 | P0 · S0 | v1.0 | 05, g04 |
+| AP-07 | Renderer v0 — single-page golden | E-04 · S02, S03 (+ HitTester from S05) | F-RD-01 | P1 · S1 | v1.0 | 05 |
+| AP-08 | Renderer templates & furniture | E-04 · S04, S06, S09; E-02-S03 | F-RD-01, F-IX-06/07 (markers) | P1 → P2 (ornaments by end of S5) | v1.0 | 05 |
+| AP-09 | Pager & reader chrome | E-05 · S01, S02, S05, S06 | F-RD-01…03, 06, 07 | P1 | v1.0 (pinch zoom is floor) | 02, 05 |
+| AP-10 | Indexes & navigation | E-06 · S01–S08 (S09 stretch); E-01-S06 | F-IX-01…06, 08, 09 (F-IX-07 list: stretch) | P1 | v1.0 | 02, 04 |
+| AP-11 | Bookmarks & last-read | E-07 · S01–S05 (S06, S07 v1.1) | F-BM-01, 02, 06 (Auto Backup) | P1 | v1.0 (notes, JSON export: v1.1) | 04 |
+| AP-12 | Catalogue + PlanExpander | E-09-S01, E-08-S03, E-08-S08 | F-AU-01, 02, 05 | P1 | v1.0 | 06 |
+| AP-13 | Media3 service & player UI | E-08 · S01, S02, S05–S07, S09; E-09-S03 | F-AU-03, 04, 06, 07, 09 | P1 | v1.0 (F-AU-10 interleave: v1.1) | 06 |
+| AP-14 | Timing-pack pipeline | E-09 · S02, S04, S05 (S06 v1.1) | F-AU-03 | P1 | v1.0 | 08, 06 |
+| AP-15 | Follow-along highlight & auto page-turn | E-08-S04, E-05-S04 | F-RD-05, F-AU-03 | P1 | v1.0 | 06, 05 |
+| AP-16 | Downloads engine, signed remote files & notices | E-10 · S01–S05 (S06 v1.1); E-23 · S01–S02 | F-AU-08, F-PL-06 (storage half), F-PL-11 | P1 → P2 (UIDT + signed files in S5) | v1.0 (pack installer: v1.1) | 06, 04 |
+| AP-17 | Translation view | E-11 · S01, S02 (S03 v1.1); E-05-S03 (S07 stretch) | F-RD-08, F-TR-01, F-RD-04 (F-RD-13: stretch) | P1 | v1.0 (F-TR-02/03: v1.1) | 02, 03 |
+| AP-18 | Search | E-12 · S01–S03 | F-SR-01…03 | P2 · S5 | v1.0 | 04, 08 |
+| AP-19 | Onboarding, settings, Urdu UI | E-13 · S01–S05; E-14 · S01, S03 | F-PL-01…03, 07 | P1 → P2 | v1.0 | 02 |
+| AP-20 | Prayer times (+ adhan when scheduled) | E-15 · S01–S03 (S04–S07 v1.1) | F-CP-01 (F-CP-02: v1.1) | P2 · S6 | v1.0 Tier A; adhan v1.1 unless the 2026-11-30 freelancer lever pulls it in | 07 |
+| AP-21 | Hijri, Ramadan core (+ tasbeeh, Manzil dua, azkar, Qibla) | E-16 · S01, S03 (S02, S05 stretch; S04, S06, S07 v1.1) | F-CP-04, F-CP-07 (F-CP-05, F-CP-06 Manzil dua: stretch; F-CP-03, azkar: v1.1) | P2 · S6 | v1.0 Tier A + stretch + v1.1 | 07 |
+| AP-22 | Widgets & reminders | E-17 · S01–S03 | F-CP-08, 09 | after v1.0 | v1.1 | 07 |
+| AP-23 | Khatam planner, credits, report-error | E-18-S01 (S02 v1.1); E-19 · S01–S03 | F-BM-04, F-PL-04, F-PL-05 | P2 · S6 | v1.0 (khatam = Tier A; credits/report = floor) | 07, 03, 11 |
+| AP-24 | Release prep | E-22 · S02–S05; E-24-S02; E-02 · S05, S06 | — | P2 · S5–S7 | v1.0 | 11, 10 |
+| AP-25 | Hafiz proofreading packet (non-code) | E-20 · S02, S03 | — | P1 → P2 | v1.0 (G5) | 03, 08, 10 |
+| AP-26 | Permission-email follow-ups (non-code) | E-21 · S01–S07 | — | P0 → P2 | v1.0 (G1, G2) | 03 |
+
+Stories with no dedicated prompt (for example F-PL-10 rating prompt, v1.0-stretch/v1.1; F-PL-12 launcher shortcuts, v1.1; E-14-S04 icon; other Tier B pull-ins) use the §6.1 master template with their doc 09 story.
 
 ### AP-01 — Toolchain upgrade from the spike (first PR, 2026-10-20)
 
@@ -536,10 +565,12 @@ CONSTRAINTS:
   `bundle { language { enableSplit = false } }` (D-21).
 - gradle.properties: jvmargs -Xmx4g, parallel, caching, configuration-cache on.
 - Add CLAUDE.md (doc 13 §2.1), .claude/settings.json + tools/agent-hooks/guard_paths.py (§2.3),
-  .github/pull_request_template.md (§4.3). Add `data/private/` to .gitignore.
+  .github/pull_request_template.md (§4.3). Add `out/` and the pipeline cache dir to .gitignore (private
+  inputs stay in ~/criterion-data/, outside the repo — doc 08 §2).
 ACCEPTANCE:
-1. `./gradlew buildEnvironment` shows `kotlin-gradle-plugin:2.2.10 -> 2.4.21` and KSP 2.3.12.
-2. assembleDebug and assembleRelease (R8) pass; existing template tests pass.
+1. `./gradlew buildEnvironment` shows `kotlin-gradle-plugin:2.2.10 -> 2.4.21` and KSP 2.3.12 (AP-02 turns
+   this into the `verifyKotlinGradlePlugin` task).
+2. assembleDebug and assembleRelease (R8) pass (no flavors yet); existing template tests pass.
 3. `./gradlew :app:dependencies --configuration releaseRuntimeClasspath | grep -ci ktor` prints 0.
 4. App launches on an API 36 AVD (and API 24 AVD if available) and shows the template screen; switching
    the app language to Urdu via system per-app language settings works without crash.
@@ -549,48 +580,64 @@ error, the documented fallback is Kotlin 2.3.21 — report it, do not switch sil
 OUT OF SCOPE: modules, flavors, Hilt, Room (AP-02).
 ```
 
-### AP-02 — Module skeleton + build-logic convention plugins
+### AP-02 — Module skeleton, build-logic convention plugins and variants
 
 ```text
-CONTEXT: AP-01 merged. Spec: doc 04 (module graph, P0 lean set, convention plugin list), r07 §2.10,
-g04 rec 7–8. Spike core/model, core/content, app show working Room3/Hilt/Nav3 wiring.
-GOAL: A buildable lean module skeleton with convention plugins, flavors, Hilt, Nav3 host, and the
-feature→feature guard.
+CONTEXT: AP-01 merged. Spec: doc 04 §3 (module graph, P0 set), §11 (variants, content eligibility), §16.2
+(convention plugins), r07 §2.10, g04 rec 7–8. Spike core/model, core/content, app show working
+Room3/Hilt/Nav3 wiring.
+GOAL: A buildable lean module skeleton with convention plugins, the doc 04 variant matrix, Hilt, a Nav3
+host, and the module-boundary guard.
 CONSTRAINTS:
-- build-logic/convention plugins: criterion.android.application(.compose), criterion.android.library(.compose),
-  criterion.android.feature, criterion.jvm.library, criterion.hilt, criterion.room3 (schemaDirectory set —
-  the Room3 plugin fails without it), criterion.android.lint, criterion.spotless,
+- build-logic/convention plugins exactly as doc 04 §16.2 lists them: criterion.android.application(.compose),
+  criterion.android.application.flavors, criterion.android.library(.compose), criterion.android.feature,
+  criterion.jvm.library, criterion.hilt, criterion.room3 (schemaDirectory set — the Room3 plugin fails
+  without it), criterion.android.lint, criterion.spotless, criterion.content.eligibility,
   criterion.android.robolectric (g04 rec 8: --add-exports/--add-opens flags, host libsqliteJni from
-  sqlite-bundled-jvm for linux_x64/osx_arm64/windows_x64, isIncludeAndroidResources, -ProboSdks=N),
-  criterion.root (fails if any :feature:* depends on another :feature:*; registers aggregate tasks
-  `quickCheck` and `prCheck` exactly as CLAUDE.md lists them).
-- Modules: the P0 lean set from doc 04 (if doc 04 lists none: :core:model :core:common :core:content
-  :core:database :core:datastore :core:data :core:designsystem :core:ui :core:navigation :core:testing
-  :feature:home). Pure-Kotlin modules use criterion.jvm.library and carry no DI annotations.
-- Flavors: dimension "distribution", `foss` and `play`; play-only deps go in playImplementation.
+  sqlite-bundled-jvm, isIncludeAndroidResources, -ProboSdks=N), criterion.android.test (later, for
+  :baselineprofile), and criterion.root: `checkModuleBoundaries` (doc 04 §3.4, incl. feature→feature),
+  `verifyKotlinGradlePlugin`, and the aggregate tasks `quickCheck` and `prCheck` exactly as CLAUDE.md
+  lists them. If doc 04 adds a plugin (e.g. criterion.android.screenshot for Roborazzi), follow doc 04.
+- Modules: exactly doc 04 §3.2's P0 set — :app :core:model :core:domain :core:content :core:database
+  :core:data :core:designsystem :core:navigation :core:testing. :core:model and :core:domain use
+  criterion.jvm.library and carry no DI annotations. No other module names.
+- Variants (doc 04 §11.1): flavor dimensions `distribution` {play, foss} × `tier` {personal, public};
+  playPersonal* disabled via androidComponents.beforeVariants; personal applicationIdSuffix ".personal".
+  BuildConfig.CONTENT_TIER ∈ {PERSONAL, BETA, PUBLIC}: personal tier → PERSONAL; public tier → BETA, and
+  PUBLIC only with -Pcriterion.release=production. BuildConfig.MONETIZED from -Pcriterion.monetized=true
+  (false until v1.5, play only). Asset source sets src/personal/assets/ and src/public/assets/ with an
+  empty bundled.json; verifyContentEligibility<Variant> wired (passes on empty manifests). play-only deps
+  go in the play source set (playImplementation).
 - :app: @HiltAndroidApp, AppCompatActivity, NavDisplay with saveable-state + ViewModelStore decorators,
-  HomeKey in :core:navigation, a placeholder Home screen with hiltViewModel().
+  HomeKey in :core:navigation, a placeholder Home screen in :app with hiltViewModel() (moves to
+  :feature:home when AP-10 creates it in P1).
 - Debug: StrictMode thread+VM policies (penaltyLog), LeakCanary 2.14 debugImplementation.
 ACCEPTANCE:
-1. `./gradlew prCheck` passes (both flavors assemble; all module tests run — prove library tests ran).
-2. Adding `implementation(project(":feature:home"))` to a second test feature module fails the build with
-   a clear message (demonstrate on a throwaway commit, then drop it).
+1. `./gradlew prCheck` passes (fossPersonal and playPublic assemble; all module tests run — prove library
+   tests ran). `assemblePlayPersonalDebug` does not exist.
+2. On a throwaway commit, two throwaway :feature:* modules where one depends on the other fail
+   `checkModuleBoundaries` with a clear message; the commit is then dropped.
 3. `:core:model:test` runs as a plain JVM test task.
-4. CLAUDE.md "Modules today" list updated.
+4. A variant-aware :app unit test asserts BuildConfig.CONTENT_TIER: PERSONAL under
+   testFossPersonalDebugUnitTest, BETA under testPlayPublicDebugUnitTest, and PUBLIC when the latter runs
+   with -Pcriterion.release=production.
+5. CLAUDE.md "Modules today" list updated.
 VERIFICATION: V1 + V4 (app launches, Home placeholder screenshot, logcat clean).
 ```
 
 ### AP-03 — CI on GitHub Actions
 
 ```text
-CONTEXT: AP-02 merged. Spec: doc 10 (CI/CD YAML sketches, budgets), r07 §2.7 (action versions:
+CONTEXT: AP-02 merged. Spec: doc 10 §12 (android.yml, conventions, budgets), r07 §2.7 (action versions:
 checkout v7, setup-java v6 Temurin 21, gradle/actions v6, upload-artifact v7), g04 rec 1, 11.
-GOAL: PR + main workflow that enforces the gates from day 1.
+Doc 10 owns android.yml / nightly.yml / release.yml; doc 08 owns tools.yml (pipeline CI, later story).
+GOAL: `.github/workflows/android.yml` for PRs + pushes to main that enforces the gates from day 1.
 CONSTRAINTS:
-- Job `check` (required status `ci/check`): `./gradlew prCheck --continue`, the Kotlin-lift guard
-  (`buildEnvironment | grep 'kotlin-gradle-plugin:2.2.10 -> 2.4.21'`), `:app:assembleFossRelease`
-  (unsigned), `zipalign -c -P 16` on the release APK (16 KB pages), the `quran_text_guard` and
-  content-eligibility checks from doc 10 (stubs that pass until packs exist, but wired).
+- Job `check` (required status `ci/check`): checkout with `lfs: true` (generated assets are LFS-committed,
+  doc 08 §2); `./gradlew verifyKotlinGradlePlugin prCheck --continue`; `:app:assembleFossPersonalRelease
+  :app:bundlePlayPublicRelease` (unsigned); `zipalign -c -P 16` on the release APK (16 KB pages); the
+  `quran_text_guard`, clean-room and no-QF-host scans; `verifyContentEligibilityPlayPublicRelease`
+  (stubs that pass until packs exist, but wired). Use doc 10's task names where it defines one.
 - Gradle cache read-only on PRs; Maven Central 429 resilience (retry settings as used in g04).
 - Upload build/reports/** and Roborazzi compare images on failure (7-day retention).
 - Concurrency: cancel superseded runs. Nightly/release workflows are separate stories (doc 10).
@@ -607,24 +654,30 @@ VERIFICATION: V0 + CI run links.
 ```text
 CONTEXT: Spec: doc 08 (stage 1 pseudocode, invariants, pins), doc 04 (content DB DDL, Room entities),
 doc 03 (curated tables, licences), D-06, D-07, D-08, D-10, D-11. Seed script:
-spikes/toolchain-spike/scripts/build_content_db.py (executes Room's exported schema SQL verbatim).
-GOAL: tools/ content pipeline + :core:content Room 3 entities/DAOs so the app opens a reproducible,
+spikes/toolchain-spike/scripts/build_content_db.py (executes Room's exported schema SQL verbatim); it
+becomes tools/common/criterion_common/roomdb.py + tools/data-pipeline/criterion_data/ (doc 08 §2).
+GOAL: tools/ content pipeline (`crit content build` / `just content`, `crit validate all`,
+`crit install-assets`) + :core:content Room 3 entities/DAOs so the app opens a reproducible,
 invariant-checked quran_content.db via createFromAsset.
 CONSTRAINTS:
 - CLAUDE.md #5/#6/#8/#9. Inputs only from data/pins.lock (Tanzil Uthmani + Simple-Clean XML, CC BY 3.0,
   verbatim; DigitalKhatt MIT token stream at the pinned commit; data/curated/*.csv). Never print text.
-- Room entities in :core:content with exportSchema; DB class internal; expose ContentRepository /
-  IndexRepository per doc 04. Asset name quran_content.db (D-10; the spike used quran-content.db).
+- Room entities in :core:content with exportSchema; QuranContentDb internal behind the ContentDataSource
+  façade; ContentRepository / IndexRepository interfaces in :core:domain, implementations in :core:data
+  (doc 04 §3.2, §6). Asset name quran_content.db (D-10; the spike used quran-content.db), committed via
+  Git LFS at the doc 08 §2 destination (.gitattributes LFS rules added in this PR).
 - Pipeline: execute createSql + index SQL + contentSyncTriggers + setupQueries verbatim from the exported
   schema JSON → load → FTS rebuild/optimize → PRAGMA user_version = @Database.version → VACUUM.
 - Tokens: 83,669 DK tokens keyed to Kufan verse keys; QUL word-key mapping with the 72:16 exception
   (QUL w1 = DK t1–2); skeleton whitelist exactly {4:112:3, 18:19:34, 59:13:1}.
-- ayah_marker: 6,236 Kufan ends + 118 «۵» disputed-end marks (glyph only, never a boundary).
+- `word` (token stream) and `ayah_marker` (6,236 Kufan ends + 118 «۵» disputed-end marks, glyph only,
+  never a boundary) are layout-independent and live in quran_content.db (doc 04 §7.2), not in the pack.
 - FTS5: unicode61 + trigram external-content tables over normalized columns (doc 04/08 normalizer;
-  the same normalizer is used for queries — put it in :core:model, pure Kotlin, with unit tests).
+  the same normalizer is used for queries — TextNormalizer in :core:model, pure Kotlin, unit-tested
+  against `crit content vectors` → out/normalization_vectors.json).
 ACCEPTANCE (all as automated checks; the pipeline exits non-zero on failure):
 1. 6,236 ayahs; 114 surahs; Tanzil text columns byte-identical to the pinned files.
-2. 30 Paras with Indo-Pak starts (P4 3:92, P7 5:83, P11 9:94, P14 15:2, P20 27:60, P21 29:45, P23 36:22)
+2. 30 Paras with Indo-Pak starts (P1 1:1, P4 3:92, P7 5:83, P11 9:94, P14 15:2, P20 27:60, P21 29:45, P23 36:22)
    and traditional names; 7 Manzils at surahs 1,5,10,17,26,37,50; 558 rukus with per-Para by-end counts
    16,16,17,14,17,14,19,17,18,17,16,16,19,22,21,17,17,17,19,16,19,18,17,19,20,18,20,20,22,39 (Fatiha
    excluded from Para-1 numbering); 14 numbered sajdas + 22:77 shafii_only; 90 Para quarters incl. the
@@ -644,10 +697,13 @@ OUT OF SCOPE: mushaf layout tables (AP-05), translations beyond the two bundled 
 
 ```text
 CONTEXT: Spec: doc 08 (stage 2), doc 05 (pack data model, templates, furniture), D-04, D-05, D-06,
-g01 §2.8, g02 §3. The QUL resource-11 SQLite export is in data/private/ (owner download; never committed;
-the pack is PERSONAL-tier until gate G1 clears). Seed scripts: spikes/toolchain-spike/scripts/
-cff2_to_glyf.py, hb_widths.py, font_features.py.
-GOAL: A reproducible pipeline that emits the taj16 mushaf pack (SQLite) + the glyf TTF + proof renders.
+g01 §2.8, g02 §3. The QUL resource-11 SQLite export is in ~/criterion-data/qul/<date>/ (owner download,
+outside the repo; CI reads it from the private R2 bucket; the pack is PERSONAL-tier until gate G1 clears).
+Seed scripts: spikes/toolchain-spike/scripts/cff2_to_glyf.py, hb_widths.py, font_features.py → move into
+tools/mushaf-pipeline/criterion_mushaf/ (fontconv.py, fontcheck.py, shape.py; doc 08 §2).
+GOAL: A reproducible pipeline (`crit mushaf build taj16`, `crit mushaf proof taj16`; `just mushaf`,
+`just proof`) that emits the Taj 16-line pack for MushafId INDOPAK_16_TAJ (code `indopak16_taj`) + the
+glyf TTF + proof renders.
 CONSTRAINTS:
 - Font: DigitalKhatt digitalkhatt.org `ClientApp/src/assets/fonts/hb/indopak.otf` @4213fab, sha256 pinned
   in data/pins.lock (g04 records prefix 8110e0c3); convert CFF2→glyf (API 24–25 FreeType has no CFF2).
@@ -657,15 +713,23 @@ CONSTRAINTS:
 - page_index 1–548, page_label = index + 1; sarlauh template for indices 1–2 with the index-1 remap;
   QUL index 529 basmala/header order fix; Taj-faithful Fatiha (7 empty circles incl. basmala);
   furniture per page (header Para/page/surahs, footer «منزل N» = manzil of last ayah, outer margin side).
-- Pack manifest entry (licence, attribution, sha256, size, eligibility = personal until G1).
+- Pack schema = doc 05's MushafPackDb tables (pack_info, page, line, word positions, furniture_run,
+  ornament_item, calibration, …); the pack carries only layout-specific data (marker-token positions,
+  `ayah_display_override` for the Taj Fatiha) and references quran_content.db for `ayah_marker`.
+- Pack manifest entry (licence, licenceStatus + basis, attribution, sha256, size, eligibility = personal
+  until G1). `crit install-assets` copies a QUL-derived pack ONLY to app/src/personal/assets/packs/;
+  src/public/assets/packs/ gets a G1-cleared or clean-room pack, or nothing (doc 04 §11.3).
 ACCEPTANCE:
 1. 548 pages × 16 slots; every ayah line maps to a contiguous token range; every token exactly once,
-   in order; zero .notdef glyphs; Para starts at page_index 18n−16 (n = 2…28), 508, 528; Manzil start
-   pages [1, 96, 187, 254, 330, 401, 466] (g01 §2.8).
+   in order; zero .notdef glyphs; Para 1 starts at page_index 1 (sarlauh), Para n at 18n−16 for
+   n = 2…28 only, Para 29 at 508, Para 30 at 528; Manzil start pages [1, 96, 187, 254, 330, 401, 466]
+   (g01 §2.8; doc 08 V-M05).
 2. Every justified line's computed width equals the target line width within the doc 05 tolerance.
-3. Proof output: one PNG per page + a combined PDF in build/proofing/taj16-<ver>/, page label and QUL
-   index printed in the proof margin only.
-4. Page-diff report vs the previous pack version (pages whose tokens/positions changed).
+3. Proof output per doc 08 §5.6 in out/proof/taj16/<build_id>/: para-NN.pdf ×30 + one 1260 px PNG per
+   page + proof-manifest.json (page_index, page_label, page_hash, pdf_sha256); page label, build_id and
+   page_hash watermark in the proof margin only.
+4. Page diff vs the previous pack build: `--changed-since <build_id>` lists pages whose page_hash
+   changed and renders delta-<build>.pdf.
 5. Deterministic: same inputs → same pack sha256.
 VERIFICATION: V1 + the agent opens proofs for indices 1, 2, 3, 529 and one dense page and describes
 layout (not text correctness). Owner compares 5 pages against the printed Taj copy.
@@ -677,13 +741,18 @@ layout (not text correctness). Owner compares 5 pages against the printed Taj co
 CONTEXT: g04 rec 10: nothing ran on a real device; API 24/25 shaping is source-verified only.
 Spec: doc 05 (testing), doc 10 (device matrix). Needs AP-04 and the AP-05 font.
 GOAL: A debug-only "Diagnostics" screen + an instrumented test that prove, on API 24/25 and 26/27:
-cv01 kashida widths, BundledSQLiteDriver + FTS5, desugared java.time via adhan2.
+cv01 kashida widths, BundledSQLiteDriver + FTS5, desugared java.time via adhan2, and desugared
+java.time.chrono.HijrahDate (the one D-27 check no report has run on a device).
 CONSTRAINTS:
 - Probe tokens are read by key from the content DB (e.g. 2:2 word 2 and 1:1 word 1), never typed.
 - Expected widths come from the pipeline's hb_widths output for the same token string + same TTF
   (g04 reference for الْكِتٰبُ at textSize 1000, cv01 0/1/2/3/6: 2060/2847/3615/4384/6691).
 - adhan2 check: Karachi (24.8607, 67.0011), 2026-10-19, KARACHI + HANAFI → Fajr 05:16, Sunrise 06:32,
   Dhuhr 12:18, Asr 16:24, Maghrib 18:02, Isha 19:18 PKT (g04 §1 item 9).
+- HijrahDate check: HijrahDate.from(LocalDate) for a fixed set of 2026–2027 dates (incl. 1448 Ramadan
+  start/end) must equal the same calls on the JVM (host java.time Umm al-Qura data); record the result for
+  D-27. A failure is a STOP-and-report (the ICU IslamicCalendar fallback behind HijriCalendar is the
+  owner's call), not a silent switch.
 - Screen is only in the debug build type; no release code path.
 ACCEPTANCE: Instrumented test passes on the API 24/26 AVDs (if host has KVM); diagnostics screen
 shows PASS rows; owner runs it on the two physical phones and posts screenshots in the PR.
@@ -694,7 +763,8 @@ VERIFICATION: V4 + V5 (owner). If any width mismatches: STOP — this triggers t
 
 ```text
 CONTEXT: Spec: doc 05 (runtime algorithm, Kotlin skeletons MushafPage / PageRenderer / HitTester, layers,
-budgets), D-05. AP-05 pack (personal tier) available as a test fixture via the pipeline.
+budgets), D-05. AP-05 pack (personal tier) available as a test fixture via the pipeline (test fixtures
+derived from the QUL-based pack stay in test resources or the personal source set, never src/main).
 GOAL: :core:mushaf-render draws one regular page (page_index 3, label 4) from PageLayout and matches a golden.
 CONSTRAINTS:
 - CLAUDE.md #5, #7, #10. Draw with Canvas `drawTextRun` per word at precomputed x; cv01 feature string
@@ -704,8 +774,8 @@ CONSTRAINTS:
 - Roborazzi @GraphicsMode(NATIVE), one SDK per JVM, fixed device qualifier from doc 10; test resource dir
   must not be named fonts/.
 ACCEPTANCE:
-1. Golden for page_index 3 recorded; the agent opens it next to build/proofing/<ver>/page-0003.png and
-   lists any visible differences (expected: none beyond anti-aliasing).
+1. Golden for page_index 3 recorded; the agent opens it next to the pipeline's proof PNG for page_index 3
+   (out/proof/taj16/<build_id>/) and lists any visible differences (expected: none beyond anti-aliasing).
 2. HitTester tests: centre of each word box on the page returns that word's key; gaps return null/nearest
    per doc 05.
 3. Draw time for the page measured in a JVM micro-benchmark or debug overlay and reported vs doc 05 budget.
@@ -735,17 +805,21 @@ VERIFICATION: V3 + V4. Changes to rendered text positions → page list added to
 ### AP-09 — Pager & reader chrome
 
 ```text
-CONTEXT: Spec: doc 02 (reader wireframes, gestures), doc 05 (pager, zoom, caching), D-23, F-RD-01…07,
-F-BM-01. AP-08 merged.
+CONTEXT: Spec: doc 02 (reader wireframes, gestures), doc 04 §8 (ReaderKey), doc 05 (pager, zoom,
+caching), D-23, F-RD-01…03, 06, 07, F-BM-01. AP-08 merged.
 GOAL: A daily-usable reader: RTL page pager over 548 pages with the toolbar and controls.
 CONSTRAINTS:
+- :feature:reader entry for doc 04's ReaderKey(mushaf: MushafId? = null, page: PageIndex? = null,
+  focus: VerseKey? = null, mode: ReaderMode = MUSHAF, autoplay: Boolean = false); all-null = resume.
 - HorizontalPager in mushaf order (next page to the left, as in print; doc 02 is authoritative),
   beyondViewportPageCount = 1, PageLayout LRU ±3, state restoration, predictive back, edge-to-edge.
 - Toolbar "Para N · Page L · Surah" (labels, never indices); immersive tap-to-toggle; keep-screen-on;
   themes; pinch zoom with pan (persisted); rotation lock on phones only (hidden at sw ≥ 600dp) +
   page-turn lock everywhere (userScrollEnabled = false).
-- Last-read pointer saved debounced 1 s to user.db via the AP-11 repository (or a fake until merged).
-ACCEPTANCE: UI tests for toolbar text on pages 1, 4, Para-4 start; rotation-lock hidden on a 600dp
+- Last-read pointer saved after a 4 s dwell on a page (doc 01) to user.db via the AP-11
+  ReadingProgressRepository (or the :core:testing fake until merged).
+ACCEPTANCE: UI tests for toolbar text on pages 1, 4, Para-4 start; last-read written only after the 4 s
+dwell (fake clock); rotation-lock hidden on a 600dp
 config; goldens for chrome EN + UR; swipe/zoom/lock flows captured on emulator; no jank warnings in
 logcat while swiping 20 pages.
 VERIFICATION: V3 + V4; V5 owner reader checklist (§5.4).
@@ -754,13 +828,18 @@ VERIFICATION: V3 + V4; V5 owner reader checklist (§5.4).
 ### AP-10 — Indexes & navigation
 
 ```text
-CONTEXT: Spec: doc 02 (index screens), doc 04 (IndexRepository, NavKeys), F-IX-01…06, 08, 09.
+CONTEXT: Spec: doc 02 (index screens), doc 04 (IndexRepository, NavKeys, ReaderKey, PlayScope),
+F-IX-01…06, 08, 09 (F-IX-07 quarter list is v1.0-stretch). This story creates :feature:home (doc 04 §3.2)
+and moves the AP-02 placeholder Home into it.
 GOAL: Surah, Para, Manzil, Ruku and Sajda indexes, quick access, go-to page/ayah, home continue-reading.
 CONSTRAINTS:
-- CLAUDE.md #8, #9. Every Surah/Para/Manzil row has Read + Play; Play builds a PlayRequest and calls
-  PlaybackController (fake until AP-13). Para rows: Indo-Pak names, start page label, progress.
+- CLAUDE.md #8, #9. Every Surah/Para/Manzil/Ruku row has Read + Play. Read opens ReaderKey(focus = the
+  row's first VerseKey, resolved via IndexRepository); Play builds PlayRequest(PlayScope.Surah/Para/
+  Manzil/Ruku(...)) and calls PlaybackController (the :core:testing fake until AP-13). Para rows:
+  Indo-Pak names, start page label, progress.
 - Go-to page accepts labels 2–549 (maps to index); surah:ayah validated against ayah counts.
-- Quick access list per F-IX-08 resolved by verse keys from the alias table, not hard-coded text.
+- Quick access list per F-IX-08 resolved by verse keys from the alias/passage tables, not hard-coded
+  text; multi-range entries (Manzil dua) play as PlayScope.Passage(ranges, titleRes).
 - Strings EN + UR; numbers via locale formatter.
 ACCEPTANCE: ViewModel tests (Para 4 Read opens the page containing 3:92; Manzil 3 opens surah 10 start;
 go-to label 2 → index 1); row goldens EN + UR; emulator capture of each tab.
@@ -770,12 +849,17 @@ VERIFICATION: V3 + V4.
 ### AP-11 — Bookmarks & last-read (user.db)
 
 ```text
-CONTEXT: Spec: doc 04 (user.db DDL, BookmarkRepository, ReadingProgressRepository, migration policy,
-Auto Backup), F-BM-01, F-BM-02, F-BM-06 (Auto Backup part), D-10, D-20.
+CONTEXT: Spec: doc 04 §7.4 (user.db DDL, BookmarkRepository, ReadingProgressRepository, migration
+policy, Auto Backup), F-BM-01, F-BM-02, F-BM-06 (Auto Backup part; JSON export is v1.1), D-10, D-20.
+user.db lives in :core:database behind the UserDataSource façade.
 GOAL: user.db with tested migrations; last-read pointer separate from bookmarks; ayah/page bookmarks
 with collections, colours and undo.
 CONSTRAINTS:
 - Keys: VerseKey (Kufan) and (mushafId, page_index) only; no content row ids.
+- user.db v1 is the schema doc 04 §7.4 defines: it already contains every P1 + P2 table (bookmark,
+  collection, last_read, history, note, khatam, khatam_progress, streak_day, tasbeeh_*, reminder,
+  adhan_log, prayer_location, hijri_override, …) and is frozen on 2026-12-21; P3 tables arrive as the v2
+  migration. Create all v1 tables now, using doc 04's names; implement DAOs only for this story's features.
 - Room 3 migration tests from schema JSON v1 (exportSchema; migration test harness set up now even with one version).
 - Auto Backup: include only user.db + settings DataStore; exclude audio, packs, caches
   (dataExtractionRules for API 31+, fullBackupContent for ≤ 30).
@@ -792,16 +876,25 @@ CONTEXT: Spec: doc 06 (catalogue.json schema, v1 catalogue table, PlanExpander p
 F-AU-01, F-AU-02, F-AU-05.
 GOAL: Signed catalogue loading + a pure-Kotlin PlanExpander that turns PlayRequest into media items.
 CONSTRAINTS:
-- CLAUDE.md #3, #9. Ed25519 signature verified against the bundled public key before use; tests use a
-  test keypair generated in the test, never a real key.
-- Scopes: Surah, Para (Indo-Pak table; crosses surah boundaries), Manzil, Ruku, Page (verse range from the
-  mushaf pack), AyahRange, Ayah, play-from-here. Basmala strategy per surah (none for 9; Fatiha 1:1 is
-  the basmala). Gapless → ClippingConfiguration from timings; gapped → per-ayah items; repeat ayah×N,
-  range×M/∞, pause-after-ayah (fixed/proportional).
-- Eligibility filter: entries hidden unless buildEligibility includes the current tier and enabled = true.
-- PlanExpander lives in a pure module (no Media3 types; map to MediaItem in :core:audio).
+- CLAUDE.md #3, #9. Bundled catalogue.json verified through its detached catalogue.json.sig (base64
+  Ed25519 over the exact file bytes) against either pinned key in BuildConfig.TRUSTED_KEYS, with kid,
+  sequence and expires checked; tests use a keypair generated in the test, never a real key.
+- PlayRequest / PlayScope / RepeatSpec / PauseRule exactly as doc 04 §5.4 publishes them. Scopes:
+  Surah, Para (Indo-Pak table; crosses surah boundaries), Manzil, Ruku, Page(mushaf, page) (verse range
+  from the mushaf pack), Range(AyahRange), Ayah, FromHere(start, until = CONTINUOUS by default),
+  Passage(ranges, titleRes) (multi-range, e.g. Manzil dua), Quran (whole mushaf, windowed). Recitation
+  ids use doc 06's format (e.g. `alafasy.murattal.gapless`). Basmala strategy per surah (none for 9;
+  Fatiha 1:1 is the basmala). Gapless → ClippingConfiguration from timings; gapped → per-ayah items;
+  repeat ayah×N (1..20), range×M (1..20 | 0 = ∞), pause-after-ayah (None/Fixed/Proportional).
+- Eligibility filter: entries hidden unless buildEligibility includes BuildConfig.CONTENT_TIER, the
+  licenceStatus allows the tier (PENDING: PERSONAL + BETA only; PERSONAL_ONLY: PERSONAL only; REVOKED:
+  never) and enabled = true.
+- PlanExpander is pure Kotlin with no Media3 types (doc 06 §7 places it in :core:domain); the
+  MediaItem mapping lives in :core:audio.
 ACCEPTANCE: Unit tests incl. "Para 4 starts at 3:92", Para 20 starts 27:60, surah 9 has no basmala,
-Manzil 7 = surah 50 → 114, repeat expansions, play-from-here mid-surah; tampered catalogue rejected.
+Manzil 7 = surah 50 → 114, a Passage of non-contiguous ranges, repeat expansions, play-from-here
+mid-surah runs on past the surah end (CONTINUOUS); tampered catalogue, wrong key and replayed older
+sequence all rejected.
 VERIFICATION: V1.
 ```
 
@@ -809,7 +902,7 @@ VERIFICATION: V1.
 
 ```text
 CONTEXT: Spec: doc 06 (Media3 architecture, data-source chain, notification, Android 14–17 constraints),
-D-13, F-AU-03, 05, 06, 07, 09. AP-12 merged.
+D-13, F-AU-03, 04, 05, 06, 07, 09. AP-12 merged.
 GOAL: Background recitation with notification, lock screen, headset controls, mini + full player.
 CONSTRAINTS:
 - MediaLibraryService + ExoPlayer; AudioAttributes USAGE_MEDIA + CONTENT_TYPE_SPEECH, handleAudioFocus
@@ -817,7 +910,10 @@ CONSTRAINTS:
 - ResolvingDataSource: local file → SimpleCache (LRU 256 MB, streaming only) → catalogue URL → mirror.
 - Playback starts only from user actions. Speed 0.5–2×; sleep timer (minutes / end of ayah, surah,
   para; fade-out); repeat per AP-12; resume position.
-- Compose mini/full player via media3-ui-compose-material3, in :feature:audio (or per doc 04).
+- PlaybackController / PlaybackStateHub interfaces from :core:domain (doc 04); implementations in
+  :core:audio; PlaybackController.state = hub.state (one PlaybackState shape, no separate NowPlaying).
+- Compose mini/full player via media3-ui-compose-material3, in :feature:audio.
+- Gapped per-ayah mode (F-AU-04): PENDING recitations appear in PERSONAL and BETA builds only.
 ACCEPTANCE: Robolectric service test (session built, controller connects); MockWebServer: 404 on primary
 → mirror succeeds; offline with cached file plays; emulator: notification + lock-screen controls captured,
 30 s screen-off playback continues.
@@ -828,13 +924,17 @@ VERIFICATION: V2 + V4; V5 owner audio checklist (§5.4).
 
 ```text
 CONTEXT: Spec: doc 08 (stage 4), doc 06 (timing pack format, runtime validation), D-12, g03 §2.5–2.6.
-GOAL: Validated timing packs for the v1 shortlist recitations from the same host as their audio.
+GOAL: Validated timing packs (`crit timing build <recitationId>` / `just timing`; tools/audio-timing)
+for the v1 shortlist recitations from the same host as their audio.
 CONSTRAINTS:
 - mp3quran ayat_timing for the read IDs in D-12 (Alafasy 123, Ghamdi 30, Abdul Basit Mujawwad 51 with the
   surah-9 relabel fix, Sudais 54, Shatri 4, Rifai 89, Ayyub 109, Muhanna 159; Husary 118, Minshawi 112,
   Shuraim 31, Dosari 92 with highlightDisabledSurahs). Never reads 74 or 53. Never mix hosts.
-- Normalize ayah 0 (intro/basmala); label-shift detection; onset snapping ±1.5 s; record ETag + size per
-  surah file; per-surah highlight kill-switch values emitted into the catalogue.
+- Normalize ayah 0 (intro/basmala); label-shift detection; record ETag + size per surah file; per-surah
+  highlight kill-switch values (highlightDisabledSurahs) emitted into the catalogue. Onset snapping
+  (±1.5 s) is v1.1 (E-09-S06).
+- Output `timing.<recitationId>.sqlite` in doc 06 §5.1's exact layout. Timing packs are plain SQLite read
+  through androidx.sqlite (no Room identity table) — the one exception to "every pack from a Room schema".
 ACCEPTANCE: Invariants per surah: monotonic, contiguous, ayah count = surah ayah count, last_end ≤
 duration + 100 ms; known-defect fixtures from g03 detected; pack manifest entries with licence status.
 VERIFICATION: V1; agent spot-plays 3 surahs per reciter on emulator with highlight on (after AP-15).
@@ -847,29 +947,44 @@ CONTEXT: Spec: doc 06 (PlaybackStateHub contract, PlayerMessages, binary search)
 auto page-turn rules), F-RD-05. AP-13, AP-14 merged.
 GOAL: The ayah being recited is highlighted and the pager follows.
 CONSTRAINTS:
-- PlayerMessage at each ayah start; binary search after seek; process-wide PlaybackStateHub StateFlow;
-  reader highlight layer only (text layer untouched); auto page-turn suspended 8 s after user touches the
+- PlayerMessage at each ayah start; binary search after seek; the reader observes
+  PlaybackStateHub.state (PlaybackState.highlight: HighlightTarget? = Ayah(VerseKey) | BasmalaLine(SurahId),
+  gated by highlightAvailable); reader highlight layer only (text layer untouched); auto page-turn suspended 8 s after user touches the
   pager; respect highlightDisabledSurahs; timing pack validated at load (ETag/size match) else highlight off.
 ACCEPTANCE: Unit tests for ayah lookup (boundaries, seek back/forward, repeat); golden of a highlighted
 page; emulator video/screenshots show highlight crossing a page boundary and auto-turn; touch suspends.
 VERIFICATION: V3 + V4; owner listens to 2 surahs end-to-end per default reciter.
 ```
 
-### AP-16 — Downloads engine & pack manager
+### AP-16 — Downloads engine, signed remote files & notices
 
 ```text
-CONTEXT: Spec: doc 06 (download engine), doc 04 (PackManager, file-system layout, index.json schema),
-D-10, D-14, F-AU-08, F-PL-06.
-GOAL: Resumable, verified downloads of audio (surah/para/full) and packs, with a storage manager.
+CONTEXT: Spec: doc 06 (download engine), doc 04 §7.6 (index.json, detached .sig verification), §7.7
+(file-system layout), §14.3 (notices.json, kill-switches), doc 02 (notice UI), doc 08 (signed outputs),
+D-10, D-14, D-30, F-AU-08, F-PL-06 (storage-manager half), F-PL-11. Module :core:remote (doc 04 §3.2).
+Run as separate sessions per doc 09 story: E-10-S01..S03 (P1), E-10-S04/S05 + E-23-S01/S02 (S5).
+GOAL: Resumable, verified audio downloads (surah/para/full) with a storage manager, plus the app-side
+signed fetcher for index/catalogue/notices/hijri-pk and the F-PL-11 notice UI.
 CONSTRAINTS:
 - Own OkHttp downloader: HTTP Range resume, .part + atomic rename, MD5/SHA-256 verification, per-surah ZIP
-  with zip-slip protection. Host: UIDT job on API 34+, WorkManager long-running dataSync foreground worker
-  on API ≤ 33. Wi-Fi-only default with per-download override.
-- Files under getExternalFilesDirs (+ .nomedia); no storage permissions. Packs installed atomically after
-  Ed25519 index verification; kill-switch honoured.
+  with zip-slip protection. Host: the WorkManager long-running dataSync foreground worker on ALL APIs in
+  P1; the UIDT job on API 34+ (E-10-S05) lands in S5, before any public build. Wi-Fi-only default with
+  per-download override.
+- Files under getExternalFilesDirs (+ .nomedia); no storage permissions.
+- SignedFileFetcher: `${CDN}/v1/{index,catalogue,notices}.json` and `feeds/hijri-pk.json`, each with a
+  detached `.sig` (base64 Ed25519 over the exact bytes), either of the two pinned keys, kid + sequence +
+  expires checked, older sequence rejected, last verified copy kept; vendored Ed25519 verify port tested
+  with RFC 8032 + Wycheproof vectors. Kill-switches honoured. Never reads or writes a `personal/` remote
+  channel (personal-only items are never uploaded to R2).
+- F-PL-11 notices: text-error banners, takedown notices and a min-version nudge, shown as a dismissible
+  card on Home plus an info chip in reader chrome — never a banner over Quran text. Remote files never
+  change Quran text or layout (D-30).
+- Pack installer (index-driven pack downloads, F-PL-06 pack half, E-10-S06) is v1.1: out of scope here.
 ACCEPTANCE: MockWebServer tests: resume after disconnect, checksum mismatch → discard + error, ZIP with
-"../" entry rejected; WorkManager test (work-testing); emulator: kill app mid-download → resumes;
-airplane mode playback of downloaded Para; storage manager deletes and frees space.
+"../" entry rejected, tampered/expired/replayed signed file rejected and the last good copy kept;
+WorkManager test (work-testing); notice card + reader chip goldens EN + UR; emulator: kill app
+mid-download → resumes; airplane mode playback of downloaded Para; storage manager deletes and frees
+space; (S5) a UIDT download on an API 34+ AVD.
 VERIFICATION: V2 + V4; V5 owner downloads checklist.
 ```
 
@@ -877,17 +992,19 @@ VERIFICATION: V2 + V4; V5 owner downloads checklist.
 
 ```text
 CONTEXT: Spec: doc 02 (translation view), doc 03 (bundled translations, attribution strings), D-08, D-09,
-F-RD-08, F-TR-01, F-RD-04.
-GOAL: Ayah list with Arabic + Urdu (Junagarhi, incl. Ahsan-ul-Bayan footnotes) and/or English (Saheeh
-International, credited "Noor International Center"), plus the ayah action sheet.
+F-RD-08, F-TR-01, F-RD-04. v1.0 keeps the D-09 bundle; translator choice and packs (F-TR-02/03) are v1.1.
+GOAL: Ayah list (ReaderKey mode = TRANSLATION) with Arabic + Urdu (Junagarhi) and/or English (Saheeh
+International, credited "Noor International Center"), plus the ayah action sheet. The Ahsan-ul-Bayan
+footnote / tafsir-summary sheet (F-RD-13) is v1.0-stretch (ladder L1): build it only when doc 09 says so.
 CONSTRAINTS:
 - CLAUDE.md #14: Arabic always shown; no translation-only mode. Translations ingested by the pipeline from
   pinned QuranEnc files; attribution shown per doc 03.
 - Copy/share use Tanzil text with private-use/control characters stripped (D-08) + attribution.
 - Urdu in Noto Nastaliq Urdu; line height tuned so Nastaliq does not clip; synchronized position with the
   mushaf (same VerseKey).
-ACCEPTANCE: Goldens EN + UR (with long footnote); copy/share text test (no PUA/control chars, has
-attribution); action sheet: play from here, bookmark, copy/share, translation, tafsir summary, note stub.
+ACCEPTANCE: Goldens EN + UR (long ayah; long footnote once F-RD-13 is in); copy/share text test (no
+PUA/control chars, has attribution); action sheet: play from here (PlayScope.FromHere), bookmark,
+copy/share, translation (+ tafsir summary when F-RD-13 is scheduled; notes are v1.1).
 VERIFICATION: V3 + V4.
 ```
 
@@ -901,8 +1018,8 @@ CONSTRAINTS:
   Uthmani, Indo-Pak; Urdu keeps ے/ھ distinct; English ASCII-folded); the SAME normalizer for queries
   (shared pure-Kotlin implementation, golden-tested against the pipeline's Python normalizer outputs).
 - Alias table (Yaseen, Ayatul Kursi, Manzil dua…) ranked first. Results show verse key + page label.
-ACCEPTANCE: Parity test: Kotlin normalizer == pipeline normalizer on a fixture list exported by the
-pipeline; queries with/without tashkeel return identical results; alias hits; empty/garbage queries
+ACCEPTANCE: Parity test: Kotlin normalizer == pipeline normalizer on out/normalization_vectors.json
+(`crit content vectors`, copied into test resources by `crit install-assets`); queries with/without tashkeel return identical results; alias hits; empty/garbage queries
 safe; p95 query time reported on emulator.
 VERIFICATION: V2 + V4.
 ```
@@ -915,7 +1032,8 @@ GOAL: First-run onboarding (UI language, mushaf, favourite qari, optional locati
 Urdu UI.
 CONSTRAINTS:
 - Per-app language via AppCompatDelegate.setApplicationLocales; mushaf always RTL regardless of locale.
-- Typed DataStore<UserSettings> (kotlinx.serialization); no SharedPreferences.
+- Typed DataStore<UserSettings> (kotlinx.serialization) in :core:database behind SettingsDataSource;
+  no SharedPreferences. The onboarding location step lands with AP-20 (S6).
 - Urdu strings: agent drafts, owner (native speaker) reviews every string; glossary of religious terms
   in doc 02 is authoritative. Pseudo-locales enabled in debug.
 - Accessibility baseline: 48 dp targets, content descriptions EN + UR, font scaling to 200%.
@@ -925,48 +1043,70 @@ semantics tests).
 VERIFICATION: V3 + V4; owner reviews Urdu copy on device.
 ```
 
-### AP-20 — Prayer times & adhan
+### AP-20 — Prayer times (v1.0) and adhan (v1.1 by default)
 
 ```text
-CONTEXT: Spec: doc 07 (prayer & adhan), doc 04 (background work map, permissions), D-15, D-16,
-F-CP-01, F-CP-02.
-GOAL: Accurate prayer times and reliable adhan alarms with a health check.
+CONTEXT: Spec: doc 07 (prayer & adhan), doc 04 (:core:prayer, :feature:prayer, background work map,
+permissions), D-15, D-16, F-CP-01 (v1.0 Tier A, S6), F-CP-02 (v1.1 by default; pulled into v1.0 only if
+the owner pulls the freelancer lever at the 2026-11-30 checkpoint — then the 7-day adhan run starts by
+2027-01-04). Run part A now; run part B only when doc 09 schedules E-15-S04..S07.
+GOAL (A, v1.0): Accurate prayer times with Sehri/Iftar labels, location, and the prayer screen
+(E-15-S01..S03).
+GOAL (B, v1.1): Prayer/Sehri/Iftar notifications, reliable adhan alarms, full adhan and a health check
+(E-15-S04..S07).
 CONSTRAINTS:
 - CLAUDE.md #12. adhan2 0.0.7; defaults KARACHI + HANAFI (Asr choice in onboarding), per-prayer offsets,
   region presets. Location: ACCESS_COARSE_LOCATION one-shot via LocationManagerCompat + offline GeoNames
-  cities15000 picker (CC BY 4.0, Urdu names).
-- SCHEDULE_EXACT_ALARM with explainer + inexact fallback; setAlarmClock() for audible adhan; full adhan via
-  mediaPlayback FGS with USAGE_ALARM and app-enforced silent/DND respect; short adhan via channel sound;
+  cities15000 picker (CC BY 4.0, Urdu names). Part A adds no alarm, exact-alarm or FGS permission.
+- (B) SCHEDULE_EXACT_ALARM with explainer + inexact fallback; setAlarmClock() for audible adhan; full adhan
+  via mediaPlayback FGS with USAGE_ALARM and app-enforced silent/DND respect; short adhan via channel sound;
   reschedule on BOOT_COMPLETED, TIME_SET, TIMEZONE_CHANGED, exact-alarm permission change + daily
   WorkManager safety net. No FGS start from BOOT_COMPLETED (only reschedule).
-- Adhan health check screen with OEM guidance (DontKillMyApp, CC-BY attribution).
-ACCEPTANCE: Fixed-clock tests (g04 Karachi values for 2026-10-19); scheduler tests with fake AlarmManager
-(permission granted/denied paths, reschedule triggers); emulator: alarm fires with screen off; merged
-manifest diff shows only allowed permissions.
-VERIFICATION: V2 + V4; V5 owner 7-day OEM run (§5.4).
+- (B) Adhan health check screen with OEM guidance (DontKillMyApp, CC-BY attribution).
+ACCEPTANCE (A): Fixed-clock tests (g04 Karachi values for 2026-10-19: 05:16 / 06:32 / 12:18 / 16:24 /
+18:02 / 19:18); location picker tests; prayer-screen goldens EN + UR; merged manifest diff shows only
+allowed permissions.
+ACCEPTANCE (B): scheduler tests with fake AlarmManager (permission granted/denied paths, reschedule
+triggers); emulator: alarm fires with screen off; merged manifest diff shows only allowed permissions.
+VERIFICATION: (A) V2 + V4. (B) V2 + V4; V5 owner 7-day OEM run (§5.4).
 ```
 
-### AP-21 — Qibla, Hijri, tasbeeh, azkar, Ramadan
+### AP-21 — Hijri and Ramadan core (v1.0); tasbeeh, Manzil dua, azkar, Qibla (later)
 
 ```text
-CONTEXT: Spec: doc 07, D-15, F-CP-03…07.
-GOAL: Companion essentials for the Ramadan launch.
+CONTEXT: Spec: doc 07, doc 04 (HijriCalendar interface, :core:prayer, :feature:companion), D-15, D-27,
+F-CP-04 + F-CP-07 core (v1.0 Tier A, S6), F-CP-05 tasbeeh + F-CP-06 Manzil-dua playlist (v1.0-stretch,
+ladder L3/L4), F-CP-03 Qibla + F-CP-06 azkar + Ramadan extras (v1.1). Run one story per session, and only
+the parts doc 09 schedules.
+GOAL (v1.0): Hijri date with the PK month-start feed, and Ramadan core (30-day Sehri/Iftar timetable,
+home countdown, Taraweeh khatam preset) for the Ramadan launch.
 CONSTRAINTS:
-- Qibla = adhan2 bearing + TYPE_ROTATION_VECTOR (+ fallbacks) + GeomagneticField declination; calibration UX.
-- Hijri = java.time HijrahDate (Umm al-Qura) via desugaring + user ±2-day offset + Maghrib rollover +
-  Ed25519-signed "PK month-start" feed. FIRST verify HijrahDate works on an API 24 AVD/device under
-  desugaring; if it does not, STOP and report (D-15 change needs an ADR) — do not switch APIs silently.
-- Azkar/duas text and sources per doc 07/03 (sourced, attributed; via pipeline/curated data, not typed).
-- Tasbeeh state in user.db; Ramadan Sehri/Iftar timetable from the prayer engine.
-ACCEPTANCE: Hijri offset/rollover unit tests; signed-feed tamper test; Qibla bearing test for Karachi/
-Lahore/Islamabad vs adhan2; goldens EN + UR; emulator captures.
-VERIFICATION: V2 + V4; owner Qibla check on a physical phone outdoors.
+- Hijri = java.time HijrahDate (Umm al-Qura) via desugaring behind doc 04's HijriCalendar interface
+  (D-27) + user ±2-day offset + Maghrib rollover + the signed `feeds/hijri-pk.json` (detached .sig,
+  fetched by AP-16's SignedFileFetcher). r08 §1.6 verified that the desugaring table lists HijrahDate as
+  "Fully implemented"; what is missing is an on-device run on API 24–25 (AP-06 does it). If AP-06 or this
+  story shows a failure on API 24–25, STOP and report: the ICU IslamicCalendar (ISLAMIC_UMALQURA)
+  implementation behind the same interface is D-27's pre-agreed alternative, but switching is the
+  owner's call (D-27 revisit) — never silent. Out-of-range dates (UQ validity ~1300–1600 AH, unverified)
+  fail loudly.
+- Ramadan Sehri/Iftar timetable from the prayer engine (AP-20 part A); Taraweeh preset from AP-23's
+  ComputeKhatamPlan.
+- (stretch) Tasbeeh state in user.db (tasbeeh_preset, tasbeeh_session — doc 04 v1 tables). Manzil dua
+  plays as PlayScope.Passage.
+- (v1.1) Qibla = adhan2 bearing + TYPE_ROTATION_VECTOR (+ fallbacks) + GeomagneticField declination;
+  calibration UX. Azkar/duas content comes from the bundled/downloadable `azkar` pack (doc 04 pack type),
+  sourced and attributed per doc 07/03 — never typed.
+ACCEPTANCE: Hijri offset/rollover unit tests; HijrahDate-vs-JVM device check result attached; signed-feed
+tamper/replay test; Ramadan timetable test for Karachi; goldens EN + UR; emulator captures. (v1.1) Qibla
+bearing test for Karachi/Lahore/Islamabad vs adhan2.
+VERIFICATION: V2 + V4; (v1.1) owner Qibla check on a physical phone outdoors.
 ```
 
-### AP-22 — Glance widgets & smart reminders
+### AP-22 — Glance widgets & smart reminders (v1.1)
 
 ```text
-CONTEXT: Spec: doc 07 (widgets, reminders), F-CP-08, F-CP-09. Glance 1.2.0.
+CONTEXT: Spec: doc 07 (widgets, reminders), F-CP-08, F-CP-09 (both v1.1, Tier B pull-ins B2/B3/B7).
+Glance 1.2.0. Needs AP-20 part B for the reminder scheduler.
 GOAL: Continue-reading, next-prayer and ayah-of-the-day widgets; reminders (Kahf Friday, Mulk night,
 daily ayah; ≤ 3/day; tap-to-play).
 CONSTRAINTS: Widgets read repositories only (no network); update via WorkManager/alarms per doc 07;
@@ -980,15 +1120,20 @@ VERIFICATION: V2 + V4.
 ### AP-23 — Khatam planner, credits screen, report-text-error
 
 ```text
-CONTEXT: Spec: doc 07 (khatam), doc 03 (attribution strings), doc 11 (compliance), F-BM-04, F-PL-04, F-PL-05.
+CONTEXT: Spec: doc 07 (khatam), doc 04 (ComputeKhatamPlan in :core:domain; user.db khatam,
+khatam_progress), doc 03 (attribution strings), doc 11 (compliance, error SLA), F-BM-04 (v1.0 Tier A),
+F-PL-04, F-PL-05 (v1.0 floor). Streaks (F-BM-05) are v1.1.
 GOAL: Khatam planner/tracker (multiple khatams, Para checklist), Sources & Credits screen, and
 "Report text error" flow.
 CONSTRAINTS:
-- Khatam math in a pure module (Para table!), unit-tested for 30-day / Ramadan / custom plans.
+- Khatam math in :core:domain (ComputeKhatamPlan; Indo-Pak Para table!), unit-tested for 30-day /
+  Ramadan / Taraweeh / custom plans.
 - Credits screen driven by content_meta sources + pack manifests + AboutLibraries (no hand-maintained
   lists that can drift); includes the proofreading certificate line once G5 clears.
 - Report-text-error: composes an email/share intent with verse key, page label, mushaf + pack version +
-  sha256 and the user's note; no backend, no data collection.
+  sha256 and the user's note; no backend, no data collection. The response path is doc 11's error SLA:
+  a signed advisory notice / kill-switch within 48 h, a corrected build submitted within 72 h (text and
+  layout are never changed remotely, D-30).
 ACCEPTANCE: Planner tests; a test that every manifest entry has a visible credit; report payload test;
 goldens EN + UR.
 VERIFICATION: V3 + V4; run /licence-audit (MA-4) and attach the result.
@@ -1158,7 +1303,7 @@ The pass criterion is zero blockers. The report is attached to the release PR an
 
 | Agent | Checks |
 |---|---|
-| Manifest | The merged manifest for `playRelease` and `fossRelease` matches doc 04's allowed list exactly. None of the CLAUDE.md #12 never-list. FGS types declared. Exported components justified. `targetSdk` 36. |
+| Manifest | The merged manifest for `playPublicRelease`, `fossPublicRelease` and `fossPersonalRelease` matches doc 04's allowed list exactly. None of the CLAUDE.md #12 never-list. FGS types declared. Exported components justified. `targetSdk` 36. |
 | Data safety | No SDK that collects data (dependency tree scan). Answers match doc 11's v1 draft ("No data collected"). Backup rules exclude audio and packs. |
 | Behaviour | Playback starts only from user actions. The exact-alarm explainer and inexact fallback exist. No full-screen intents. POST_NOTIFICATIONS is requested in context. |
 | Listing | No reference-app name, icon, screenshots or text (D-19). Content rating answers. Target audience 13+. No Families-policy triggers. |
@@ -1188,12 +1333,12 @@ Tick the boxes that apply in the PR. Reviewers (the owner or MA-2) use the same 
 - [ ] Every new asset, pack, font or dataset has a manifest entry: licence, attribution, sha256, size and eligibility. Credits screen updated.
 - [ ] No QF/quran.com API content in bundled or cached data. No client secret.
 - [ ] Audio URLs only come from eligible, enabled catalogue entries. Timing and audio come from the same host. No mp3quran read 74 or 53 timings.
-- [ ] Personal-tier content (QUL layout before G1, PENDING audio, Shamshad Ali Khan, Husary Muallim, Sadaqat Ali) cannot reach a public build. The CI eligibility check covers it.
+- [ ] Tier rules hold (D-29; `verifyContentEligibility<Variant>` covers them): QUL-derived layout data stays PERSONAL until G1 (BETA/closed-test builds ship only G1-cleared or clean-room layout data); `PENDING` audio may reach PERSONAL and BETA builds but never PUBLIC; `PERSONAL_ONLY` items (Shamshad Ali Khan voice, Husary Muallim, Qari Sadaqat Ali) stay in personal builds; `REVOKED` ships nowhere.
 - [ ] No reciter photos, and no reference-app names or assets.
 
 ### 9.2 Security (CL-SEC)
 - [ ] No secrets in code, logs, tests or the PR. Keystores and the Ed25519 private key stay outside the repo.
-- [ ] Signatures (Ed25519) are verified before using catalogue, index, PK month-start feed and packs. sha256 is verified before install. Downloads are installed atomically.
+- [ ] Signatures are verified before using catalogue, index, notices, PK month-start feed and packs: detached `X.json.sig` (base64 Ed25519 over the exact file bytes), either of the two pinned keys in `BuildConfig.TRUSTED_KEYS`, `kid` + `sequence` + `expires` checked (older `sequence` rejected), vendored verify port tested with RFC 8032 + Wycheproof vectors (doc 04 §7.6). sha256 is verified before install. Downloads are installed atomically.
 - [ ] ZIP extraction rejects path traversal. File paths come from IDs, never from server strings.
 - [ ] Network calls are HTTPS only, with no cleartext exceptions. Server JSON is parsed defensively (unknown keys ignored, size limits).
 - [ ] Exported components are minimal. PendingIntents are `FLAG_IMMUTABLE` unless mutability is required. Receivers are protected.
@@ -1204,7 +1349,7 @@ Tick the boxes that apply in the PR. Reviewers (the owner or MA-2) use the same 
 - [ ] No allocation, I/O or font loading inside `draw` lambdas. Paint and text runs are cached per page. LRU ±3 is respected.
 - [ ] Compose parameters are stable or immutable (`kotlinx.collections.immutable`, stability config for `:core:model`).
 - [ ] No main-thread disk or DB work (StrictMode clean in logcat).
-- [ ] Budgets from doc 05 and doc 10 are reported when touched: r07 targets are cold start < 500 ms on a Pixel 6a-class device and page-turn p90 frame < 16 ms; renderer budgets are in doc 05.
+- [ ] Budgets from doc 05 and doc 10 are reported when touched: cold start ≤ 500 ms on a Pixel 6a-class device, ≤ 1.2 s on a mid-range phone and ≤ 1.5 s on a 3 GB low-end phone (API 24-class, Infinix/Tecno tier); page-turn p90 frame < 16 ms; renderer budgets are in doc 05.
 - [ ] Release R8 build still green. APK/AAB size delta stated if it is over 200 KB.
 
 ### 9.4 Accessibility (CL-A11Y)

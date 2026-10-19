@@ -2,7 +2,9 @@
 
 **Purpose.** This document is the implementable design for everything around the mushaf that brings a Pakistani user back every day. It covers prayer times, adhan, Qibla, Hijri, tasbeeh, azkar and duas, Ramadan, reminders, widgets and share. It also covers the habit layer (khatam planner, streaks, notes, group khatam) and the differentiators after v1.0 (Hifz mode, Noorani Qaida, AI recitation). For each feature it gives the requirement, a UX summary (screens are specified in [02 UX/UI spec](02-ux-ui-spec.md)), the data model, the algorithms, the Android implementation, edge cases and tests. An engineer or AI agent should be able to build each feature from this doc without redoing the research in r08 (and r01, r02, r06, r07, r09).
 
-**Status: Draft v1 — 2026-10-19** · Phases covered: P2 (v1.0 "Ramadan launch"), P3 (v1.x), P4 (v2).
+**Status: Draft v1 — 2026-10-19** · Phases covered: P2 (v1.0 "Ramadan launch" and v1.1), P3 (v1.x), P4 (v2).
+
+**Release labels** (doc 09 FINAL v1.0 scope; doc 09 owns the schedule): **v1.0** = Tier A (prayer times with Sehri/Iftar, Hijri + PK feed, Ramadan core, khatam planner with the Taraweeh preset). **v1.0-stretch** = tasbeeh and the Manzil-dua playlist (ladder rungs L3/L4). **v1.1 (2027-03-22)** = everything else in P2, including adhan alarms and the Sehri alarm. There is no feature release during Ramadan: 2027-02-05 → Eid (≈ 2027-03-10) is a hotfix-only freeze.
 
 **Key decisions in this doc**
 - **D-16** Prayer and adhan:
@@ -17,10 +19,10 @@
   - Hijri: `HijrahDate` + a ±2-day offset + Maghrib rollover + a signed PK month-start feed.
 - **D-20 / D-17** No tracking, no ads, nothing leaves the device in v1. Firebase is allowed only for realtime group khatam (P3, `play` flavor only; D-24).
 - **D-22** Content governance: every dua or azkar item needs a stated source and a scholar sign-off. Event labels are neutral. Nothing generative is religious.
-- **D-13 / D-14** Hifz, azkar, reminders and Manzil-dua audio all use doc 06's `PlayRequest`/`PlanExpander`. Playback starts only from user actions.
+- **D-13 / D-14** Hifz, azkar, reminders and Manzil-dua audio all use doc 04's `PlayRequest`/`PlayScope` (incl. `PlayScope.Passage` for multi-range passages) and doc 06's `PlanExpander`. Playback starts only from user actions.
 - **D-05 / D-07** Hifz hide/reveal and mistakes use the renderer's word boxes. Khatam and Taraweeh portions snap to the Indo-Pak ruku and Para tables.
-- **D-10 / D-24** Static, Ed25519-signed feeds on R2 (Hijri PK feed), and packs for the mutashabihat and AI models.
-- **D-25** Scope by phase is in §1. The P2 priority tiers in §1.3 are input to doc 09's scope-cut ladder.
+- **D-10 / D-24 / D-30** Static, Ed25519-signed files on R2 with a detached `.sig` (doc 04 §7.6): the Hijri PK feed, plus packs for azkar, cities, the mutashabihat and AI models.
+- **D-25** Scope by phase is in §1. The P2 tiers in §1.3 follow doc 09's FINAL v1.0 scope ruling and scope-cut ladder.
 
 ---
 
@@ -28,80 +30,73 @@
 
 ### 1.1 Feature map
 
-Estimates are focused hours for a solo developer working with AI coding agents. They include tests but not external content work.
+Estimates are focused hours for a solo developer working with AI coding agents. They include tests but not external content work. Module names are doc 04's (§3.2–§3.3). The Release column follows doc 09's FINAL v1.0 scope.
 
-| ID | Feature | Phase | Module(s) | Hard deps | Est. h |
-|---|---|---|---|---|---|
-| (prereq) | Coarse location + offline city DB | P2 | `:core:location` | `cities.db` pipeline (doc 08) | 10 |
-| F-CP-01 | Prayer times (region defaults, offsets, monthly table) | P2 | `:core:prayer`, `:feature:prayer` | adhan2, desugaring | 20 |
-| F-CP-02 | Adhan alarms + Adhan health check | P2 | `:core:notifications`, `:feature:prayer` | F-CP-01, adhan audio assets | 44 |
-| F-CP-03 | Qibla compass (sun mode + Rasd al-Qibla in P3) | P2 (+P3) | `:feature:qibla`, `:core:prayer` | location | 18 (+6) |
-| F-CP-04 | Hijri date, calendar, events, PK feed | P2 | `:core:prayer`, `:feature:prayer` | R2 feed, signer (doc 08) | 14 |
-| F-CP-05 | Tasbeeh | P2 | `:feature:adhkar` | — | 10 |
-| F-CP-06 | Morning/evening azkar, core duas, Manzil dua | P2 | `:feature:adhkar`, `:core:content` | azkar tables (doc 08), Urdu translation | 20 |
-| F-CP-07 | Ramadan: timetable, countdown, Sehri alarm, sourced duas, Taraweeh plan | P2 | `:feature:prayer`, `:feature:khatam` | F-CP-01/02/04, F-BM-04 | 16 |
-| F-CP-08 | Glance widgets (next prayer, continue reading, ayah of the day) | P2 | `:app` (`widget` pkg) | F-CP-01, F-BM-01, `daily_ayah` | 18 |
-| F-CP-09 | Smart reminders (≤3/day, tap-to-play) | P2 | `:core:notifications` | F-CP-01 scheduler, `daily_ayah` | 14 |
-| F-CP-10 | Share ayah as image/text | P2 | `:feature:reader` (share pkg) | DK font, translations | 12 |
-| F-BM-03 | Notes | P2 | `:feature:bookmarks` | F-RD-04 action sheet | 8 |
-| F-BM-04 | Khatam planner & tracker | P2 | `:feature:khatam`, `:core:domain` | Para/ruku/manzil tables (D-07) | 22 |
-| F-BM-05 | Private streaks & stats | P2 | `:feature:khatam` | reader dwell + PlaybackStateHub | 10 |
-| F-CP-11 | Group khatam: text sheet (P2) → realtime Firestore (P3) | P2 / P3 | `:feature:khatam` (+ `play` flavor source set) | F-BM-04; Firebase (P3) | 10 / 40 |
-| F-CP-12 | Hifz mode | P3 | `:feature:hifz`, `:core:hifz` (JVM) | word boxes (doc 05), gapped audio (doc 06, G2) | ~120 |
-| F-CP-13 | Noorani Qaida (own content) | P4 | `:feature:qaida` | recordings + typesetting | 40 + content |
-| F-CP-14 | AI recitation follow-along | spike P3, build P4 | `:core:recitation-ai`, `:feature:hifz` | sherpa-onnx, model pack | 60–70 spike; XL build |
+| ID | Feature | Phase | Release | Module(s) (doc 04) | Hard deps | Est. h |
+|---|---|---|---|---|---|---|
+| (prereq) | Coarse location + offline city DB | P2 | v1.0 | `:core:prayer` (`LocationProviderImpl`), `:core:content` (`CitiesDb`) | `cities` pack (doc 04 §7.3, built by doc 08) | 10 |
+| F-CP-01 | Prayer times (region defaults, offsets, monthly table with Sehri/Iftar labels) | P2 | v1.0 | `:core:prayer`, `:feature:prayer` | adhan2, desugaring | 20 |
+| F-CP-02 | Adhan alarms + Adhan health check | P2 | v1.1 (v1.0 only if B1/B5 are pulled in) | `:core:prayer`, `:feature:prayer` | F-CP-01, adhan audio assets | 44 |
+| F-CP-03 | Qibla compass (sun mode + Rasd al-Qibla in P3) | P2 (+P3) | v1.1 | `:feature:prayer` (UI), `:core:prayer` (`QiblaSensor`) | location | 18 (+6) |
+| F-CP-04 | Hijri date, calendar, events, PK feed | P2 | v1.0 | `:core:prayer` (`HijriCalendarImpl`), `:feature:prayer` | R2 feed, signer (doc 08) | 14 |
+| F-CP-05 | Tasbeeh | P2 | v1.0-stretch (L3) | `:feature:companion` | — | 10 |
+| F-CP-06 | Morning/evening azkar, core duas, Manzil dua | P2 | azkar v1.1; Manzil dua v1.0-stretch (L4) | `:feature:companion`, `:core:content` (`AzkarPackDb`) | `azkar` pack (doc 08), Urdu translation | 20 |
+| F-CP-07 | Ramadan: **core** = 30-day timetable, Home countdown card, Taraweeh preset; **extras** = Sehri alarm, sourced duas, share image, odd-night reminders | P2 | core v1.0; extras v1.1 | `:feature:companion` (Ramadan hub), `:core:prayer` (times) | F-CP-01, F-CP-04, F-BM-04 (extras: F-CP-02, azkar pack) | 16 (core ≈ 8) |
+| F-CP-08 | Glance widgets (next prayer, continue reading, ayah of the day) | P2 | v1.1 | `:app` (`widget` pkg) | F-CP-01, F-BM-01, `daily_ayah` | 18 |
+| F-CP-09 | Smart reminders (≤3/day, tap-to-play) | P2 | v1.1 | `:core:prayer` (`ReminderScheduler`) | F-CP-01 scheduler, `daily_ayah` | 14 |
+| F-CP-10 | Share ayah as image (text share ships with F-RD-04) | P2 | v1.1 | `:feature:reader` (share pkg), `:core:data` (`shareText`) | DK font, translations | 12 |
+| F-BM-03 | Notes | P2 | v1.1 | `:feature:bookmarks` | F-RD-04 action sheet | 8 |
+| F-BM-04 | Khatam planner & tracker (incl. Taraweeh preset) | P2 | v1.0 | `:feature:bookmarks` (splits to `:feature:khatam` per doc 04's trigger), `:core:domain` (`ComputeKhatamPlan`) | Para/ruku/manzil tables (D-07) | 22 |
+| F-BM-05 | Private streaks & stats | P2 | v1.1 | `:feature:bookmarks` | reader dwell + `PlaybackStateHub` | 10 |
+| F-CP-11 | Group khatam: text sheet (P2) → realtime Firestore (P3) | P2 / P3 | sheet v1.1; realtime P3 | `:feature:bookmarks` (sheet); `:core:groupkhatam` (P3, `play` flavor) | F-BM-04; Firebase (P3) | 10 / 40 |
+| F-CP-12 | Hifz mode | P3 | v1.2 (doc 09) | `:feature:hifz`; planner + FSRS in `:core:domain` (`hifz` package) | word boxes (doc 05), gapped audio (doc 06, G2) | ~120 |
+| F-CP-13 | Noorani Qaida (own content) | P4 | v2 | `:feature:companion` (`qaida` package) unless doc 04 adds a P4 module | recordings + typesetting | 40 + content |
+| F-CP-14 | AI recitation follow-along | spike P3, build P4 | — | `:core:asr`, `:feature:hifz` | sherpa-onnx, model pack | 60–70 spike; XL build |
 
-**P2 companion total ≈ 250 h.** That is more than the whole P2 window (6 weeks × 30–35 h ≈ 190–210 h), and P2 also carries credits, compliance and the store listing. The cut tiers in §1.3 are therefore load-bearing.
+**P2 companion total ≈ 250 h.** That is more than the whole P2 window (6 weeks × 30–35 h ≈ 190–210 h), and P2 also carries credits, compliance and the store listing. The tiers in §1.3 are therefore load-bearing.
+
+**Tier A estimate vs doc 09.** By this doc's estimates, Tier A is location 10 h + F-CP-01 20 h + F-CP-04 14 h + F-CP-07 core ≈ 8 h + F-BM-04 22 h ≈ **74 h ≈ 12.3 id** (6 h per ideal day). Doc 09's plan of record budgets **6.5 id** for the same stories (E-15-S01..S03, E-16-S01, E-16-S03, E-18-S01). That is an implied AI-assistance factor of ≈ 0.53×. Doc 09's estimate-reconciliation table owns this gap. If the factor does not hold at the 2026-11-30 checkpoint, the ladder cuts L5 (Ramadan core) first; this doc does not shrink Tier A on its own.
 
 ### 1.2 Module placement
 
-Module names follow r07 §2.10; doc 04 is authoritative. If doc 04 merges modules, map packages one-to-one.
+Doc 04 owns module names (§3.2). This doc uses only doc 04's modules; its earlier names map as follows.
 
-| Module | Type | Contents |
+| Doc 04 module | Contents from this doc | Former name in this doc |
 |---|---|---|
-| `:core:prayer` | pure Kotlin JVM (KMP-ready) | `PrayerTimesCalculator` (wraps adhan2), `RegionDefaults`, `QiblaMath`, `SolarPosition` (P3 sun mode), `HijriService` (HijrahDate + feed resolution), `IslamicEvents`, `KhatamMath` lives in `:core:domain` |
-| `:core:location` | android.library + hilt | `LocationProvider` (LocationManagerCompat), `CityRepository` (Room over `cities.db` asset), nearest-city lookup |
-| `:core:notifications` | android.library + hilt | Channel registry, `PrayerAlarmScheduler`, `AdhanReceiver`, `BootReceiver`, `AdhanPlaybackService`, `ReminderPlanner`/`ReminderScheduler`, `AlarmLog`, direct-boot snapshot |
-| `:feature:prayer` | feature | Prayer times screen, monthly table, adhan settings, **Adhan health check**, Hijri calendar, Ramadan hub |
-| `:feature:qibla` | feature | Compass screen, sensor engine, calibration UX |
-| `:feature:adhkar` | feature | Azkar sessions, dua library, Manzil dua passage reader, tasbeeh |
-| `:feature:khatam` | feature | Khatam planner, streaks and stats, group khatam sheet (P2), realtime group khatam (`src/play/`, P3) |
-| `:feature:bookmarks` | feature (doc 04) | + Notes (F-BM-03) |
-| `:app` `widget` package | app | Glance receivers and widgets (Hilt `EntryPoint`s into repositories) |
-| `:core:hifz` (P3) | pure Kotlin JVM | FSRS port, `HifzPlanner`, rating mapper, heatmap maths |
-| `:feature:hifz` (P3) | feature | Dashboard, hide/reveal reader overlay, test/mark flow, recordings, report |
-| `:core:recitation-ai` (P4) | android.library | sherpa-onnx wrapper, VAD, aligner |
-| `:feature:qaida` (P4) | feature | Qaida lessons |
+| `:core:prayer` (android.library + hilt, P2) | Pure-Kotlin packages with no `android.*` imports: `PrayerTimesCalculator` (wraps adhan2, behind doc 04's `PrayerTimesRepository`), `RegionDefaults`, `QiblaMath`, `SolarPosition` (P3 sun mode), the Hijri resolver of §7.1, `IslamicEvents`. Android parts: `LocationProviderImpl` (LocationManagerCompat + `cities` pack), `HijriCalendarImpl`, `QiblaSensor` impl, `AlarmSchedulerImpl`, `AdhanAlarmReceiver`, `SystemEventsReceiver` (boot, time, zone, package replaced), `AdhanPlaybackService`, `ReminderScheduler`/`ReminderPlanner`, channel registry, direct-boot snapshot | `:core:prayer`, `:core:location`, `:core:notifications` (doc 04 splits these out only when reminders outgrow prayer) |
+| `:feature:prayer` (P2) | Prayer times screen, monthly table, city picker, adhan settings, **Adhan health check**, Qibla screen and calibration UX, Hijri calendar | `:feature:prayer`, `:feature:qibla` |
+| `:feature:companion` (P2) | Ramadan hub, tasbeeh, azkar sessions, dua library, Manzil-dua passage reader; Qaida lessons (P4) | `:feature:adhkar`, `:feature:qaida` |
+| `:feature:bookmarks` (P1; P2 additions) | Notes (F-BM-03), khatam planner, streaks and stats, group khatam text sheet. Splits into `:feature:khatam` when the planner exceeds 3 screens (doc 04 trigger) | `:feature:khatam` |
+| `:core:domain` | `KhatamMath` behind doc 04's `ComputeKhatamPlan` use case; `KhatamSheetParser`; P3 `hifz` package (FSRS port, `HifzPlanner`, rating mapper, heatmap maths). If the hifz package grows past ~2k LOC, doc 04 adds a `:core:hifz` JVM module | `:core:hifz` |
+| `:core:groupkhatam` (P3, `play` flavor) | Firestore realtime group khatam | `src/play/` of `:feature:khatam` |
+| `:feature:hifz` (P3) | Dashboard, hide/reveal reader overlay, test/mark flow, recordings, report | — |
+| `:core:asr` (P4) | sherpa-onnx wrapper, VAD, aligner | `:core:recitation-ai` |
+| `:app` `widget` package | Glance receivers and widgets (Hilt `EntryPoint`s into repositories) | — |
 
-Receivers, services and widgets cannot use constructor injection, so they get dependencies through Hilt `@EntryPoint`. The `foss` flavor never contains Firebase. The realtime group khatam lives only in `src/play/`.
+Receivers, services and widgets cannot use constructor injection, so they get dependencies through Hilt `@EntryPoint`. The `foss` flavor never contains Firebase. Interfaces (`PrayerTimesRepository`, `LocationProvider`, `HijriCalendar`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler`, `KhatamRepository`, `TasbeehRepository`, `NoteRepository`) are doc 04 §6's; features compile only against `:core:domain`.
 
-### 1.3 P2 sequencing and priority tiers (input to doc 09's scope-cut ladder)
+### 1.3 P2 tiers and sequencing (doc 09 FINAL v1.0 scope; doc 09 owns the ladder)
 
 | Tier | Contents | Why | Est. h |
 |---|---|---|---|
-| **A: must be in the closed-test build (≤ 2027-01-11)** | Location + city DB; F-CP-01; F-CP-02 incl. health check and test adhan; F-CP-04 incl. PK feed; F-CP-07 timetable + Iftar/Sehri card + Sehri alarm; F-BM-04 incl. Taraweeh preset; F-CP-05 | Ramadan 1448 (≈ 8–9 Feb 2027). Adhan reliability needs the full closed-test period on the OEM matrix (§21) | ~145 |
-| **B: v1.0 if possible, else v1.0.x before mid-Ramadan** | F-CP-03 Qibla; F-CP-06 morning/evening azkar + Manzil dua (content-dependent); F-CP-08 next-prayer + continue-reading widgets; F-CP-09 Kahf/Mulk/daily ayah; F-BM-03 notes; timetable share image | High value; independent of the adhan core | ~70 |
-| **C: first to cut** | F-CP-10 share ayah image (text share stays); F-BM-05 streaks; F-CP-11 text sheet; ayah-of-the-day widget; event notifications | Delighters | ~35 |
+| **A: v1.0, merged into the closed-test track by 2027-01-18** (closed test opens ≤ 2027-01-11) | Location + city DB; F-CP-01 incl. Sehri/Iftar labels in the monthly table; F-CP-04 incl. PK feed; F-CP-07 core (30-day timetable, Home countdown card, Taraweeh preset); F-BM-04 | Ramadan 1448 (≈ 8–9 Feb 2027). No alarms or notifications, so no OEM-reliability risk in v1.0 | ~74 (doc 09 POR: 6.5 id) |
+| **Stretch: v1.0 only if ladder rungs L3/L4 are restored** | F-CP-05 tasbeeh (L3); Manzil-dua playlist, part of F-CP-06 (L4) | Cheap, independent, no content-rights risk | ~16 (tasbeeh 10 + Manzil dua 6) |
+| **B: v1.1 (2027-03-22) by default** | F-CP-02 (notifications, full adhan, health check, OEM matrix); the Sehri alarm, Ramadan duas, timetable share image and odd-night reminders (F-CP-07 extras); F-CP-03; F-CP-06 azkar; F-CP-08; F-CP-09; F-CP-10; F-CP-11 sheet; F-BM-03; F-BM-05 | Adhan reliability needs a full OEM-matrix pass (§21), and azkar need Urdu content | ~155 |
 
-Suggested order inside P2:
-- **W1 (Dec 22–28):** location, `:core:prayer` + golden tests, prayer screen.
-- **W2:** scheduler, receivers, FGS, channels, direct boot.
-- **W3 (→ Jan 11):** health check, Hijri + feed, Ramadan, khatam core, tasbeeh. Closed-test build.
-- **W4:** Qibla, widgets, reminders.
-- **W5:** azkar/Manzil, notes, share.
-- **W6 (→ Feb 1):** Tier C, plus fixes from the OEM matrix.
-
-**Pull-forward candidate:** `:core:prayer` with its golden tests has no UI. An agent can build it whenever P1 has slack; the spike already proves adhan2 works.
+- **Pull-ins.** A Tier B item enters v1.0 only through doc 09 §5.2's pull-in order (B1…B17) and only if it is merged by **2027-01-18**. The adhan scheduler (B1) and full adhan (B5) are realistic only if the freelancer lever is pulled at the 2026-11-30 checkpoint. The **Sehri alarm** rides on B1: it is v1.0-stretch only if B1 is pulled in that way, otherwise v1.1.
+- **No mid-Ramadan release.** Anything not in the v1.0 build waits for v1.1 (2027-03-22). From 2027-02-05 to Eid (≈ 2027-03-10) only hotfixes ship (doc 09 §12).
+- **Sprint placement (doc 09).** S6 (2027-01-05 → 01-18) builds all of Tier A: E-15-S01..S03 (prayer core, location, prayer screen), E-18-S01 (khatam planner), E-16-S01 (Hijri + PK feed) and E-16-S03 (Ramadan core). Hijri and Ramadan core sit in S6 so testers get ≥ 7 days with them before Go/No-Go. S7 is stabilisation and release prep only.
+- **Pull-forward candidate:** `:core:prayer`'s calculator package with its golden tests has no UI. An agent can build it whenever P1 has slack (doc 09: S4); the spike already proves adhan2 works.
 
 ### 1.4 External content deliverables (owner-driven; doc 03 tracks the rights)
 
-| Deliverable | Needed by | Fallback if late |
+| Deliverable | Needed by (release) | Fallback if late |
 |---|---|---|
-| Commissioned Pakistani muezzin recordings: standard adhan, Fajr adhan, takbeer clip ≤ 30 s, post-adhan dua. Work-for-hire with a written assignment; 48 kHz WAV masters | 2027-01-04 | Ship Commons CC0 `File:Adhan.ogg` (42 s, trimmed for the short sound) and `File:Beautiful adhan.ogg` (154 s) (r08 §2.4) |
-| Ruet-e-Hilal PK feed live on R2, covering Rajab–Ramadan 1448 | 2027-01-04 | UQ + user offset, with the default offset for PK set to **−1** (r08 §2.7: PK is currently UQ −1) |
-| Urdu translation of ~150 core duas + scholar review (or HadeethEnc permission) | 2027-01-18 | Azkar ship Arabic + English; Urdu follows in v1.0.x |
-| `daily_ayah` list of 366 curated entries, scholar-reviewed | 2027-01-11 | Ayah-of-the-day widget and reminder slip to Tier C |
-| DontKillMyApp-derived OEM guide text (CC BY, attributed), EN + UR | 2027-01-08 | English only |
+| Commissioned Pakistani muezzin recordings: standard adhan, Fajr adhan, takbeer clip ≤ 30 s, post-adhan dua. Work-for-hire with a written assignment; 48 kHz WAV masters | 2027-03-01 (v1.1); 2027-01-04 only if B5 full adhan is pulled into v1.0 | Ship Commons CC0 `File:Adhan.ogg` (42 s, trimmed for the short sound) and `File:Beautiful adhan.ogg` (154 s) (r08 §2.4) |
+| Ruet-e-Hilal PK feed live on R2, covering Rajab–Ramadan 1448 | 2027-01-04 (v1.0 Tier A) | UQ + user offset, with the default offset for PK set to **−1** (r08 §2.7: PK is currently UQ −1) |
+| Urdu translation of ~150 core duas + scholar review (or HadeethEnc permission) | 2027-03-01 (v1.1) | Azkar ship Arabic + English; Urdu follows in a later v1.x |
+| `daily_ayah` list of 366 curated entries, scholar-reviewed | 2027-03-01 (v1.1) | Ayah-of-the-day widget and reminder slip to a later v1.x |
+| DontKillMyApp-derived OEM guide text (CC BY, attributed), EN + UR | 2027-03-01 (v1.1; 2027-01-08 if B1 is pulled in) | English only |
 
 ---
 
@@ -145,9 +140,11 @@ Suggested order inside P2:
 | `INTERNET` | — | Already present | feeds |
 | **Never** | — | `USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT` (v1), `ACCESS_NOTIFICATION_POLICY`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `ACCESS_FINE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE_MICROPHONE` | — |
 
+**By release.** v1.0 (Tier A) needs only `ACCESS_COARSE_LOCATION` and the existing `INTERNET`: it posts no notifications and schedules no alarms. `POST_NOTIFICATIONS`, `SCHEDULE_EXACT_ALARM`, `RECEIVE_BOOT_COMPLETED` and the adhan FGS use arrive with F-CP-02/F-CP-09 in v1.1, or in v1.0 only if B1 is pulled in. Doc 04 §10.2 and doc 11's Data safety/FGS declarations follow the build that actually ships them.
+
 ### 2.3 Notification channels
 
-These are created at app start by `ChannelRegistry.ensure()`. Group "Prayer" holds the first six; group "Quran & reminders" holds the last three. Doc 06 owns the playback and download channels.
+These are created at app start by `ChannelRegistry.ensure()`, starting with the build that ships F-CP-02/F-CP-09 (v1.1 by default; v1.0 creates none). Group "Prayer" holds the first six; group "Quran & reminders" holds the last three. Doc 06 owns the playback and download channels.
 
 | Channel id | Importance | Sound | Purpose |
 |---|---|---|---|
@@ -202,33 +199,52 @@ enum class AdhanMode { OFF, SILENT, SHORT, FULL }
 
 `ReminderSettings`, `RamadanSettings`, `TasbeehSettings` and `StreakSettings` are defined in their own sections.
 
+**Mapping onto doc 04 §7.5 (doc 04 owns `UserSettings`).** These classes are the field-level spec. `LocationSetting`, `PrayerSettings` and `AdhanSettings` fill `UserSettings.prayer`; `HijriSettings` fills `UserSettings.hijri`; `ReminderSettings` fills `UserSettings.reminders` (per-reminder enable and time also live in the `reminder` table). `RamadanSettings`, `TasbeehSettings` and `StreakSettings` need new `ramadan`, `tasbeeh` and `streaks` sections in doc 04. Two semantics must survive the merge: `method`/`asr` = `null` means "region default" (needed for diaspora users), and the adhan enable flow pre-selects **FULL for all five prayers**, while silent/vibrate/DND keep it silent unless the user opts in (`playInSilent`, default off; doc 01 F-CP-02 AC 3).
+
 ### 2.5 Storage map
 
-| Store | Tables / files (this doc) | Phase | Notes |
+Doc 04 owns the `user.db` schema and every pack type's DDL except the `azkar` pack, which this doc owns (doc 04 §7.3). **`user.db` v1** is frozen on 2026-12-21 and already contains every P1 and P2 table, so neither the v1.0 Ramadan release nor v1.1 needs a migration. **P3 tables (hifz, group-khatam cache) arrive in `user.db` v2** through a tested migration (doc 04 §7.4 migration policy).
+
+| Store | Tables / files | Phase | Notes |
 |---|---|---|---|
-| `user.db` (schema v2 at P2) | `alarm_schedule`, `alarm_log`, `tasbeeh_preset`, `tasbeeh_session`, `tasbeeh_day`, `azkar_progress`, `khatam_plan`, `khatam_portion`, `activity_day`, `page_read_log`, `note`, `reminder_log`, `group_khatam`, `group_khatam_part` | P2 | Doc 04/10 own the migrations: v1 (P1) → v2 adds these tables. Auto Backup includes them; `alarm_*` is rebuilt after restore |
-| `user.db` (schema v3 at P3) | `hifz_plan`, `hifz_page`, `hifz_session`, `hifz_mistake`, `hifz_recording` | P3 | Recordings are files under `filesDir/hifz/rec/`, excluded from backup |
-| `quran_content.db` (read-only, D-10a) | `dhikr_category`, `dhikr`, `dhikr_translation`, `passage` + `passage_range` (Manzil dua etc.), `daily_ayah` | P2 | Built by the pipeline (doc 08) from Room's exported schema |
-| `cities.db` asset (read-only) | `city`, `city_alias`, `country`, `admin1` | P2 | ~3.1 MB on disk, ~1.5 MB compressed in the APK (r08 §2.5). Separate from the content DB so geo updates don't bump the content version |
-| `res/raw` | Adhan audio (AAC-LC `.m4a` ≤ 1 MB each), takbeer and Sehri clips (`.ogg` Vorbis) | P2 | Bundled, so adhan works offline from first launch |
-| Device-protected storage | `alarm_snapshot.json`, `boot_log.jsonl` | P2 | Readable in direct boot (§5.4) |
-| R2 (D-24) | `feeds/hijri/pk/v1/hijri-pk.json` + `.sig` | P2 | §7.4 |
+| `user.db` **v1** (doc 04 §7.4) | `khatam_plan`, `khatam_progress` (F-BM-04, Taraweeh plan, group text sheet as `kind = 'GROUP_SHEET'`); `tasbeeh_counter`, `tasbeeh_day` (F-CP-05); `adhan_log` (F-CP-02); `reminder` (F-CP-09); `note` (F-BM-03); `reading_day`, `page_dwell` (F-BM-05, khatam auto-suggest, reminder suppression) | P2 | Auto Backup includes them. Column needs below |
+| `user.db` **v1**, requested additions (doc 04 must add before the 2026-12-21 freeze) | `alarm_schedule` (§5.2, the scheduled set used for cancel-diffing and missed detection; rebuilt after restore); `azkar_progress(day, category_id, dhikr_id, count)` (§9.2); `reminder_log(day, type, scheduled_at, delivered_at, outcome)` (§11.2) | P2 | Without them, v1.1 forces a migration |
+| `user.db` **v2** (P3) | `hifz_plan`, `hifz_page`, `hifz_session`, `hifz_mistake`, `hifz_recording`; realtime group-khatam cache (`:core:groupkhatam`) | P3 | Recordings are files under `filesDir/hifz/rec/`, excluded from backup |
+| `quran_content.db` (read-only, doc 04 §7.2) | `passage` + `passage_range` (code `manzil-dua` etc.; shared with F-IX-08 quick access) | P1 | Built by doc 08 |
+| `azkar` pack (doc 04 §7.3; DDL in §9.2 here) | `pack_info`, `dhikr_category`, `dhikr`, `dhikr_translation`, `daily_ayah` | P2 (v1.1) | Bundled as `azkar.core`; signed index entries can update it. Quranic items store only ayah ranges; their Arabic always comes from `quran_content.db` (D-30) |
+| `cities` pack (doc 04 §7.3) | `pack_info`, `city(id, name, name_ur, ascii, country, admin1, lat, lon, tz, population)` + FTS5 unicode61 over the names | P2 (v1.0) | Pre-installed from the APK, ~1.5 MB compressed (r08 §2.5). A pack, so geo updates don't bump the content version |
+| `res/raw` | Adhan audio (AAC-LC `.m4a` ≤ 1 MB each), takbeer and Sehri clips (`.ogg` Vorbis) | P2 (v1.1) | Bundled, so adhan works offline from first launch |
+| Device-protected storage | `alarm_snapshot.json`, `boot_log.jsonl` | P2 (v1.1) | Readable in direct boot (§5.4) |
+| Remote cache (doc 04 §7.7) | `files/remote/hijri-pk.json` (+ `.sig`, `.etag`), fetched from `${CDN_BASE_URL}/v1/feeds/hijri-pk.json` | P2 (v1.0) | §7.4 |
 | Packs (D-10c) | `hifz-mutashabihat` (P3, QUL permission), `ai-model-*` (P4), `qaida-audio` (P4) | P3/P4 | Signed `index.json` entries with licence flags |
+
+**Columns this doc needs in doc 04's v1 tables** (doc 04 owns the DDL; listed so the freeze includes them):
+- `khatam_plan`: `preset TEXT` (e.g. `TARAWEEH_27`), `cursor_ayah_id INTEGER` (first unread ayah, Kufan), `copies INTEGER NOT NULL DEFAULT 1` (group sheet). The existing `stop_at_ruku` is this doc's "snap to ruku"; `start_*`/`end_*` surah:ayah are the plan range; `kind = 'RAMADAN'` marks the Taraweeh plan.
+- `khatam_progress`: one row per completed portion (`unit_index` = portion sequence, or `(copy − 1) × partsPerCopy + part` for a group sheet), plus `from_ayah_id`, `to_ayah_id`, `via TEXT` (`MANUAL|SUGGESTED|AUDIO`). `done_at` must be nullable so a group-sheet part can be `CLAIMED` (name in `claimed_by`) before it is done.
+- `tasbeeh_counter`: `title_ur TEXT`, `phases_json TEXT` (e.g. 33/33/34), `phase INTEGER`, `loop INTEGER`, `builtin_key TEXT`.
+- `adhan_log`: `request_code`, `type` (`ADHAN|SEHRI|TEST|…`), `lateness_ms`, `exact_allowed`, `standby_bucket`, `api`, and the wider `outcome` set of §5.2. Keep the newest 200 rows.
+- `reading_day`: `portion_done INTEGER`, `freeze_used INTEGER`; `day` = epochDay of the **Quran day** (§2.6).
+- `page_dwell`: per-day rows (`day` in the key) or a sibling `page_dwell_day(day, mushaf_id, page_index, seconds)`, because the khatam auto-suggest and reminder suppression need today's dwell, not lifetime totals.
 
 ### 2.6 Time primitives
 
 - All schedule math uses `java.time` (desugared) and `kotlin.time.Instant` from adhan2. Convert with `Instant.ofEpochMilli(x.toEpochMilliseconds())`.
 - **The city's IANA zone defines "today" for prayer times.** Alarms are absolute Instants, so they stay correct when the device zone differs. The UI shows city-local times and adds the label "(Lahore time)" when the device zone differs.
 - **"Quran day"** (streaks, stats, khatam "today") runs from **03:00 to 03:00 local device time**, so late-night reading counts for the evening before. Display dates use the civil date of the day's start.
-- An injectable `Clock` (doc 04 `:core:common`) is used everywhere, so tests run on fixed instants.
+- An injectable `kotlin.time.Clock` (bound in doc 04's `DispatchersModule`, §9) is used everywhere, so tests run on fixed instants.
 
 ### 2.7 Deep links (resolved to `:core:navigation` NavKeys; doc 04 owns the scheme)
 
-`criterion://reader?page=<index>` · `criterion://reader?verse=<s:a>&play=1` · `criterion://prayer` · `criterion://prayer/health` · `criterion://qibla` · `criterion://adhkar/<category>` · `criterion://tasbeeh` · `criterion://khatam/<id>` · `criterion://hifz/today` (P3). `play=1` starts playback only after the reader is visible, which counts as user-initiated (§11.4).
+This doc uses doc 04 §8.3's URIs:
+- `criterion://page/{mushafCode}/{label}` · `criterion://ayah/{surah}/{ayah}` · `criterion://surah/{n}` · `/para/{n}` · `/manzil/{n}` · `/ruku/{id}`.
+- `criterion://play?scope=surah:18` (`para:23`, `range:2:285-2:286`, `passage:manzil-dua`) opens the reader with `autoplay`. Autoplay is honoured only for our own explicit `PendingIntent.getActivity`, so playback starts from a visible activity, which counts as user-initiated (§11.4).
+- `criterion://khatam/{id}` · `criterion://prayer` · `/qibla` · `/tasbeeh` · `/hijri`.
+
+**Requested additions to doc 04 §8.2–§8.3:** `criterion://prayer/health` (`AdhanHealthKey`, v1.1), `criterion://azkar/{category}` (`AzkarKey`, v1.1), `criterion://ramadan` (`RamadanKey`, v1.0), `criterion://hifz/today` (P3).
 
 ---
 
-## 3. Location and offline city database (prerequisite for F-CP-01/03/04/07)
+## 3. Location and offline city database (prerequisite for F-CP-01/03/04/07) [P2 · v1.0]
 
 **Requirement.**
 - Coarse location only. A 3 km error moves the Qibla by ≤ 0.07° and prayer times by seconds (r08 §2.5).
@@ -238,33 +254,25 @@ enum class AdhanMode { OFF, SILENT, SHORT, FULL }
 
 **UX.** The prayer screen header shows "Lahore, Punjab ▾", which opens a picker with two options: "Use my location" and a search box with results. Details in [02](02-ux-ui-spec.md).
 
-**Data: `cities.db`, built by doc 08 from GeoNames `cities15000.zip`.**
+**Data: the bundled `cities` pack (doc 04 §7.3 owns the DDL; `CitiesDb` in `:core:content`), built by doc 08 from GeoNames `cities15000.zip`.**
 - Licence CC BY 4.0. Attribution "GeoNames, CC BY 4.0" goes in Credits (F-PL-04).
 - 34,173 rows, of which PK 372 (r08 §2.5).
-
-```kotlin
-@Entity(tableName = "city") data class City(@PrimaryKey val id: Long /*geonameid*/, val name: String, val ascii: String,
-  @ColumnInfo(name = "name_ur") val nameUr: String?, val lat: Double, val lon: Double, val cc: String,
-  val admin1: String?, val tz: String, val population: Int)
-@Entity(tableName = "city_alias", primaryKeys = ["alias_norm", "city_id"], indices = [Index("city_id")])
-data class CityAlias(@ColumnInfo(name = "alias_norm") val aliasNorm: String, @ColumnInfo(name = "city_id") val cityId: Long)
-@Entity(tableName = "country") data class Country(@PrimaryKey val cc: String, val nameEn: String, val nameUr: String?)
-@Entity(tableName = "admin1") data class Admin1(@PrimaryKey val code: String /*"PK.04"*/, val name: String)
-```
+- Table `city(id PK /*geonameid*/, name, name_ur, ascii, country /*ISO cc*/, admin1, lat, lon, tz, population)` plus an FTS5 (unicode61) index over the names. This doc needs the FTS index to cover `name`, `ascii`, `name_ur` and the normalised Arabic-script alternate names (one space-joined column, e.g. `alt_names_norm`); doc 04 adds that column to the DDL.
 
 Pipeline rules (doc 08 implements them):
-- **Aliases:** `ascii` lower-cased, plus every Arabic-script entry of `alternatenames` (any char in U+0600–U+06FF), normalised with the D-11 Urdu folder.
+- **Alternate names:** `ascii` lower-cased, plus every Arabic-script entry of `alternatenames` (any char in U+0600–U+06FF), normalised with the D-11 Urdu folder.
 - **`name_ur`:**
   - For PK, IN and AF, use the first Arabic-script alias that contains an Urdu-specific letter (ٹ ڈ ڑ ں ے ہ ھ گ), else the first Arabic-script alias.
   - A hand-checked override CSV covers the 100 most populous PK cities (≈ 2 h owner work).
-- **admin1** comes from GeoNames `admin1CodesASCII.txt` (same licence).
+- **admin1** holds the resolved admin-1 name, joined from GeoNames `admin1CodesASCII.txt` (same licence). Country display names come from `Locale("", country).getDisplayCountry()`.
 
 **Algorithms.**
 - **Search.** Run one query per keystroke (debounced 150 ms):
 
   ```sql
-  SELECT c.* FROM city_alias a JOIN city c ON c.id = a.city_id WHERE a.alias_norm LIKE :q || '%'
-  GROUP BY c.id ORDER BY (c.cc = :homeCc) DESC, c.population DESC LIMIT 30;
+  -- :q = the normalised input as an FTS5 prefix query, e.g. '"لاہ"*' or '"lah"*'
+  SELECT c.* FROM city_fts f JOIN city c ON c.id = f.rowid WHERE city_fts MATCH :q
+  ORDER BY (c.country = :homeCc) DESC, c.population DESC LIMIT 30;
   ```
 
 - **Nearest city** for a GPS fix: take candidates inside lat ±1°, lon ±1.2°, rank by haversine distance and pick the minimum. If there are none within 50 km, show "Near <nearest>" but use the raw rounded coordinates with the nearest city's `tz`.
@@ -291,7 +299,7 @@ Pipeline rules (doc 08 implements them):
 
 ---
 
-## 4. F-CP-01 Prayer times [P2]
+## 4. F-CP-01 Prayer times [P2 · v1.0 Tier A]
 
 **Requirement.**
 - Accurate offline times with region defaults: PK = KARACHI + HANAFI (D-16).
@@ -315,7 +323,7 @@ Pipeline rules (doc 08 implements them):
 └───────────────────────────────────────────────────┘
 ```
 
-Tapping a bell opens a per-prayer sheet: mode Off/Silent/Short/Full, sound, pre-reminder, Ayatul Kursi nudge and offset. The footer link opens the method settings.
+Tapping a bell opens a per-prayer sheet: mode Off/Silent/Short/Full, sound, pre-reminder, Ayatul Kursi nudge and offset. The footer link opens the method settings. **v1.0 has no bells** (F-CP-02 is v1.1): the row shows the time only, and the per-prayer sheet offers just the offset.
 
 **API (`:core:prayer`, pure Kotlin):**
 
@@ -376,6 +384,7 @@ The exact enum constant names in adhan2 (e.g. `MOON_SIGHTING_COMMITTEE`, `OTHER`
 **Monthly table:**
 - `range(first of month, 28–31)`.
 - Columns: Date, Hijri, Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha.
+- In Ramadan (per §7), the Fajr column also shows **"Sehri ends"** (Fajr − `sehriMarginMin`) and Maghrib shows **"Iftar"** (Maghrib + `iftarIhtiyatMin`), so Sehri/Iftar stay visible even if the Ramadan card is cut (ladder L5). This is part of v1.0 Tier A.
 - Share as text/CSV.
 - 12-h/24-h follows `DateFormat.is24HourFormat`. Digits are Western in both languages (PK convention; doc 02 may override).
 
@@ -401,7 +410,7 @@ The exact enum constant names in adhan2 (e.g. `MOON_SIGHTING_COMMITTEE`, `OTHER`
 Snapshot test: adhan2's exact Karachi output, verified in the spike (g04), is Fajr 05:16, Sunrise 06:32, Dhuhr 12:18, Asr 16:24, Maghrib 18:02, Isha 19:18 PKT. Pin it to detect library drift on upgrade.
 
 Additional tests:
-- **Manchester MSC.** `tools/golden/fetch_aladhan.py` (doc 08) generates Manchester MSC vectors for 2026-10-19 and 2027-06-21 (Aladhan `method=15`). They are added before the P2 closed test.
+- **Manchester MSC.** An Aladhan golden-vector fetch script in doc 08's `tools/` workspace generates Manchester MSC vectors for 2026-10-19 and 2027-06-21 (Aladhan `method=15`). They are added before the P2 closed test.
 - **Midsummer property test** (Manchester, 2027-06-21, `recommendedFor` rule): all six times exist and are strictly ordered. Aladhan's angle-based reference is Fajr 02:34 / Isha 23:47; allow ±15 min, since the rule differs.
 - **Ordering property test:** 365 days × 6 cities, times strictly increasing.
 - **DST:** 2027-03-28 and 2027-10-31 in Europe/London have no gaps or duplicates.
@@ -410,7 +419,7 @@ Additional tests:
 
 ---
 
-## 5. F-CP-02 Adhan alarms, playback and Adhan health check [P2]
+## 5. F-CP-02 Adhan alarms, playback and Adhan health check [P2 · v1.1 default; v1.0 only if B1/B5 are pulled in]
 
 **Requirement.**
 - Each fard prayer has a mode Off / Silent / Short / Full, plus a separate Fajr sound and an optional sunrise notice.
@@ -440,11 +449,13 @@ Additional tests:
 - Slots: 0–5 adhan (`Prayer.ordinal`, 1 = sunrise notice), 10–15 pre-prayer, 20–25 Ayatul Kursi, 30 Sehri, 31 Sehri snooze, 32 Jumu'ah reminder, 40–45 widget tick, 90 test.
 - Reminders (§11) use `1_000_000 + (epochDay mod 10_000) * 100 + type`.
 
-### 5.2 Scheduler (`PrayerAlarmScheduler`, idempotent, < 10 ms)
+### 5.2 Scheduler (doc 04's `AlarmScheduler`, impl `AlarmSchedulerImpl`; idempotent, < 10 ms)
 
 ```kotlin
-interface PrayerAlarmScheduler {
+interface AlarmScheduler {                       // doc 04 §6; scheduleTest is a requested addition
   suspend fun rescheduleAll(reason: RescheduleReason)
+  fun exactAlarmsAllowed(): Boolean
+  fun health(): Flow<AdhanHealth>
   suspend fun scheduleTest(delay: Duration = 60.seconds, mode: AdhanMode)
 }
 enum class RescheduleReason { APP_START, SETTINGS_CHANGED, LOCATION_CHANGED, BOOT, LOCKED_BOOT, PACKAGE_REPLACED,
@@ -452,7 +463,8 @@ enum class RescheduleReason { APP_START, SETTINGS_CHANGED, LOCATION_CHANGED, BOO
 
 @Entity(tableName = "alarm_schedule") data class AlarmScheduleRow(@PrimaryKey val requestCode: Int, val type: String,
   val prayer: String?, val fireAt: Long, val api: String /*CLOCK|EXACT_IDLE|INEXACT|RTC|WINDOW*/, val mode: String?, val createdAt: Long)
-@Entity(tableName = "alarm_log", indices = [Index("scheduledAt")]) data class AlarmLogRow(@PrimaryKey(autoGenerate = true) val id: Long = 0,
+// Logical rows; doc 04 §7.4 owns the DDL: alarm_schedule is a requested v1 table, AlarmLogRow maps onto adhan_log (§2.5)
+@Entity(tableName = "adhan_log", indices = [Index("scheduledAt")]) data class AlarmLogRow(@PrimaryKey(autoGenerate = true) val id: Long = 0,
   val requestCode: Int, val type: String, val prayer: String?, val scheduledAt: Long, val firedAt: Long?, val latenessMs: Long?,
   val outcome: String /*PLAYED_FULL|PLAYED_SHORT|NOTIFIED_SILENT|SUPPRESSED_SILENT|SUPPRESSED_DND|IN_CALL|LATE_NOTIFIED|MISSED|FGS_DENIED|STOPPED_BY_USER*/,
   val exactAllowed: Boolean, val standbyBucket: Int?, val api: String)        // keep the newest 200 rows
@@ -460,7 +472,7 @@ enum class RescheduleReason { APP_START, SETTINGS_CHANGED, LOCATION_CHANGED, BOO
 
 ```text
 rescheduleAll(reason):
-  if no LocationSetting or all events disabled → cancelAll(); disable BootReceiver; write empty snapshot; return
+  if no LocationSetting or all events disabled → cancelAll(); disable the boot receiver; write empty snapshot; return
   desired = []
   for day in [today, tomorrow] (city zone):  t = calc.day(...)
      for p in FARD: mode = adhan.modes[p]; if mode != OFF → desired += AdhanEvent(p, t[p], mode)
@@ -473,7 +485,7 @@ rescheduleAll(reason):
   for row in existing − desired: am.cancel(pi(row.requestCode, FLAG_NO_CREATE))
   for e in desired: schedule(e) per §5.1 (replaces any PendingIntent with the same code); upsert row
   writeSnapshot(desired)          // device-protected storage, for direct boot
-  enable BootReceiver component; detectMissed(now)   // §5.6
+  enable the boot receiver component (`SystemEventsReceiver`); detectMissed(now)   // §5.6
 ```
 
 PendingIntents use `FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT`. Extras: `code`, `type`, `prayer`, `scheduledAt`, `mode`. `AlarmClockInfo.showIntent` opens `criterion://prayer`.
@@ -483,7 +495,7 @@ PendingIntents use `FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT`. Extras: `code`, `type
 - `BOOT_COMPLETED`, plus `LOCKED_BOOT_COMPLETED` via a `directBootAware` receiver.
 - `MY_PACKAGE_REPLACED`, `TIME_SET`, `TIMEZONE_CHANGED`.
 - `ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED` (re-check `canScheduleExactAlarms()`).
-- Every `AdhanReceiver` fire, which chains the 48 h horizon.
+- Every `AdhanAlarmReceiver` fire, which chains the 48 h horizon.
 - The daily safety net, Auto Backup restore, and a Ramadan state change.
 - On boot, only reschedule. Never start a media FGS from `BOOT_COMPLETED` (Android 15 restriction; r07 §2.8).
 
@@ -506,7 +518,7 @@ stateDiagram-v2
   Armed --> Armed: boot · time/zone change · settings · safety net (idempotent)
 ```
 
-### 5.3 `AdhanReceiver` (directBootAware, `goAsync()`, finishes < 10 s)
+### 5.3 `AdhanAlarmReceiver` (directBootAware, `goAsync()`, finishes < 10 s)
 
 ```text
 onReceive(intent):
@@ -540,7 +552,7 @@ Notification text:
    "events":[{"code":2104900,"type":"ADHAN","prayer":"FAJR","at":1792302360000,"mode":"FULL","sound":"fajr_pk","api":"CLOCK"}]}
   ```
 
-- **On `LOCKED_BOOT_COMPLETED`:** re-register the future events from the snapshot. `AdhanReceiver` and `AdhanPlaybackService` are `android:directBootAware="true"`. In locked state they read mode and sound from the snapshot, play from `res/raw`, and append to `boot_log.jsonl`. After unlock (`BOOT_COMPLETED`), the scheduler merges the boot log into `alarm_log` and runs a full `rescheduleAll(BOOT)`.
+- **On `LOCKED_BOOT_COMPLETED`:** re-register the future events from the snapshot. `AdhanAlarmReceiver` and `AdhanPlaybackService` are `android:directBootAware="true"`. In locked state they read mode and sound from the snapshot, play from `res/raw`, and append to `boot_log.jsonl`. After unlock (`BOOT_COMPLETED`), the scheduler merges the boot log into `adhan_log` and runs a full `rescheduleAll(BOOT)`.
 - **Localised strings** come from resources, which are available in direct boot.
 
 ### 5.5 Full adhan playback (`AdhanPlaybackService`)
@@ -552,8 +564,8 @@ The Android 17 hardening rule (r08 §2.3.4) requires a `mediaPlayback` foregroun
   - `setAudioAttributes(USAGE_ALARM, CONTENT_TYPE_SPEECH)`, `setWakeMode(PARTIAL_WAKE_LOCK)`, source `res/raw/<soundId>.m4a`.
   - Request `AUDIOFOCUS_GAIN_TRANSIENT` via `AudioManagerCompat.requestAudioFocus`. Recitation in doc 06's engine pauses on the transient loss and resumes afterwards (D-13: pause, don't duck).
 - **`audibleAllowed(playInSilent)`:**
-  - **Default:** `ringerMode == RINGER_MODE_NORMAL && currentInterruptionFilter == INTERRUPTION_FILTER_ALL`.
-  - **With `playInSilent` (opt-in):** also allowed in silent/vibrate. Still never when the filter is `INTERRUPTION_FILTER_NONE`, nor during a call.
+  - **Default (doc 01 F-CP-02 AC 3: silent unless the user opts in):** `ringerMode == RINGER_MODE_NORMAL && currentInterruptionFilter == INTERRUPTION_FILTER_ALL`. On silent, vibrate or any DND the full adhan becomes a silent notification (plus vibration on vibrate).
+  - **With `playInSilent` ("Play adhan even when silent", default off, shown with a warning):** also allowed in silent/vibrate and in DND modes that admit alarms. Still never when the filter is `INTERRUPTION_FILTER_NONE`, nor during a call.
   - **Call check:** `inCall()` = `AudioManager.mode ∈ {MODE_IN_CALL, MODE_IN_COMMUNICATION, MODE_RINGTONE}`.
 - **Stop conditions:**
   - Notification [Stop], or swiping the notification away (`deleteIntent`, API 34+).
@@ -569,7 +581,7 @@ The Android 17 hardening rule (r08 §2.3.4) requires a `mediaPlayback` foregroun
 
 ### 5.6 Missed-alarm detection and lateness
 
-`detectMissed(now)` runs at app start and in the safety net. Each `alarm_schedule` row with `fireAt < now − 2 min` and no `alarm_log` row becomes a `MISSED` row. If any adhan was missed in the last 72 h, show the home banner "An adhan didn't fire on this phone. [Run health check]" and post at most one `adhan_health` notification per week.
+`detectMissed(now)` runs at app start and in the safety net. Each `alarm_schedule` row with `fireAt < now − 2 min` and no `adhan_log` row becomes a `MISSED` row. If any adhan was missed in the last 72 h, show the home banner "An adhan didn't fire on this phone. [Run health check]" and post at most one `adhan_health` notification per week.
 
 Lateness classes: ≤ 60 s is OK; 1–10 min is late (amber); > 10 min is missed (red, no audio).
 
@@ -601,7 +613,7 @@ Each check is listed with its API and the action offered:
 | Background restriction | `ActivityManager.isBackgroundRestricted()` (API 28+) | App details settings |
 | Standby bucket | `UsageStatsManager.getAppStandbyBucket()` (API 28+); `RESTRICTED`/`RARE` flagged | Explain "open the app daily or remove restriction" |
 | Alarm / notification volume | `AudioManager.getStreamVolume` | Preview |
-| Last 10 events | `alarm_log` | Colour by lateness class |
+| Last 10 events | `adhan_log` | Colour by lateness class |
 | Vendor guide | `Build.MANUFACTURER`/`BRAND` lower-case → table below | Steps + deep links |
 
 **Test adhan in 1 minute:**
@@ -650,13 +662,13 @@ No Makkah/Madinah or Alafasy adhans are used: no licence was found for them (r08
 
 **Tests.**
 - **JVM:** desired-set computation (fixed clock, Karachi, all modes); request-code uniqueness over 10,000 days; merge rule for events ≤ 10 min apart; lateness classes; `audibleAllowed` truth table (ringer × filter × playInSilent × call).
-- **Robolectric:** `ShadowAlarmManager` sees the correct API per event and mode; cancellation of stale codes; snapshot write/read; BootReceiver enable/disable; Sehri only on Ramadan days.
+- **Robolectric:** `ShadowAlarmManager` sees the correct API per event and mode; cancellation of stale codes; snapshot write/read; boot-receiver enable/disable; Sehri only on Ramadan days.
 - **Instrumented (CI emulator API 34 + 36):** schedule `now+60 s`; `adb shell dumpsys deviceidle force-idle` → fires within 60 s; `adb shell cmd appops set com.chughtai.criterion SCHEDULE_EXACT_ALARM deny` → degraded path and banner; `adb shell am set-standby-bucket com.chughtai.criterion rare`.
 - **Manual:** the OEM matrix in §21.
 
 ---
 
-## 6. F-CP-03 Qibla compass [P2; sun mode + Rasd al-Qibla P3]
+## 6. F-CP-03 Qibla compass [P2 · v1.1 default; sun mode + Rasd al-Qibla P3]
 
 **Requirement.**
 - A reliable Qibla direction on cheap phones: rotation-vector fusion with fallbacks, true-north correction, calibration and interference UX.
@@ -680,12 +692,12 @@ No Makkah/Madinah or Alafasy adhans are used: no licence was found for them (r08
 - The screen stays on while open.
 - Devices with no compass show the text bearing "Qibla is 260.3° from true North" plus sun mode (P3).
 
-**Engine (`QiblaSensorEngine`, `:feature:qibla`):**
+**Engine (doc 04's `QiblaSensor`, implemented in `:core:prayer`; the screen is in `:feature:prayer`):**
 
 ```kotlin
-data class CompassReading(val trueAzimuthDeg: Double, val accuracy: Int /*SensorManager.SENSOR_STATUS_* */,
+data class QiblaReading(val trueAzimuthDeg: Double, val accuracy: Int /*SensorManager.SENSOR_STATUS_* */,
   val fieldUt: Float?, val source: Source) { enum class Source { ROTATION_VECTOR, GEOMAGNETIC_RV, ACCEL_MAG, NONE } }
-fun readings(): Flow<CompassReading>      // callbackFlow, SENSOR_DELAY_GAME, UI throttled to 30 fps
+fun readings(): Flow<QiblaReading>        // callbackFlow, SENSOR_DELAY_GAME, UI throttled to 30 fps
 ```
 
 1. **Source chain:**
@@ -725,7 +737,7 @@ fun readings(): Flow<CompassReading>      // callbackFlow, SENSOR_DELAY_GAME, UI
 
 ---
 
-## 7. F-CP-04 Hijri date, calendar and events [P2]
+## 7. F-CP-04 Hijri date, calendar and events [P2 · v1.0 Tier A]
 
 **Requirement.**
 - Show the Hijri date as Pakistan observes it, since PK is **currently one day behind Umm al-Qura**: 1 Jumada I 1448 = 12 Oct 2026 in UQ, 13 Oct 2026 in PK (r08 §2.7).
@@ -734,7 +746,7 @@ fun readings(): Flow<CompassReading>      // callbackFlow, SENSOR_DELAY_GAME, UI
 - A signed PK month-start feed maintained monthly by the owner.
 - Month view and an events list.
 
-### 7.1 Algorithm (`HijriService`, pure Kotlin)
+### 7.1 Algorithm (Hijri resolver, pure Kotlin in `:core:prayer`; behind doc 04's `HijriCalendar`, impl `HijriCalendarImpl`)
 
 ```kotlin
 data class HijriDay(val year: Int, val month: Int, val day: Int, val source: Source, val fromMaghrib: Boolean, val provisional: Boolean)
@@ -763,7 +775,7 @@ fun hijriFor(civil: LocalDate, now: ZonedDateTime?, maghrib: java.time.Instant?,
 - **Rollover needs Maghrib,** so it requires a city. Without one, there is no rollover.
 - **Provisional:** a provisional day shows "(expected)".
 - **First run in PK:** the default `userOffsetDays` for PK is **−1** until the first verified feed arrives, so the date matches PK on day one. Once the feed is active for the current month, the feed wins and the user offset applies only when the feed doesn't cover the date.
-- **Range:** if `HijrahDate` throws (outside the Umm al-Qura range, roughly 1300–1600 AH, unverified), fall back to ICU `android.icu.util.IslamicCalendar(ISLAMIC_UMALQURA)` (API 24; r07). That fallback lives in the Android layer behind an interface.
+- **Device check and fallback (D-27):** `HijrahDate` via core-library desugaring is unverified on API 24–25. On first use per process, `HijriCalendarImpl` self-tests `HijrahDate.from(2026-10-12) == 1448-05-01`. If that fails, or if `HijrahDate` throws (outside the Umm al-Qura range, roughly 1300–1600 AH, unverified), it uses ICU `android.icu.util.IslamicCalendar(ISLAMIC_UMALQURA)` (API 24; r07) for the rest of the process. The fallback lives in the Android layer behind doc 04's `HijriCalendar` interface; the pure resolver above takes the calculated date as an input.
 - **Month names:** Pakistani style. Urdu: محرم، صفر، ربیع الاول، ربیع الثانی، جمادی الاول، جمادی الثانی، رجب، شعبان، رمضان، شوال، ذوالقعدہ، ذوالحجہ. English: Muharram, Safar, Rabi-ul-Awwal, Rabi-us-Sani, Jumada-al-Ula, Jumada-al-Ukhra, Rajab, Sha'ban, Ramadan, Shawwal, Zul-Qa'dah, Zul-Hijjah.
 
 ### 7.2 Events (`IslamicEvents`, a constant in code; neutral labels; no fadha'il text)
@@ -782,7 +794,7 @@ fun hijriFor(civil: LocalDate, now: ZonedDateTime?, maghrib: java.time.Instant?,
 | 12/10 | `eid_adha` | Eid al-Adha | ✓ | **on** |
 | 13–15 each month | `ayyam_bid` | Ayyam al-Bid | toggle (off) | off |
 
-Event notifications use the `quran_reminders` channel and count toward the cap (§11). Defaults are the owner's call under the neutrality policy (open issue O-07).
+Event notifications use the `quran_reminders` channel and count toward the cap (§11), so they ship with F-CP-09 in **v1.1**. In v1.0 events appear only in the calendar and, for Ramadan, as the Home card (§10). Defaults are the owner's call under the neutrality policy (open issue O-07).
 
 ### 7.3 UX
 
@@ -792,13 +804,13 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
 
 ### 7.4 Signed PK month-start feed
 
-- **URL:** `https://<content-domain>/feeds/hijri/pk/v1/hijri-pk.json` plus a detached `hijri-pk.json.sig`.
-- **Signature:** Ed25519 over the exact file bytes, verified with the same pinned key set and `SignatureVerifier` as the pack `index.json` (D-10; doc 08 defines the envelope and keys). Hosted on R2 (D-24).
+- **URL:** `${CDN_BASE_URL}/v1/feeds/hijri-pk.json` plus a detached `hijri-pk.json.sig` (doc 04 §1). Hosted on R2 (D-24).
+- **Signature:** the `.sig` holds the base64 Ed25519 signature over the **exact file bytes** (no envelope, no canonicalisation). The app verifies it with the same two pinned public keys and `Ed25519Verifier`/`SignedFileFetcher` as the pack `index.json` (doc 04 §7.6, D-30). The JSON carries `kid`, `sequence` and `expires`. Doc 08 builds and signs the file; the private key stays offline on the owner's machine.
 
 ```json
 {
-  "schema": 1, "region": "PK", "authority": "Central Ruet-e-Hilal Committee",
-  "sequence": 37, "updatedAt": "2026-10-12T16:05:00Z", "validDays": 45,
+  "schema": 1, "kid": "k1", "region": "PK", "authority": "Central Ruet-e-Hilal Committee",
+  "sequence": 37, "generatedAt": "2026-10-12T16:05:00Z", "expires": "2026-11-26T16:05:00Z",
   "months": [
     { "hijri": "1448-05", "start": "2026-10-13", "status": "CONFIRMED",
       "source": "Ruet-e-Hilal announcement / MoRA notification", "announced": "2026-10-12T15:30:00Z" },
@@ -809,20 +821,20 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
 ```
 
 - **Client rules:**
-  - Reject the feed when the signature is bad, `sequence` ≤ the cached sequence, or the schema is unknown.
-  - Cache the last verified file in `filesDir`.
-  - `isExpired(now)` = `now > updatedAt + validDays`. When expired, show "Moon-sighting data not updated; showing calculated date" in settings, and calculate any month the feed doesn't cover.
+  - Reject the feed when the signature is bad under both pinned keys, `sequence` ≤ the cached sequence (anti-rollback), or the schema is unknown.
+  - Cache the last verified file in `files/remote/` (doc 04 §7.7).
+  - `isExpired(now)` = `now > expires` (doc 08 sets `expires` = `generatedAt` + 45 days). When expired, show "Moon-sighting data not updated; showing calculated date" in settings, and calculate any month the feed doesn't cover.
   - Keep ≤ 24 months of entries.
   - `notices` (optional) render as an in-app card only; they never push.
 - **Fetch cadence:**
-  - WorkManager periodic every 24 h (`NetworkType.CONNECTED`), plus on app open if the last fetch was > 12 h ago. Use `If-None-Match`/ETag.
+  - Doc 04's `RemoteRefreshWorker` (periodic 24 h, `CONNECTED`), plus on app open if the last fetch was > 12 h ago. Use `If-None-Match`/ETag.
   - On Hijri days 29 and 30, add one-time works at Maghrib + 60 min, + 150 min and + 240 min, and the next day at 07:00 (announcements come in the evening).
-  - A feed change that alters today's date → `rescheduleAll(RAMADAN_CHANGED)` and a widget update.
+  - A feed change that alters today's date → refresh the Home Ramadan card and timetable; from v1.1 also `rescheduleAll(RAMADAN_CHANGED)` and a widget update.
 - **Ops runbook (owner, ~5 min × 12 per year; r08):**
   1. On the evening of the 29th, follow the Ruet-e-Hilal announcement.
-  2. Edit the JSON: confirm the next month's `start` and bump `sequence`.
-  3. Run `tools/feeds/sign_feed.py hijri-pk.json` (doc 08).
-  4. Run `tools/feeds/publish.sh`, which uploads to R2 and verifies by fetching and checking the signature.
+  2. Run doc 08's `crit hijri set <hijri-month> <start> --source … --announced …`, which confirms the month and bumps `sequence` and `expires`.
+  3. Run `crit sign hijri` on the owner's machine (offline key; never in CI).
+  4. Run `crit publish feeds --go`, which uploads to R2 and verifies by fetching and checking the signature (doc 08 §9.2 owns the exact commands).
   - **SLA:** ≤ 2 h after the announcement; **≤ 1 h for Ramadan, Shawwal and Dhul-Hijjah.**
   - Name a backup maintainer (open issue O-06).
   - Pre-fill the next 3 months as `PROVISIONAL` (UQ − 1) so a lapse degrades gracefully.
@@ -844,7 +856,7 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
 
 ---
 
-## 8. F-CP-05 Tasbeeh [P2]
+## 8. F-CP-05 Tasbeeh [P2 · v1.0-stretch (L3), else v1.1]
 
 **Requirement.**
 - A full-screen tap counter with presets, targets, phases, haptics, volume-key counting, keep-screen-on, a reset lock and private history.
@@ -863,15 +875,11 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
 └─────────────────────────────────┘
 ```
 
-**Data:**
+**Data** (doc 04 §7.4 v1 tables `tasbeeh_counter` + `tasbeeh_day`, through doc 04's `TasbeehRepository`; the extra columns are listed in §2.5):
+- One `tasbeeh_counter` row per preset holds its live state: `title`, `title_ur`, `phrase_ar`, `phases_json` (`[{"ar":"سُبْحَانَ اللّٰهِ","target":33},…]`), `target`, `phase`, `count` (in the current phase), `rounds`, `loop` (restart after the last phase), `builtin_key`, `sort_order`, `updated_at`.
+- `tasbeeh_day(counter_id, day, count)` is the private per-Quran-day history.
 
 ```kotlin
-@Entity(tableName = "tasbeeh_preset") data class TasbeehPreset(@PrimaryKey(autoGenerate = true) val id: Long = 0,
-  val titleEn: String, val titleUr: String, val phasesJson: String /*[{"ar":"سُبْحَانَ اللّٰهِ","target":33},…]*/,
-  val builtinKey: String?, val sort: Int, val loop: Boolean /*restart after last phase*/)
-@Entity(tableName = "tasbeeh_session") data class TasbeehSession(@PrimaryKey(autoGenerate = true) val id: Long = 0,
-  val presetId: Long, val startedAt: Long, val updatedAt: Long, val phase: Int, val countInPhase: Int, val total: Int, val rounds: Int)
-@Entity(tableName = "tasbeeh_day", primaryKeys = ["day", "presetId"]) data class TasbeehDay(val day: String, val presetId: Long, val total: Int)
 @Serializable data class TasbeehSettings(val haptics: Boolean = true, val volumeKeys: Boolean = true,
   val volumeDownUndo: Boolean = false, val keepScreenOn: Boolean = true, val activePresetId: Long? = null)
 ```
@@ -885,7 +893,7 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
 - Custom: free text, target 1–10,000 or none.
 
 **Implementation.**
-- **State:** a `StateFlow` in `TasbeehViewModel`. Persist with a 500 ms debounce, and immediately in `onStop`. `tasbeeh_day` is upserted per Quran-day (§2.6).
+- **State:** a `StateFlow` in `TasbeehViewModel`. Persist the `tasbeeh_counter` row with a 500 ms debounce, and immediately in `onStop`. `tasbeeh_day` is upserted per Quran-day (§2.6).
 - **Haptics:**
   - Per tap: `view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)`.
   - Phase end or target: `CONFIRM` (API 30+, else `LONG_PRESS`) plus a 1 s colour pulse.
@@ -898,7 +906,7 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
 - **Reset:** hold 1 s → reset, with a snackbar "Reset · Undo (5 s)".
 - **Accessibility:** `contentDescription` "Count 27 of 33, SubhanAllah". TalkBack double-tap counts.
 - **History:** last 30 days per preset (bar list). Private; included in the JSON export.
-- **P3 increment:** a 2×1 Glance widget "+1" using `actionRunCallback<IncrementTasbeeh>()`. It increments the active session.
+- **P3 increment:** a 2×1 Glance widget "+1" using `actionRunCallback<IncrementTasbeeh>()`. It increments the active counter.
 
 **Edge cases.**
 - Process death → lose ≤ 0.5 s of taps.
@@ -913,7 +921,7 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
 
 ---
 
-## 9. F-CP-06 Azkar, core duas and the Manzil dua [P2]
+## 9. F-CP-06 Azkar, core duas and the Manzil dua [P2 · azkar v1.1 default; Manzil-dua playlist v1.0-stretch (L4)]
 
 **Requirement.**
 - Morning and evening azkar with a counter and auto-advance, after-salah and sleep adhkar, and ~70 core duas: ≈ 150 items total in P2.
@@ -937,32 +945,37 @@ Event notifications use the `quran_reminders` channel and count toward the cap (
 - The `reviewed_by` sign-off is mandatory for public builds (D-22).
 - Fadha'il text appears only if graded and sourced. P2 shows **no fadha'il at all**.
 
-### 9.2 Content-DB tables (`quran_content.db`)
+### 9.2 `azkar` pack tables (this doc owns the DDL; pack type per doc 04 §7.3)
 
-```kotlin
-@Entity(tableName = "dhikr_category") data class DhikrCategory(@PrimaryKey val id: Int, val slug: String /*morning,evening,after_salah,sleep,waking,travel,ramadan,general*/,
-  val nameEn: String, val nameUr: String, val sort: Int)
-@Entity(tableName = "dhikr", indices = [Index("categoryId")]) data class Dhikr(@PrimaryKey val id: Int, val categoryId: Int, val sort: Int,
-  val arabic: String, val repeat: Int, val reference: String /*"Bukhari 6306"*/, val quranRanges: String? /*"2:255;112:1-4"*/,
-  val audio: String /*NONE|QURAN|CLIP*/, val clip: String?, val sourceDataset: String, val licence: String,
-  val reviewedBy: String?, val reviewedOn: String?)
-@Entity(tableName = "dhikr_translation", primaryKeys = ["dhikrId", "lang"]) data class DhikrTranslation(val dhikrId: Int,
-  val lang: String /*en,ur,ur-Latn*/, val text: String, val transliteration: String?, val source: String, val licence: String)
-@Entity(tableName = "passage") data class Passage(@PrimaryKey val key: String /*manzil_dua, ayatul_kursi, baqarah_end …*/, val nameEn: String, val nameUr: String)
-@Entity(tableName = "passage_range", primaryKeys = ["passageKey", "seq"]) data class PassageRange(val passageKey: String, val seq: Int, val from: String, val to: String)
+Azkar content ships as the bundled `azkar.core` pack (Room `AzkarPackDb` in `:core:content`), not in `quran_content.db`. A signed `index.json` entry can update it without an app release, because it never carries Quran text: Quranic items store only ayah ranges, and their Arabic is always read from `quran_content.db` (D-30). Doc 08 builds the pack from the Room-exported schema; every pack has `pack_info` (doc 04 §7.3).
+
+```sql
+CREATE TABLE dhikr_category (id INTEGER PRIMARY KEY NOT NULL,
+  slug TEXT NOT NULL,                       -- morning, evening, after_salah, sleep, waking, travel, ramadan, general
+  name_en TEXT NOT NULL, name_ur TEXT NOT NULL, sort_order INTEGER NOT NULL);
+CREATE TABLE dhikr (id INTEGER PRIMARY KEY NOT NULL, category_id INTEGER NOT NULL, sort_order INTEGER NOT NULL,
+  arabic TEXT,                              -- hadith items only; NULL when quran_ranges is set
+  repeat INTEGER NOT NULL, reference TEXT NOT NULL,          -- "Bukhari 6306"
+  quran_ranges TEXT,                        -- "2:255;112:1-4" (Kufan keys); text comes from quran_content.db
+  audio TEXT NOT NULL,                      -- 'NONE' | 'QURAN' | 'CLIP'
+  clip TEXT, source_dataset TEXT NOT NULL, licence TEXT NOT NULL, reviewed_by TEXT, reviewed_on TEXT);
+CREATE INDEX ix_dhikr_cat ON dhikr(category_id);
+CREATE TABLE dhikr_translation (dhikr_id INTEGER NOT NULL, lang TEXT NOT NULL,   -- en, ur, ur-Latn
+  text TEXT NOT NULL, transliteration TEXT, source TEXT NOT NULL, licence TEXT NOT NULL,
+  PRIMARY KEY (dhikr_id, lang));
+CREATE TABLE daily_ayah (day_of_year INTEGER PRIMARY KEY NOT NULL,              -- 1..366
+  from_ayah_id INTEGER NOT NULL, to_ayah_id INTEGER NOT NULL, reviewed_by TEXT NOT NULL);
 ```
 
-`passage` is shared with F-IX-08 quick-access passages (doc 04/02 own the index UI).
+`daily_ayah` lives in this pack because it is curated, scholar-reviewed companion content that feeds the v1.1 widget and reminder (§11.4, §12).
 
-**User progress:**
+**Passages** (`manzil-dua`, `ayatul-kursi`, `baqarah-end`, …) are **not** in this pack. They are doc 04's `passage` + `passage_range` tables in `quran_content.db` (`code`, `title_en`, `title_ur`; ranges as `from_ayah_id`/`to_ayah_id`), shared with F-IX-08 quick access, and surface as doc 04's `Passage(code, title, ranges)`.
 
-```kotlin
-@Entity(tableName = "azkar_progress", primaryKeys = ["day", "categoryId", "dhikrId"]) data class AzkarProgress(val day: String, val categoryId: Int, val dhikrId: Int, val count: Int)
-```
+**User progress:** `azkar_progress(day, category_id, dhikr_id, count)` in `user.db` v1, requested from doc 04 (§2.5).
 
 ### 9.3 Manzil dua
 
-Ranges (Kandhlawi compilation; r08 §2.8), stored as `passage_range` rows for `manzil_dua`, in order:
+Ranges (Kandhlawi compilation; r08 §2.8), stored as `passage_range` rows for passage code `manzil-dua`, in order:
 
 | seq | Range | seq | Range | seq | Range |
 |---|---|---|---|---|---|
@@ -979,7 +992,7 @@ That gives 18 rows and 79 ayahs. The total is computed from the r08 list and mus
   - Each segment has a header ("Al-Baqarah 1–5 · Para 1").
   - Arabic is reflowed in DigitalKhatt IndoPak (non-justified text view; D-05's mushaf-line rules don't apply here). Translation toggles.
   - "Open in mushaf" per segment.
-- **Audio:** one `PlayRequest` over the ordered ranges (doc 06: `PlayScope.AyahRanges(list)`, or a queued sequence of `AyahRange` scopes; contract in §22).
+- **Audio:** one `PlayRequest(scope = PlayScope.Passage(ranges = passage.ranges, titleRes = "passage_manzil_dua"))` over the ordered ranges (doc 04 `PlayScope.Passage`; doc 06's `PlanExpander` expands it). The deep link is `criterion://play?scope=passage:manzil-dua`.
   - Basmala per D-13 strategies: before 109/112/113/114 starting at ayah 1, none extra for 1:1.
   - Repeat ×N whole passage.
 - **Disambiguation:** search alias "manzil" shows **both** "Manzil dua (protective verses)" and "7 Manzils index" (F-SR-03 alias table).
@@ -988,33 +1001,33 @@ That gives 18 rows and 79 ayahs. The total is computed from the r08 list and mus
 
 - **Session screen:** one card per dhikr. Tapping the large counter area decrements the remaining count; at 0 the card auto-advances after 400 ms. A progress ring shows items done out of total.
 - **Fonts:**
-  - Quranic items (`quranRanges != null`): DigitalKhatt IndoPak.
+  - Quranic items (`quran_ranges IS NOT NULL`): DigitalKhatt IndoPak, with text from `quran_content.db`.
   - Hadith Arabic: Noto Naskh Arabic (OFL).
   - Urdu: Noto Nastaliq Urdu (line height 1.9×).
 - **Reference chip:** "Bukhari 6306". Tapping shows the full reference and the translation source.
-- **Audio:** Quranic items play via `PlayRequest(AyahRange)` with the user's reciter. Hadith items have no audio in P2; own recordings are planned for P3.
+- **Audio:** Quranic items play via `PlayRequest(PlayScope.Range(AyahRange(from, to)))` (or `PlayScope.Passage` when `quran_ranges` lists several ranges) with the user's favourite recitation. Hadith items have no audio in P2; own recordings are planned for P3.
 - **Reminders (opt-in, §11):** morning at Fajr + 30 min, evening at Asr + 15 min. Both are suppressed if that session is already complete today.
 
 **Edge cases.**
 - The Urdu translation is missing for an item → show Arabic + English and hide the Urdu toggle for that card; never show an empty card.
-- A category is only partially reviewed → unreviewed items are excluded from public builds by a CI check (`reviewed_by IS NOT NULL` for `play`/public).
+- A category is only partially reviewed → unreviewed items are excluded from BETA and PUBLIC builds by a CI check (`reviewed_by IS NOT NULL` unless `BuildConfig.CONTENT_TIER == PERSONAL`).
 - Translation-only display is impossible: Arabic is always shown.
 
 **Tests.**
-- Pipeline (doc 08): every `dhikr` has a reference; no item without `licence`; the Manzil passage has 18 rows / 79 ayahs and all keys are valid.
+- Pipeline (doc 08): every `dhikr` has a reference; no item without `licence`; Quranic items have `arabic IS NULL` and valid `quran_ranges`; the `manzil-dua` passage has 18 rows / 79 ayahs and all keys are valid.
 - App: auto-advance; progress persisted per day; reminder suppressed when the session is complete.
 
 ---
 
-## 10. F-CP-07 Ramadan [P2; must ship before Ramadan 1448 ≈ 8–9 Feb 2027]
+## 10. F-CP-07 Ramadan [P2 · core v1.0 Tier A (before Ramadan 1448 ≈ 8–9 Feb 2027); extras v1.1]
 
 **Requirement.**
-- A 30-day Sehri/Iftar timetable from prayer times, a calm countdown card, a Sehri wake-up alarm and sourced duas only.
-- A shareable timetable image, a Taraweeh khatam plan, odd-night reminders, and Iftar labelling on the Maghrib notification.
+- **Core (v1.0 Tier A; doc 09 E-16-S03, ladder rung L5):** a 30-day Sehri/Iftar timetable from prayer times, a calm countdown card on Home and in the Ramadan hub, and the Taraweeh khatam preset (§14). No notifications, no alarms.
+- **Extras (v1.1 by default; doc 09 E-16-S04 / B6):** the Sehri wake-up alarm, sourced duas (from the `azkar` pack), the shareable timetable image, odd-night reminders, and Iftar labelling on the Maghrib notification. The Sehri alarm reuses the adhan scheduler and service, so it is v1.0-stretch **only** if the adhan scheduler (B1) is pulled into v1.0 through the freelancer lever (decided 2026-11-30); otherwise v1.1. There is no mid-Ramadan feature release (hotfix-only freeze 2027-02-05 → Eid).
 - **No full-screen intent in v1** (D-16).
 
 **Algorithms.**
-- **Ramadan detection:** `HijriService` (§7) gives the effective month.
+- **Ramadan detection:** `HijriCalendar` (§7) gives the effective month.
   - "Ramadan mode" runs from the evening of 29 Sha'ban (provisional) or the confirmed start, until 1 Shawwal.
   - The start shows "(expected)" until the feed confirms it.
 - **Timetable:** `days = 30` starting on the 1 Ramadan civil date.
@@ -1022,24 +1035,24 @@ That gives 18 rows and 79 ayahs. The total is computed from the r08 list and mus
   - Iftar = `Maghrib + iftarIhtiyatMin`, where `iftarIhtiyatMin` is 0…3 (default **0**).
   - Defaults are 0 because the PK precaution convention is unverified (r08). Validate with 2–3 ustads during the closed test (open issue O-03).
   - Day 30 is shown greyed as "if the month completes".
-- **Countdown card** (home + Ramadan hub): "Iftar in 2 h 14 min · 17:58". Updated per minute while visible. Never a notification countdown and never seconds (§2.1).
-- **Sehri alarm** (opt-in in the Ramadan hub):
+- **Countdown card** (core; home + Ramadan hub): "Iftar in 2 h 14 min · 17:58". Updated per minute while visible. Never a notification countdown and never seconds (§2.1).
+- **Sehri alarm** (extra; opt-in in the Ramadan hub):
   - Fires at `Sehri end − leadMin` (default 45, range 15–120) on Ramadan days. Optional extra dates can be picked (voluntary fasts).
   - Uses `setAlarmClock` and `AdhanPlaybackService` with `sehri.m4a`, `USAGE_ALARM`, the `sehri_alarm` channel and `CATEGORY_ALARM`. Actions: [Snooze 10 min] [Stop].
   - It plays even in silent/vibrate, because the user set an alarm (the label says so). It does not play when the interruption filter is `NONE`.
   - No full-screen intent: the heads-up plus audio is enough. If the alarm is not stopped within 4 min, it auto-snoozes once.
-- **Maghrib in Ramadan:** the adhan notification reads "Iftar · Maghrib 17:58", with an [Iftar dua] action that opens the dua card.
-- **Duas:** only items with stated sources and reviewer sign-off from the azkar tables (category `ramadan`).
+- **Maghrib in Ramadan** (extra, with F-CP-02): the adhan notification reads "Iftar · Maghrib 17:58", with an [Iftar dua] action that opens the dua card.
+- **Duas** (extra): only items with stated sources and reviewer sign-off from the `azkar` pack (category `ramadan`).
   - Candidates: the Iftar dua "ذَهَبَ الظَّمَأُ…" (Abu Dawud) and the last-ten-nights dua "اللّٰهُمَّ إِنَّكَ عَفُوٌّ…" (Tirmidhi). Exact reference numbers are confirmed in content QA.
   - **The popular Sehri niyyah formula is excluded** unless a scholar signs off (r08: no hadith basis).
-- **Taraweeh khatam plan:** a khatam preset (§14) created from the Ramadan hub.
+- **Taraweeh khatam plan** (core): a khatam preset (§14) created from the Ramadan hub.
   - It starts on the night before 1 Ramadan; nights 1..N with N ∈ {27 (default), 29, 30}.
   - Unit PAGE snapped to ruku ends: 548 pages ÷ 27 ≈ 20.3 pages per night.
-  - "Tonight: Para 3, p. 45–65 (to ruku ع …)", with [Read] and [Listen tonight's portion].
-- **Odd-night reminders** (21, 23, 25, 27, 29): opt-in, Isha + 30 min, `quran_reminders`, counted in the cap.
+  - "Tonight: Para 3, p. 45–65 (to ruku ع …)", with [Read] and [Listen tonight's portion] (`PlayRequest(PlayScope.Range(portion))`).
+- **Odd-night reminders** (extra; 21, 23, 25, 27, 29): opt-in, Isha + 30 min, `quran_reminders`, counted in the cap.
 - **Timetable sharing:**
-  - Text: a WhatsApp list.
-  - Image: 1080 × 1920 PNG.
+  - Text (core): a WhatsApp list.
+  - Image (extra): 1080 × 1920 PNG.
     - Header: city, Hijri year, method ("Karachi · Hanafi").
     - 30 rows × 50 px: Roza #, date, day, Sehri, Iftar.
     - Footer: "Sehri = Fajr − 0 min · Follow your local masjid if different", app mark, and "Times: adhan2 (MIT)".
@@ -1047,20 +1060,24 @@ That gives 18 rows and 79 ayahs. The total is computed from the r08 list and mus
 - **Fitrana:** an optional, P3-only feed field (`notices`) showing an announced amount with its source; not built in P2.
 
 **Edge cases.**
-- Ramadan starts a day later than expected → a feed update shifts the timetable, Sehri alarms and the Taraweeh plan (`rescheduleAll(RAMADAN_CHANGED)` + plan re-date prompt).
+- Ramadan starts a day later than expected → a feed update shifts the timetable, the countdown card and the Taraweeh plan (plan re-date prompt); from v1.1 also the Sehri alarms (`rescheduleAll(RAMADAN_CHANGED)`).
 - The user travels → the timetable follows the active city.
 - Exact alarm denied → the Sehri alarm can't be guaranteed: red banner, and the user is advised to use the clock app.
 - High latitude → the banner from §4.
 
 **Tests.**
-- Timetable for Karachi, Ramadan 1448 (feed fixture start 2027-02-09 vs expected 2027-02-08): 30 rows with Sehri = Fajr − margin.
-- Sehri alarm only on Ramadan days.
-- Snooze reschedules +10 min with code slot 31.
-- Image golden screenshot (EN/UR).
+- **v1.0 core:**
+  - Timetable for Karachi and Lahore, Ramadan 1448 (feed fixture start 2027-02-09 vs expected 2027-02-08): 30 rows with Sehri = Fajr − margin and Iftar = Maghrib + ihtiyat, within ±2 min of a published PK timetable.
+  - Ramadan card appears on 1 Ramadan per the PK feed and disappears on 1 Shawwal (simulated dates; JVM with a fixed `Clock`).
+  - A feed flip of the month start re-dates the timetable and offers the Taraweeh re-date prompt.
+  - Taraweeh 27-night preset: portions cover 548 pages exactly once and end on ruku ends (shared with §14 tests).
+- **v1.1 extras:**
+  - Sehri alarm only on Ramadan days; snooze reschedules +10 min with code slot 31.
+  - Image golden screenshot (EN/UR).
 
 ---
 
-## 11. F-CP-09 Smart reminders [P2]
+## 11. F-CP-09 Smart reminders [P2 · v1.1 default]
 
 **Requirement.**
 - Habit reminders that respect the user: **≤ 3 non-prayer notifications per day**, quiet hours, suppression when already done, and deep links to the exact page or ayah.
@@ -1088,6 +1105,8 @@ That gives 18 rows and 79 ayahs. The total is computed from the r08 list and mus
 @Serializable data class ReminderSettings(val enabled: Map<String, Boolean> = mapOf("kahf_friday" to true, "mulk_night" to true, "daily_ayah" to true),
   val times: Map<String, Int /*minute of day*/> = mapOf("daily_ayah" to 480), val quietStart: Int = 22 * 60 + 30, val quietEnd: Int = 5 * 60,
   val dailyCap: Int = 3 /*1..3; can only be lowered*/)
+// Per-type enable/time also maps onto doc 04's `reminder` rows (kind = KAHF_FRIDAY, MULK_NIGHT, DAILY_AYAH, KHATAM, AZKAR_MORNING, …);
+// global quiet hours and cap live in UserSettings.reminders. reminder_log is a requested user.db v1 table (§2.5).
 @Entity(tableName = "reminder_log", primaryKeys = ["day", "type"]) data class ReminderLog(val day: String, val type: String,
   val scheduledAt: Long, val deliveredAt: Long?, val outcome: String /*DELIVERED|SUPPRESSED_DONE|SUPPRESSED_CAP|SUPPRESSED_QUIET|DISMISSED_TODAY*/)
 ```
@@ -1099,7 +1118,7 @@ plan(day): candidates = enabled types whose rule yields a time on `day` (prayer-
   move any candidate inside quiet hours to quietEnd + 15 min, unless its time was explicitly set by the user
   priority: khatam_goal > hifz_goal > kahf_friday > qadr_nights/events > azkar_morning > azkar_evening > mulk_night > daily_ayah > others
   keep the top `dailyCap` by priority → schedule each with setWindow(RTC_WAKEUP, t, 30 min), code 1_000_000 + …
-on fire (ReminderReceiver): re-check (a) delivered today < cap, (b) not in quiet hours, (c) suppression rule (reads page_read_log / PlaybackStateHub history)
+on fire (ReminderReceiver): re-check (a) delivered today < cap, (b) not in quiet hours, (c) suppression rule (reads today's `page_dwell` rows, `recent_item` and the `reading_day` listening totals fed by `PlaybackEvent.AyahCompleted`)
   → post or log the suppression; a missed window is never re-sent
 ```
 
@@ -1107,10 +1126,10 @@ on fire (ReminderReceiver): re-check (a) delivered today < cap, (b) not in quiet
 
 - **Content:** title "Surah Al-Kahf · Friday"; body "Para 15 · Page <label of 18:1>" (from the content DB).
 - **Actions:**
-  - [Read]: `PendingIntent.getActivity(criterion://reader?verse=18:1)`.
-  - [Listen]: `PendingIntent.getActivity(criterion://reader?verse=18:1&play=1)`. The reader becomes visible and then sends the `PlayRequest`, so playback is started by a user action from a visible activity (D-13, Android 17 rules). There are no broadcast trampolines (blocked on API 31+).
+  - [Read]: `PendingIntent.getActivity(criterion://ayah/18/1)`.
+  - [Listen]: `PendingIntent.getActivity(criterion://play?scope=surah:18)` with the internal autoplay extra (doc 04 §8.3). The reader becomes visible and then sends the `PlayRequest`, so playback is started by a user action from a visible activity (D-13, Android 17 rules). There are no broadcast trampolines (blocked on API 31+).
   - [Not today]: logs `DISMISSED_TODAY`.
-- **Ayah of the day:** `daily_ayah(dayOfYear 1..366, verseFrom, verseTo)` in the content DB.
+- **Ayah of the day:** `daily_ayah(day_of_year 1..366, from_ayah_id, to_ayah_id)` in the `azkar` pack (§9.2); the Arabic comes from `quran_content.db`.
   - The list is **curated and scholar-reviewed**, never random (r08 §2.15).
   - The same entry feeds the widget. Text: Arabic plus the translation in the UI language, with the translator credit.
 
@@ -1127,7 +1146,7 @@ on fire (ReminderReceiver): re-check (a) delivered today < cap, (b) not in quiet
 
 ---
 
-## 12. F-CP-08 Glance widgets [P2]
+## 12. F-CP-08 Glance widgets [P2 · v1.1 default]
 
 Built with Glance 1.2.0, which is verified in the spike (`AyahWidget.kt`). There are no periodic XML updates (`updatePeriodMillis="0"`); every update is event-driven. Each widget uses `SizeMode.Responsive` and implements `providePreview` (Glance 1.2 generated previews).
 
@@ -1135,7 +1154,7 @@ Built with Glance 1.2.0, which is verified in the spike (`AyahWidget.kt`). There
 |---|---|---|---|---|
 | `NextPrayerWidget` | 2×1 (110×48 dp), 3×1 (180×48) | "Asr 15:48" + "next: Maghrib 17:26" (3×1) + Hijri date | `WidgetTick` RTC alarms at each prayer boundary (§5.1); `rescheduleAll`; city/settings change; the daily worker | `criterion://prayer` |
 | `PrayerTimesWidget` | 4×2 (250×110) | All six times, next one highlighted, city, Hijri | same | `criterion://prayer` |
-| `ContinueReadingWidget` | 2×2 (110×110), 4×1 | Surah name, "Para 3 · Page 45", today's khatam goal "12/20 pp" | Reader page change (debounced 2 s, ≤ 1 update/min); khatam progress; `onStop` of the reader | `criterion://reader?page=<last>` |
+| `ContinueReadingWidget` | 2×2 (110×110), 4×1 | Surah name, "Para 3 · Page 45", today's khatam goal "12/20 pp" | Reader page change (debounced 2 s, ≤ 1 update/min); khatam progress; `onStop` of the reader | `criterion://page/{mushafCode}/{label}` (last read) |
 | `AyahOfDayWidget` | 4×2 (250×110), 4×3 | Arabic (bitmap), translation in the UI language, reference + translator | 00:05 local RTC alarm + the daily worker; language change | Ayah of the day card |
 | `TasbeehWidget` (P3) | 2×1 | Preset + count + [+1] | `actionRunCallback` | `criterion://tasbeeh` |
 
@@ -1163,7 +1182,7 @@ Built with Glance 1.2.0, which is verified in the spike (`AyahWidget.kt`). There
 
 ---
 
-## 13. F-CP-10 Share ayah as image or text [P2]
+## 13. F-CP-10 Share ayah as image or text [P2 · image v1.1 default; text share ships with F-RD-04 in v1.0]
 
 **Requirement.**
 - Shares are WhatsApp-friendly: image or text, always with the reference and **translator attribution**, which is a licence condition of QuranEnc and Tanzil (r05).
@@ -1211,7 +1230,7 @@ Arabic: Tanzil.net · Translation: {translator}, {source} {version}
 
 ---
 
-## 14. F-BM-04 Khatam planner and tracker [P2]
+## 14. F-BM-04 Khatam planner and tracker [P2 · v1.0 Tier A]
 
 **Requirement.**
 - Multiple independent khatam plans, each with its own pointer. Bookmarks never move them, which fixes r01's ≈ 10k-vote complaint.
@@ -1228,22 +1247,13 @@ Arabic: Tanzil.net · Translation: {translator}, {source} {version}
 └──────────────────────────────────────┘
 ```
 
-**Data:**
+**Data** (doc 04 §7.4 v1 tables `khatam_plan` + `khatam_progress`, through doc 04's `KhatamRepository`; the extra columns are listed in §2.5):
+- `khatam_plan`: `title`, `kind` (`PERSONAL` | `RAMADAN` for Taraweeh/Ramadan presets | `GROUP_SHEET`), `mushaf_id`, `unit` (`PAGE|PARA|RUKU|MANZIL`), the plan range as `start_surah:start_ayah → end_surah:end_ayah`, `start_day`, `target_day`, `rest_days_mask` (bit0 = Mon … bit6 = Sun), `stop_at_ruku` (= snap to ruku), `reminder_minute`, `dedication`, `preset`, `cursor_ayah_id` (first unread ayah, Kufan), `completed_at`, `archived_at`.
+- `khatam_progress`: one row per completed portion: `unit_index` (portion sequence), `from_ayah_id`, `to_ayah_id`, `done_at`, `via` (`MANUAL|SUGGESTED|AUDIO`).
+- Today's portion is **computed**, never stored, so a cursor or date change needs no clean-up.
+- Page dwell for auto-suggest comes from doc 04's `page_dwell` per-day rows, written through `ReadingProgressRepository.recordDwell` from the reader's `PageSettled` dwell events (doc 05; the reader never writes `user.db` directly).
 
-```kotlin
-@Entity(tableName = "khatam_plan") data class KhatamPlan(@PrimaryKey(autoGenerate = true) val id: Long = 0,
-  val title: String, val mushafId: String, val unit: String /*PAGE|PARA|RUKU|MANZIL*/, val snapToRuku: Boolean,
-  val startPage: Int, val endPage: Int /*page_index 1..548*/, val startDate: String, val targetDate: String,
-  val restDaysMask: Int /*bit0=Mon … bit6=Sun*/, val preset: String?, val dedication: String?,
-  val cursorVerse: String /*first unread Kufan key*/, val cursorPage: Int, val createdAt: Long, val completedAt: Long?,
-  val reminderMinute: Int?, val archived: Boolean = false)
-@Entity(tableName = "khatam_portion", primaryKeys = ["planId", "seq"]) data class KhatamPortion(val planId: Long, val seq: Int,
-  val day: String, val fromVerse: String, val toVerse: String, val fromPage: Int, val toPage: Int, val doneAt: Long?, val via: String /*MANUAL|SUGGESTED|AUDIO*/)
-@Entity(tableName = "page_read_log", primaryKeys = ["day", "mushafId", "pageIndex"]) data class PageReadLog(val day: String,
-  val mushafId: String, val pageIndex: Int, val dwellMs: Long)   // written by the reader (doc 05/02 hook), also used by streaks and reminders
-```
-
-**Position measure.** `pos(verse)` = `page_index − 1 + (lineOfAyahEnd / 16)`, a fractional page. It comes from the content DB's ayah → (page, line) map (doc 05/08). Ruku ends, Para starts and Manzil starts come from the D-07 tables.
+**Position measure.** `pos(verse)` = `page_index − 1 + (slotOfAyahEnd / 16)`, a fractional page. The page and line slot where an ayah ends are layout-specific: they come from the mushaf pack's `ayah_page` via `MushafRepository.ayahSpan(mushaf, key)` (doc 05 §3.3; doc 04 owns the interface). Ruku ends, Para starts and Manzil starts come from the D-07 tables in `quran_content.db`.
 
 **Algorithm (`KhatamMath`, `:core:domain`):**
 
@@ -1254,18 +1264,19 @@ todayPortion(plan, today):
   if today is a rest day → show "Rest day" (an optional portion is still offered)
   if days ≤ 0 → overdue: portion = pace of the original plan; banner "Target date passed: [Extend 3/7 days] [Keep going]"
   remaining = pos(endOfPlan) − pos(cursor)
+  remainingUnits(U) = number of units U whose last ayah ≥ cursor and ≤ endOfPlan (a partly read current unit counts as 1)
   when unit:
-    PARA   → n = ceil(remainingParas / days); end = end of Para (paraOf(cursor) + n − 1) [Indo-Pak table D-07]
-    MANZIL → n = ceil(remainingManzils / days); end = end of Manzil k
-    RUKU   → n = ceil(remainingRukus / days); end = end of ruku (rukuOf(cursor) + n − 1)
+    PARA   → n = ceil(remainingUnits(PARA) / days); end = end of Para (paraOf(cursor) + n − 1) [Indo-Pak table D-07]
+    MANZIL → n = ceil(remainingUnits(MANZIL) / days); end = end of Manzil (manzilOf(cursor) + n − 1)
+    RUKU   → n = ceil(remainingUnits(RUKU) / days); end = end of ruku (rukuOf(cursor) + n − 1)
     PAGE   → target = pos(cursor) + remaining / days
              if snapToRuku: tol = max(1.0, 0.25 × remaining/days)
                 end = ruku end with |pos − target| minimal within [target − tol, target + tol] (ties → later); none → page end at ceil(target)
              else end = last ayah ending on page ceil(target)
-  portion = [cursor .. end]; never past endOfPlan; store as a khatam_portion row for today (recomputed until done)
-markDone(portion): doneAt = now; cursor = verseAfter(portion.to); if cursor > end → completedAt = now → completion screen
+  portion = [cursor .. end]; never past endOfPlan; computed on demand (recomputed until done)
+markDone(portion): insert khatam_progress(from, to, done_at = now, via); cursor_ayah_id = verseAfter(portion.to); if cursor > end → completed_at = now → completion screen
 catch-up: implicit, because each day recomputes from cursor. If today's goal > 2 × the original pace → gentle suggestion "Extend target?" (never shaming copy)
-auto-suggest: if every page in today's portion has dwellMs ≥ 20 s today (page_read_log), or PlaybackStateHub reports all its ayahs played,
+auto-suggest: if every page in today's portion has ≥ 20 s dwell today (page_dwell), or PlaybackEvent.AyahCompleted was seen for all its ayahs today,
               show an inline card "Mark today's portion read?" — never auto-complete silently
 ```
 
@@ -1286,10 +1297,10 @@ auto-suggest: if every page in today's portion has dwellMs ≥ 20 s today (page_
   - The dedication text (esal-e-sawab, user-written).
   - Quranic duas only (e.g. 2:201, 2:286, 3:8) until a scholar signs off a traditional Dua-e-Khatm text (D-22).
   - "Start another khatam", and share a completion message (text).
-- **Para checklist:** derived from the cursor plus the portion history. A Para is ✓ when its last ayah ≤ cursor − 1, ◐ when partial.
+- **Para checklist:** derived from the cursor plus the `khatam_progress` history. A Para is ✓ when its last ayah ≤ cursor − 1, ◐ when partial.
 
 **Edge cases.**
-- The mushaf layout changes (P3 15/13-line): plans keep `cursorVerse` (Kufan key) and recompute `cursorPage` and positions for the new `mushafId`.
+- The mushaf layout changes (P3 15/13-line): plans keep `cursor_ayah_id` (Kufan) and recompute pages and positions for the new `mushaf_id`.
 - Rest days exhaust the remaining days → overdue path.
 - The plan range is a single Para → the Para checklist shows only that Para.
 - The user reads ahead → the cursor advances only on markDone; auto-suggest offers to mark the larger range.
@@ -1305,7 +1316,7 @@ auto-suggest: if every page in today's portion has dwellMs ≥ 20 s today (page_
 
 ---
 
-## 15. F-BM-05 Private streaks and stats [P2]
+## 15. F-BM-05 Private streaks and stats [P2 · v1.1 default]
 
 **Requirement.**
 - Motivation without riya or shame. Private by default and can be hidden.
@@ -1314,21 +1325,21 @@ auto-suggest: if every page in today's portion has dwellMs ≥ 20 s today (page_
 **Data:**
 
 ```kotlin
-@Entity(tableName = "activity_day") data class ActivityDay(@PrimaryKey val day: String /*Quran-day, §2.6*/, val pagesRead: Int,
-  val readMs: Long, val listenMs: Long, val ayahsListened: Int, val portionDone: Boolean, val freezeUsed: Boolean)
+// doc 04 §7.4 v1 table reading_day (day = epochDay of the Quran day, §2.6):
+//   read_seconds, pages, listen_seconds, ayahs_listened + requested portion_done, freeze_used (§2.5)
 @Serializable data class StreakSettings(val show: Boolean = true, val minPages: Int = 1, val minListenMin: Int = 3)
 ```
 
 **Rules.**
-- A day is **active** if `pagesRead ≥ minPages` (a page counts at dwell ≥ 20 s), or `listenMs ≥ minListenMin`, or `portionDone`.
+- A day is **active** if `pages ≥ minPages` (a page counts at dwell ≥ 20 s), or `listen_seconds ≥ minListenMin × 60`, or `portion_done`.
 - Streak = consecutive active days ending today or yesterday. Missed days are bridged by up to **2 freezes per calendar month**, applied automatically and not carried over.
 - **Display:** "12 days" with a small "1 rest day used this month".
 - **When a streak breaks:** "Welcome back. Start again today." No red or sad imagery.
 - **Weekly summary:** an in-app card on Fridays with pages, minutes listened, Paras completed and khatams completed. There is no push.
 - **Stats screen:** 30-day bars, totals, plus an option to reset stats.
 - **Sources:**
-  - The reader hook (doc 02/05) writes `page_read_log`.
-  - Doc 06's `PlaybackStateHub` exposes listened ayahs and time, collected by a process-wide `ActivityRecorder` (debounced writes every 30 s while playing).
+  - The reader's `PageSettled` dwell events (doc 05) go through `ReadingProgressRepository.recordDwell` into `page_dwell` and `reading_day`.
+  - A process-wide `ActivityRecorder` collects `PlaybackStateHub.events` (`PlaybackEvent.AyahCompleted` → `ayahs_listened`) and `PlaybackStateHub.state` (`isPlaying` time → `listen_seconds`), with debounced writes every 30 s while playing.
 
 **Tests.**
 - Freeze logic across a month boundary.
@@ -1338,19 +1349,15 @@ auto-suggest: if every page in today's portion has dwellMs ≥ 20 s today (page_
 
 ---
 
-## 16. F-BM-03 Notes [P2]
+## 16. F-BM-03 Notes [P2 · v1.1 default]
 
 **Requirement.** Personal notes per ayah or range, reachable from the ayah action sheet (F-RD-04). Plus a notes list, search, and inclusion in the JSON export (F-BM-06).
 
-```kotlin
-@Entity(tableName = "note", indices = [Index("verseKey"), Index("updatedAt")]) data class Note(@PrimaryKey(autoGenerate = true) val id: Long = 0,
-  val verseKey: String, val verseKeyTo: String?, val mushafId: String?, val pageIndex: Int?,
-  val text: String /*≤ 10,000 chars, plain text*/, val color: Int?, val createdAt: Long, val updatedAt: Long, val deletedAt: Long? /*undo*/)
-```
+**Data:** doc 04 §7.4 v1 table `note` (`uuid`, `surah`, `ayah`, `end_surah`, `end_ayah`, `body` ≤ 10,000 chars plain text, `created_at`, `updated_at`, `deleted_at` for undo), through doc 04's `NoteRepository`.
 
 **Implementation.**
 - **Editor:** a bottom sheet with autosave (debounced 1 s). It shows the anchored ayah (Arabic + reference) on top.
-- **List:** sort by mushaf order or recent. Search is `LIKE '%q%'` over `text`; that is fine for hundreds of notes. Upgrade to FTS4 in `user.db` only if notes exceed 5k.
+- **List:** sort by mushaf order or recent. Search is `LIKE '%q%'` over `body`; that is fine for hundreds of notes. Upgrade to FTS4 in `user.db` only if notes exceed 5k.
 - **Indicator:** a small dot on the ayah marker comes through the renderer's furniture/highlight layer API (doc 05). It is optional in P2; if the API isn't ready, the indicator appears only in the action sheet.
 - **Delete:** soft delete with a 5 s undo, purged after 30 days.
 - **Share:** the user's note text + reference, through the §13 text path (the note is the user's own content).
@@ -1360,7 +1367,7 @@ auto-suggest: if every page in today's portion has dwellMs ≥ 20 s today (page_
 
 ---
 
-## 17. F-CP-11 Group khatam [P2 text sheet → P3 realtime]
+## 17. F-CP-11 Group khatam [P2 text sheet · v1.1 default → P3 realtime]
 
 **Requirement.**
 - Families and WhatsApp groups distribute 30 Paras (or 7 Manzils for a Shabeena) for esal-e-sawab.
@@ -1368,17 +1375,11 @@ auto-suggest: if every page in today's portion has dwellMs ≥ 20 s today (page_
 - P3 adds an optional realtime khatam in the `play` flavor only (D-24).
 - Competing apps are tiny (≤ 1k installs; r08 §2.1), so the field is open.
 
-### 17.1 P2 text sheet
+### 17.1 P2 text sheet (v1.1 default)
 
-**Data:**
-
-```kotlin
-@Entity(tableName = "group_khatam") data class GroupKhatam(@PrimaryKey(autoGenerate = true) val id: Long = 0,
-  val sheetId: String /*6 chars Crockford base32*/, val title: String, val dedication: String?, val unit: String /*PARA|MANZIL*/,
-  val copies: Int /*1..5*/, val deadline: String?, val mushafId: String, val createdAt: Long, val completedAt: Long?, val owner: Boolean)
-@Entity(tableName = "group_khatam_part", primaryKeys = ["khatamId", "copy", "part"]) data class GroupKhatamPart(val khatamId: Long,
-  val copy: Int, val part: Int, val name: String?, val status: String /*FREE|CLAIMED|DONE*/, val updatedAt: Long)
-```
+**Data** (doc 04 §7.4 v1, no extra tables):
+- One `khatam_plan` row with `kind = 'GROUP_SHEET'`, `group_ref` = the sheet id (6 chars Crockford base32), `unit` = `PARA|MANZIL`, `copies` 1..5, `target_day` = deadline, `dedication`.
+- One `khatam_progress` row per claimed or done part: `unit_index = (copy − 1) × partsPerCopy + part`, `claimed_by` = name, `done_at` NULL while CLAIMED. A missing row means FREE.
 
 **Generated text** (English UI; the Urdu UI uses Urdu labels and Para names in Arabic script; `*bold*` is WhatsApp markup):
 
@@ -1502,7 +1503,7 @@ It is the strongest differentiator for this audience (r08 §2.11; r02 W6). **Val
 - **Editions:** hifz state is keyed by `(mushafId, page_index)` and also stored as ayah ranges, so switching edition migrates by verse.
 - **Default edition:** 16-line. The 15-line Hafizi edition becomes available when F-RD-11 ships in P3 (huffaz commonly use it; O-02).
 
-### 18.2 Data (`user.db` v3)
+### 18.2 Data (`user.db` v2, the P3 migration; doc 04 owns the final DDL)
 
 ```kotlin
 @Entity(tableName = "hifz_plan") data class HifzPlan(@PrimaryKey(autoGenerate = true) val id: Long = 0, val learnerName: String?,
@@ -1522,7 +1523,7 @@ It is the strongest differentiator for this audience (r08 §2.11; r02 W6). **Val
   val verseFrom: String, val verseTo: String, val file: String, val durationMs: Long, val createdAt: Long, val starred: Boolean)
 ```
 
-### 18.3 Daily plan generation (`HifzPlanner`, `:core:hifz`)
+### 18.3 Daily plan generation (`HifzPlanner`, `hifz` package in `:core:domain`)
 
 ```text
 dailyPlan(plan, today):
@@ -1577,7 +1578,7 @@ on completion:
 
 ### 18.5 Listen and repeat (doc 06 integration)
 
-- **Request:** `PlayRequest(scope = AyahRange(from, to), reciter = hifzReciter, repeat = RepeatSpec(ayahTimes = N, rangeTimes = M /*0 = ∞*/, pauseAfterAyah = Proportional(1.0) /*"repeat after the qari"*/, cumulative = true|false), speed ∈ 0.5–1.25)`.
+- **Request:** `PlayRequest(scope = PlayScope.Range(AyahRange(from, to)), recitation = hifzRecitation, repeat = RepeatSpec(ayahTimes = N, rangeTimes = M /*0 = ∞*/, pauseAfterAyah = PauseRule.Proportional(1.0) /*"repeat after the qari"*/, cumulative = true|false), speed ∈ 0.5–1.25)` (doc 04 §5.4 types).
 - **Presets:**
   - "Classic hifz": each ayah ×5, then the range ×3.
   - "Repeat after qari": pause = 1.0× ayah duration.
@@ -1749,11 +1750,23 @@ The memo goes to doc 12 as a new ADR.
 
 ---
 
-## 21. Release QA matrix (companion; gates the closed test and the public rollout)
+## 21. Release QA matrix (companion)
 
-**Devices** (r08 §2.3.5; PK mix): Infinix Hot/Note (XOS), Tecno Spark (HiOS), Vivo Y-series, Redmi Note (HyperOS), Oppo A, realme C, Samsung A-series (One UI), Pixel. Android 11, 13, 14, 15, 16, plus the 17 beta on the Pixel.
+**v1.0 Tier A rows gate the closed test and the 2027-01-25 Go/No-Go.** JVM tests use a fixed `Clock`; the manual rows run on the closed-test devices.
 
-| Scenario | How | Pass |
+| Scenario (v1.0) | How | Pass |
+|---|---|---|
+| Prayer times golden vectors | §4 table in CI (6 cities, Karachi + Hanafi) | ±2 min; Qibla bearing ±0.1° |
+| Ramadan timetable | 30 rows for Karachi and Lahore vs a published PK timetable | Sehri = Fajr − margin, Iftar = Maghrib + ihtiyat, ±2 min |
+| Ramadan card | Simulated dates: 29 Sha'ban → 1 Ramadan per the PK feed → 1 Shawwal | Appears on 1 Ramadan ("(expected)" until confirmed); disappears on 1 Shawwal |
+| Hijri PK feed | Signed fixture flips a month start; then a stale (expired) feed; then a tampered `.sig` and a replayed lower `sequence` | Flip honoured on the right civil date; expired → UQ + offset with the settings note; tampered/replayed → rejected, cached feed kept |
+| `HijrahDate` device check | API 24/25 phone (doc 10 smoke device) | Self-test passes, or the ICU fallback gives the same date |
+| Taraweeh plan | Create the 27-night preset on 1 Ramadan; mark 3 nights; skip 2 | Portions end on ruku ends; catch-up spreads the rest; ends on night 27 |
+| City picker | Offline; search "lah" / "لاہ" / "karachi"; location denied | Expected top hits; picker-only path works |
+
+**v1.1 rows** (v1.0 only if B1/B5 are pulled in). **Devices** (r08 §2.3.5; PK mix): Infinix Hot/Note (XOS), Tecno Spark (HiOS), Vivo Y-series, Redmi Note (HyperOS), Oppo A, realme C, Samsung A-series (One UI), Pixel. Android 11, 13, 14, 15, 16, plus the 17 beta on the Pixel.
+
+| Scenario (v1.1) | How | Pass |
 |---|---|---|
 | Doze | `adb shell dumpsys deviceidle force-idle`; wait for the next adhan | Fires ≤ 60 s late |
 | Exact alarm denied | `adb shell cmd appops set com.chughtai.criterion SCHEDULE_EXACT_ALARM deny` | Banner; degraded alarms; FULL → SHORT |
@@ -1765,7 +1778,7 @@ The memo goes to doc 12 as a new ADR.
 | Bluetooth headset | Connected at prayer time | Plays (per system routing); Stop works |
 | Android 17 audio hardening | `adb shell cmd audio set-enable-hardening throw` | No `AudioHardening` exceptions |
 | OEM killers | Kill from Recents; battery saver on; 24 h idle | Fires, or the health check explains why; vendor deep links resolve |
-| 7-day soak | Daily use on each device | ≥ 98% of adhans ≤ 60 s late in `alarm_log` (exported report) |
+| 7-day soak | Daily use on each device | ≥ 98% of adhans ≤ 60 s late in `adhan_log` (exported report) |
 | Qibla | Physical compass at 3 locations | ±5° (RV) / ±10° (accel+mag) |
 | Widgets | Place all; cross prayer boundary; midnight | Updated within 1 min of screen-on |
 
@@ -1777,13 +1790,13 @@ The memo goes to doc 12 as a new ADR.
 |---|---|
 | 02 UX | Screens: Prayer times, per-prayer sheet, Adhan health check, Qibla, Hijri calendar, Ramadan hub, Azkar session, Passage reader (Manzil dua), Tasbeeh, Khatam plan/list/completion, Stats, Notes, Group sheet review, Share preview, Widgets. Hifz dashboard/overlay (P3). Western digits, 12/24 h per system |
 | 03 Content | Rights rows for: commissioned adhan + Sehri clips, Commons CC0 adhans, GeoNames CC BY 4.0, DontKillMyApp CC BY text, AutoStarter MIT table, osamayy/azkar-db, fitrahive MIT, commissioned Urdu duas / HadeethEnc permission, `daily_ayah` curation, QUL mutashabihat permission, Qaida recordings, adhan2 MIT notice |
-| 04 Architecture | Modules in §1.2; `UserSettings.companion: CompanionSettings`; `user.db` v2 (P2) / v3 (P3) tables of §2.5 with tested migrations; injectable `Clock`; `SignatureVerifier` shared with the pack index; deep-link scheme §2.7 → NavKeys; Hilt EntryPoints for receivers, services and widgets; `VolumeKeyRouter` in `MainActivity` |
-| 05 Rendering | `PageGeometry` exposing word boxes `{wordId (DK token), verseKey, line, rect}` and an **overlay layer** API (masks, hint glyphs, mistake dots, note dots, heatmap); ayah → (page, line) map; reader emits `PageDwell(mushafId, pageIndex, ms)` for `page_read_log` |
-| 06 Audio | `PlayRequest`/`PlayScope` incl. `AyahRange` and an ordered multi-range scope (or queued requests) for the Manzil dua; `RepeatSpec(ayahTimes, rangeTimes(0 = ∞), pauseAfterAyah(Fixed/Proportional), cumulative)`; `PlaybackStateHub` exposes listened-ayah events + listening time; transient focus loss → pause and auto-resume; playback started only from a visible activity |
-| 08 Pipelines | Builders: `cities.db`, `dhikr*`/`passage*`/`daily_ayah` tables, `hifz-mutashabihat` pack (P3), `qaida-audio` pack (P4); `tools/feeds/sign_feed.py` + `publish.sh` (Hijri feed); `tools/golden/fetch_aladhan.py` |
-| 09 Roadmap | P2 tiers in §1.3 as the companion part of the scope-cut ladder; closed-test build ≤ 2027-01-11 includes Tier A |
-| 10 Quality | Golden prayer/Qibla vectors in CI; Robolectric scheduler tests; emulator alarm tests; §21 manual matrix and 7-day soak as release gates; screenshot tests for share cards and widgets |
-| 11 Release | Manifest permissions of §2.2; FGS type `mediaPlayback` declared for both recitation and adhan; Data safety: approximate location used on-device only; microphone (P3) on-device only; the play flavor's Firebase (P3) changes the form; privacy policy lists the R2 feed host |
+| 04 Architecture | Doc 04 module names as mapped in §1.2 (no new modules before P3/P4); `UserSettings` sections per §2.4 (new `ramadan`, `tasbeeh`, `streaks`); **`user.db` v1 (frozen 2026-12-21) holds every P1+P2 table and the columns listed in §2.5, plus the requested `alarm_schedule`, `azkar_progress`, `reminder_log`; P3 hifz tables = v2 migration**; `azkar` pack DDL from §9.2 and `cities` pack FTS over alternate names (§3); `PlayScope.Passage`; `MushafRepository.ayahSpan`; `AlarmScheduler.scheduleTest`; injectable `kotlin.time.Clock`; `SignedFileFetcher`/`Ed25519Verifier` with detached `.sig` for `feeds/hijri-pk.json`; deep links and NavKeys of §2.7; Hilt EntryPoints for receivers, services and widgets; `VolumeKeyRouter` in `MainActivity` |
+| 05 Rendering | `PageGeometry` exposing word boxes `{wordId (DK token), verseKey, line, rect}` and an **overlay layer** API (masks, hint glyphs, mistake dots, note dots, heatmap); `ayahSpan(mushaf, key)` from the pack's `ayah_page`; `PageSettled` dwell events that the data layer records in `page_dwell` (the reader never writes `user.db`) |
+| 06 Audio | Doc 04's `PlayRequest`/`PlayScope` incl. `Range(AyahRange)` and `Passage(ranges, titleRes)` (Manzil dua: 18 ranges / 79 ayahs) expanded by `PlanExpander`; `RepeatSpec(ayahTimes, rangeTimes (0 = ∞), pauseAfterAyah: PauseRule.Fixed/Proportional, cumulative)`; `PlaybackStateHub { state: StateFlow<PlaybackState>; events: SharedFlow<PlaybackEvent> }` with `PlaybackEvent.AyahCompleted` and `PlaybackState.isPlaying`; transient focus loss → pause and auto-resume; playback started only from a visible activity |
+| 08 Pipelines | Builders: `cities` pack (doc 04 §7.3, incl. normalised alternate names), `passage`/`passage_range` rows in `quran_content.db`, `azkar.core` pack incl. `daily_ayah` (§9.2; v1.1), `hifz-mutashabihat` pack (P3), `qaida-audio` pack (P4); `crit hijri` / `crit sign hijri` / `crit publish feeds` for `feeds/hijri-pk.json` + detached `.sig` with `kid`/`sequence`/`expires`; an Aladhan golden-vector fetch script |
+| 09 Roadmap | §1.3 tiers match doc 09's FINAL v1.0 scope and ladder (Tier A = L5–L8; stretch = L3/L4; Tier B = B1…B17); Tier A merged by 2027-01-18 in S6; estimate reconciliation for Tier A (74 h here vs 6.5 id in the POR, §1.1); Ramadan hotfix-only freeze; v1.1 = 2027-03-22 |
+| 10 Quality | v1.0: golden prayer/Qibla vectors in CI, Ramadan timetable/card and Hijri feed tests, the §21 v1.0 rows as closed-test gates. v1.1: Robolectric scheduler tests, emulator alarm tests, the §21 OEM matrix and 7-day soak, screenshot tests for share cards and widgets |
+| 11 Release | Manifest permissions of §2.2 per release (v1.0: coarse location only; adhan permissions and the adhan FGS declaration from v1.1); v1.0 listing claims no adhan, Qibla, azkar or widgets; Data safety: approximate location used on-device only; microphone (P3) on-device only; the play flavor's Firebase (P3) changes the form; privacy policy lists the R2 feed host |
 | 12 Decisions/risks | Risks to register: adhan reliability on OEMs, Hijri feed ops lapse, azkar translation rights/accuracy, AI false alarms, group-khatam sensitive data; new ADR after the AI spike |
 
 ---
@@ -1795,7 +1808,7 @@ The memo goes to doc 12 as a new ADR.
 | O-01 | Prayer offset presets for PK masjid timetables are unverified; defaults are 0 | Collect 3 published PK timetables in the closed test; add a preset only if consistent (owner) |
 | O-02 | Hifz pedagogy defaults and the primary hifz edition (16- vs 15-line) | Interview 2–3 ustads at P3 start; the 15-line edition depends on F-RD-11 |
 | O-03 | Sehri margin / Iftar ihtiyat defaults are 0 | Validate in the closed test with local ustads |
-| O-04 | Default adhan mode pre-selection (Full for all five vs Short for Fajr) | Owner decision; this doc pre-selects Full, with silent/DND respected |
+| O-04 | Default adhan mode pre-selection (Full for all five vs Short for Fajr) | Owner decision (v1.1); this doc pre-selects Full, and silent/vibrate/DND keep it silent unless the user opts in (doc 01 F-CP-02 AC 3, OQ-14) |
 | O-05 | Budget for commissioned adhan, ~150 Urdu dua translations + scholar review, Qaida recordings | Owner (doc 11 business) |
 | O-06 | Hijri feed ops: a named backup maintainer and the ≤ 1 h SLA for Ramadan/Shawwal/Dhul-Hijjah | Owner |
 | O-07 | Which Islamic events are on by default (neutrality) | This doc shows all in the calendar; notifications on only for Ramadan start and the two Eids. Owner/scholar confirm |
@@ -1804,5 +1817,5 @@ The memo goes to doc 12 as a new ADR.
 | O-10 | FSRS-Kotlin has an MIT README but no LICENSE file | Ask the maintainer to add one before porting; fallback: implement from the published FSRS-6 algorithm description |
 | O-11 | Vendor auto-start component names are unverified | Verify on the §21 devices; keep `resolveActivity` guards |
 | O-12 | Firestore TTL availability/limits on the free plan are unverified | Check in the P3 spike; fallback: owner-triggered cleanup on app open |
-| O-13 | The P2 companion scope (~250 h) exceeds the P2 window | Doc 09 applies the §1.3 tiers; Tier A is non-negotiable for a Ramadan launch |
+| O-13 | The P2 companion scope (~250 h) exceeds the P2 window, and Tier A alone is ~74 h here vs 6.5 id in doc 09's POR | Resolved by doc 09's FINAL v1.0 scope (§1.3): Tier A only, merged by 2027-01-18; everything else v1.1. Doc 09's ladder still cuts L5 (Ramadan core) first if Tier A runs late |
 | O-14 | Saheeh International's embedded verse-number prefix in share text (QuranEnc no-modification term) | Ask QuranEnc (doc 03); render as-is meanwhile |

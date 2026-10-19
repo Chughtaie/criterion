@@ -2,19 +2,19 @@
 
 **Purpose.** This document is the technical blueprint for the Criterion Android app (codename; public brand at gate G3). It covers the system context, module graph, layering and UDF conventions, the pure-Kotlin domain model, the repository and service interfaces, every on-device data store (with full DDL for `quran_content.db` and `user.db`), the signed pack manifest, navigation, DI, background work, the manifest permission set, build variants and content-eligibility enforcement, security, performance, update flows, diagnostics and the version catalogue. An engineer or AI agent should be able to create the P0 skeleton from this doc and the spike (`spikes/toolchain-spike/`) without redoing research. Doc 04 is the **owner** of module names, interface names, the content-DB schema and the user-DB schema. The mushaf-pack schema belongs to [05](05-mushaf-rendering-engine.md), and the audio catalogue and timing schema to [06](06-audio-engine.md). This doc only states the contracts it relies on.
 
-**Status: Draft v1 — 2026-10-19**
+**Status: Draft v2 — 2026-10-19 (review fixes applied; implements the lead's FINAL SHARED-TYPES and VARIANTS rulings)**
 
 **Key decisions in this doc**
 - **D-01**: native Android, with pure-Kotlin `:core:model` and `:core:domain` ("KMP-ready, Android-only").
 - **D-02**: toolchain as verified in the spike, plus the version catalogue (§16). No Ktor and no Coil in v1.
 - **D-03**: a lean module graph of 9 modules in P0, 19 at P1 and 22 at v1.0. Repository interfaces live in `:core:domain`, and features never depend on features.
-- **D-04/D-06/D-07**: `MushafId` and `PageIndex` are kept separate from `PageLabel` (label = index + 1 for Taj-16). We keep our own Indo-Pak Para/Manzil/Ruku/Sajda/quarter tables. The canonical word table is the DK token stream keyed to Kufan verse keys.
+- **D-04/D-06/D-07**: `MushafId` is an enum carrying a code and a numeric id (`INDOPAK_16_TAJ("indopak16_taj", 1)`). `PageIndex` is kept separate from `PageLabel` (label = index + `pageLabelOffset`, which is 1 for Taj-16). We keep our own Indo-Pak Para/Manzil/Ruku/Sajda/quarter tables. The canonical word table is the DK token stream keyed to Kufan verse keys.
 - **D-08/D-09/D-11**: Tanzil text is used for copy and search. Two translation packs ship bundled. Search uses FTS5 unicode61 + trigram over normalized columns.
 - **D-10**: storage has three tiers: a read-only `quran_content.db` re-copied on version bump, a migrated `user.db`, and Ed25519-signed packs.
-- **D-12/D-13/D-14**: `PlayScope`/`PlayRequest` live in the domain; `PlaybackController` is backed by Media3; downloads run as UIDT jobs on API 34+ and as WorkManager dataSync workers on API ≤ 33.
+- **D-12/D-13/D-14**: `PlayScope`/`PlayRequest`/`PlaybackState` live in the pure core; `PlaybackStateHub` and `PlaybackController` are `:core:domain` interfaces implemented with Media3 in `:core:audio` (there is no `:core:audio-api` module). In P1, downloads run as WorkManager dataSync workers on every API. UIDT jobs on API 34+ land in S5, before the first BETA build.
 - **D-15/D-16**: no GMS in core. Location is coarse only. Alarms use `SCHEDULE_EXACT_ALARM` and `setAlarmClock()`. The manifest has an explicit never-request list.
-- **D-17/D-20/D-22**: `distribution` {play, foss} × `tier` {personal, public}. CI blocks ineligible content. There are no SDKs and no secrets. Kill-switches are delivered through a signed `notices.json`.
-- **D-21/D-23/D-24**: AppCompat per-app locales. Rotation lock on phones only. Static hosting on R2, with no app backend in v1.
+- **D-17/D-20/D-22/D-29**: `distribution` {play, foss} × `tier` {personal, public}. `BuildConfig.CONTENT_TIER` ∈ {PERSONAL, BETA, PUBLIC}: the public tier is BETA unless built with `-Pcriterion.release=production`. `BuildConfig.MONETIZED` comes from `-Pcriterion.monetized=true`. `verifyContentEligibility` blocks ineligible content, and PUBLIC also needs G1 and G5 evidence (§11). There are no SDKs and no secrets. Kill-switches and text-error notices arrive through a signed `notices.json` (F-PL-11).
+- **D-21/D-23/D-24/D-32**: AppCompat per-app locales. Rotation lock on phones only. Static hosting on R2, with no app backend in v1.0. The one exception arrives in v1.1: a small Cloudflare Worker that receives opt-in crash reports (D-32).
 
 ---
 
@@ -24,7 +24,8 @@
 flowchart LR
   U((User)) --> APP["Criterion app<br/>(play / foss × personal / public)"]
   subgraph Ours["Operated by us (static, no backend)"]
-    R2[("Cloudflare R2 + brand-neutral custom domain<br/>index.json · catalogue.json · notices.json · feeds/hijri-pk.json<br/>(+ detached .sig) · packs · timing packs · permitted audio")]
+    R2[("Cloudflare R2 + brand-neutral custom domain<br/>v1/{beta,public}/index.json · catalogue.json · notices.json<br/>v1/feeds/hijri-pk.json (+ detached .sig) · packs · timing packs · permitted audio")]
+    CW["Cloudflare Worker (v1.1, D-32)<br/>opt-in crash reports → R2, 90-day retention"]
   end
   subgraph ThirdParty["Third-party audio hosts (mirrors)"]
     MP3Q["cdn.mp3quran.net<br/>gapless per-surah (public default)"]
@@ -38,21 +39,23 @@ flowchart LR
   APP -. "v1.x, opt-in, PKCE public client" .-> QF["Quran Foundation User API<br/>(bookmarks/notes sync, F-BM-07)"]
   APP -. "v1.x, play flavor only" .-> FB["Firebase Firestore + FCM<br/>(group khatam, F-CP-11)"]
   APP -- "OS-level crash/ANR (no SDK)" --> VIT["Play Android vitals"]
+  APP -. "v1.1, opt-in per report (ACRA, F-PL-09)" .-> CW
   OWN["Owner workstation<br/>tools/ pipelines (doc 08)<br/>offline Ed25519 key"] -- "sign + upload (rclone/wrangler)" --> R2
-  CI["GitHub Actions (doc 10)"] -- "AAB (playPublicRelease)" --> PLAY["Google Play"]
+  CI["GitHub Actions (doc 10)"] -- "AAB (playPublicRelease: BETA → closed test; PUBLIC with -Pcriterion.release=production)" --> PLAY["Google Play"]
   CI -- "signed APK (fossPersonalRelease)" --> OWNERPHONE["Owner's phone (sideload)"]
 ```
 
 | External endpoint | Used for | Phase | Failure behaviour |
 |---|---|---|---|
-| `${CDN_BASE_URL}/v1/index.json` (+`.sig`) | Pack index (translation, tafsir, mushaf layout, timing, fonts, azkar, cities) | P1 | Keep the last verified copy, and the bundled copy below that. Never block reading |
-| `${CDN_BASE_URL}/v1/catalogue.json` (+`.sig`) | Audio catalogue override (schema in [06](06-audio-engine.md)) | P1 | Fall back to the bundled `assets/catalogue/catalogue.json` |
-| `${CDN_BASE_URL}/v1/notices.json` (+`.sig`) | Kill-switches and text-error notices (§14.3) | P1 | Keep the last value. Each notice expires at its own `until` |
-| `${CDN_BASE_URL}/v1/feeds/hijri-pk.json` (+`.sig`) | PK month-start override (D-15, format in r08 §2.7) | P2 | Fall back to Umm al-Qura plus the user offset |
-| mp3quran / everyayah / islamic.network | Audio bytes (D-12) | P1 | Mirror failover inside `ResolvingDataSource` ([06](06-audio-engine.md)) |
+| `${CDN_BASE_URL}/v1/<channel>/index.json` (+`.sig`) | Pack index (translation, tafsir, mushaf layout, timing, fonts, azkar, cities). `<channel>` is `beta` or `public` (§11.2) | P1 (v1.1 for downloadable packs) | Keep the last verified copy, and the bundled copy below that. Never block reading |
+| `${CDN_BASE_URL}/v1/<channel>/catalogue.json` (+`.sig`) | Audio catalogue override (schema in [06](06-audio-engine.md)) | P1 | Fall back to the bundled `assets/audio/catalogue.json` |
+| `${CDN_BASE_URL}/v1/<channel>/notices.json` (+`.sig`) | F-PL-11 signed notices: kill-switches, text-error notices, min-version nudge (§14.3) | P1 (v1.0 floor) | Keep the last value. Each notice expires at its own `until` |
+| `${CDN_BASE_URL}/v1/feeds/hijri-pk.json` (+`.sig`) | PK month-start override (D-15, format in r08 §2.7). Shared by all channels | P2 | Fall back to Umm al-Qura plus the user offset |
+| mp3quran / everyayah / islamic.network | Audio bytes (D-12), per the catalogue's hosts | P1 | Mirror failover inside `ResolvingDataSource` ([06](06-audio-engine.md)) |
+| Crash-report Worker (`${CDN_BASE_URL}/crash`, Cloudflare Worker → R2, 90 days) | Opt-in ACRA reports (F-PL-09, D-32). The only server-side code we run | v1.1 | Report kept on device and retried later; never blocks the app |
 | QF User API, Firebase | Sync and group khatam | P3 | Feature hidden when unavailable |
 
-`CDN_BASE_URL` is a **brand-neutral domain the owner registers in P0**, so G3 (brand) never forces a URL change. It is a `BuildConfig` field, and the placeholder until then is `https://cdn.example.invalid`. Never hotlink quran.com, quran.app or quranicaudio from a published build (r03 §1.10).
+`CDN_BASE_URL` is a **brand-neutral domain the owner registers in P0**, so G3 (brand) never forces a URL change. It is a `BuildConfig` field, and the placeholder until then is `https://cdn.example.invalid`. Never hotlink quran.com, quran.app or quranicaudio from a published build (r03 §1.10). Public builds never use quranicaudio, QF/QDC or Tarteel audio hosts, or archive.org rips (D-28).
 
 ---
 
@@ -61,8 +64,8 @@ flowchart LR
 1. **Offline-first.** Reading, indexes, search, bookmarks, translations (bundled and installed packs) and prayer times never need the network. The network serves only packs, audio and signed feeds.
 2. **Stable keys.** User data references content only by a Kufan `VerseKey` (`surah`, `ayah`) or by (`mushafId`, `pageIndex`), never by a content-DB rowid (D-10).
 3. **The device draws and the pipeline computes.** Justification, word positions, markers and normalized search text are all precomputed offline ([05](05-mushaf-rendering-engine.md), [08](08-data-pipelines.md)).
-4. **Every content item carries its licence and eligibility.** Nothing is bundled or offered unless its `eligibility` matches the build's tier and monetization (§11).
-5. **Zero third-party SDKs in v1** (D-20). The only libraries are AndroidX, Kotlin, Dagger, OkHttp, adhan2 and AboutLibraries. No analytics, ads, or crash SDKs.
+4. **Every content item carries its licence and eligibility.** Every item has `licenceStatus` (5 values), `basis`, `eligibleTiers`, `commercialOk`, `fossOk` and `enabled`. Nothing is bundled or offered unless `ContentPolicy.allows` accepts it for the build's `CONTENT_TIER` and `MONETIZED` (§11).
+5. **Zero third-party SDKs in v1.0** (D-20). The only libraries are AndroidX, Kotlin, Dagger, OkHttp, adhan2 and AboutLibraries. No analytics, ads, or crash SDKs. The play flavor adds Play In-App Review (`review-ktx`, F-PL-10) from v1.0-stretch/v1.1. It is a Google Play library, not a tracking SDK. Opt-in ACRA (F-PL-09) follows in v1.1.
 6. **Pure core.** `:core:model` and `:core:domain` are Kotlin/JVM modules with no Android, Room or DI annotations. This keeps them testable in milliseconds and KMP-convertible.
 7. **Clean-room** (D-18). GPL apps are read for ideas only. Apache-2.0 ports (quran-ios QuranKit, `LinePageGeometryEngine`) and MIT ports keep their headers (§5.6).
 
@@ -92,15 +95,15 @@ flowchart TB
     MR[":core:mushaf-render [P1]<br/>Canvas page engine (doc 05)"]
   end
   subgraph CorePure["Pure Kotlin (JVM)"]
-    DOM[":core:domain [P0]<br/>repository + service interfaces, use cases,<br/>PlanResolver, AppDispatchers"]
-    MOD[":core:model [P0]<br/>VerseKey, PageIndex, PlayScope, QuranMeta,<br/>AppError/AppResult, TextNormalizer"]
+    DOM[":core:domain [P0]<br/>repository + service interfaces incl. PlaybackStateHub,<br/>PlaybackController; use cases; ResolvePlayScope, AppDispatchers"]
+    MOD[":core:model [P0]<br/>VerseKey, MushafId, PageIndex, PlayScope, PlayRequest,<br/>PlaybackState, QuranMeta, AppError/AppResult, TextNormalizer"]
   end
   subgraph CoreImpl["Implementation core (bound via Hilt)"]
     DATA[":core:data [P0]<br/>repository impls, PackManager, ContentPolicy"]
     CON[":core:content [P0]<br/>Room3 RO: QuranContentDb + pack DB classes"]
     DB[":core:database [P0]<br/>Room3 user.db + typed DataStore UserSettings"]
-    REM[":core:remote [P1]<br/>OkHttp, signed fetch (Ed25519), downloader, UIDT/Work hosts"]
-    AU[":core:audio [P1]<br/>Media3 MediaLibraryService, PlaybackStateHub (doc 06)"]
+    REM[":core:remote [P1]<br/>OkHttp, signed fetch (Ed25519), downloader + downloads.db,<br/>Work host (P1), UIDT host (S5)"]
+    AU[":core:audio [P1]<br/>Media3 QuranPlaybackService, PlaybackStateHubImpl,<br/>PlaybackControllerImpl, PlanExpander (doc 06)"]
     PR[":core:prayer [P2]<br/>adhan2, Hijri, qibla, location, alarms, adhan FGS, reminders"]
   end
   TEST[":core:testing [P0]<br/>fakes, MainDispatcherRule, fixture DBs"]
@@ -129,14 +132,14 @@ flowchart TB
 
 | Module | Plugin(s) | Responsibility | Public API (exported) | May depend on | Phase |
 |---|---|---|---|---|---|
-| `:core:model` | `criterion.jvm.library` + serialization | Value types, the static Quran structure (`QuranMeta`, ported from QuranKit), the error model, the text normalizer | Everything in §5 and §4.3 | kotlinx-serialization, kotlinx-datetime | P0 |
-| `:core:domain` | `criterion.jvm.library` | Repository and service interfaces (§6); use cases (`ResolvePlayScope`, `ComputeKhatamPlan`, `ResolveGoTo`, `NextPrayer`); `AppDispatchers`, `AppScope` | Interfaces, use-case classes (plain constructors) | model, coroutines-core | P0 |
-| `:core:content` | `criterion.android.library` + `criterion.room3` | `QuranContentDb` (asset copy), pack DB classes (`TranslationPackDb`, `TafsirPackDb`, `MushafPackDb`, `TimingPackDb`, `AzkarPackDb`, `CitiesDb`), DAOs | **Internal.** Exposes only the `ContentDataSource` façade and `PackDbOpener` to `:core:data` | model | P0 (content), P1 (packs) |
+| `:core:model` | `criterion.jvm.library` + serialization | Value types, including the audio types `PlayScope`, `PlayRequest`, `PlaybackState`, `HighlightTarget` and `AudioError` (§5.4, §6.1); the static Quran structure (`QuranMeta`, ported from QuranKit); the error model; the text normalizer | Everything in §5 and §4.3 | kotlinx-serialization, kotlinx-datetime | P0 |
+| `:core:domain` | `criterion.jvm.library` | Repository and service interfaces (§6), including `PlaybackStateHub` and `PlaybackController`; use cases (`ResolvePlayScope`, `ComputeKhatamPlan`, `ResolveGoTo`, `NextPrayer`); `AppDispatchers`, `AppScope`; injected `kotlin.time.Clock` | Interfaces, use-case classes (plain constructors) | model, coroutines-core | P0 |
+| `:core:content` | `criterion.android.library` + `criterion.room3` | `QuranContentDb` (asset copy), Room pack DB classes (`TranslationPackDb`, `TafsirPackDb`, `MushafPackDb`, `AzkarPackDb`, `CitiesDb`), DAOs; `TimingPackReader` (plain `androidx.sqlite`, no Room; §7.3) | **Internal.** Exposes only the `ContentDataSource` façade and `PackDbOpener` to `:core:data` | model | P0 (content), P1 (packs) |
 | `:core:database` | android.library + room3 + serialization | `UserDb` (user.db), DAOs, migrations, exported schemas; typed `DataStore<UserSettings>` | Internal. Exposes the `UserDataSource` and `SettingsDataSource` façades | model | P0 |
-| `:core:remote` | android.library + hilt + serialization | Shared `OkHttpClient`; `SignedFileFetcher` (ETag, Ed25519, sha256); `Ed25519Verifier`; `HttpDownloader` (Range, `.part`, atomic rename, ZIP); `DownloadManagerImpl` with UIDT `AudioDownloadJobService` (API 34+) and `DownloadWorker` (API ≤ 33); `RemoteRefreshWorker` | `OkHttpClient` binding; download and fetch façades | domain, model | P1 |
+| `:core:remote` | android.library + hilt + serialization + room3 | Shared `OkHttpClient`; `SignedFileFetcher` (ETag, Ed25519, sha256); `Ed25519Verifier`; `HttpDownloader` (Range, `.part`, atomic rename, ZIP); `DownloadManagerImpl` with its device-local queue `downloads.db` (DDL in [06](06-audio-engine.md) §13.3); `DownloadWorker` (P1, every API) and UIDT `AudioDownloadJobService` (API 34+, from S5, job ID 4201); `RemoteRefreshWorker` | `OkHttpClient` binding; download and fetch façades | domain, model | P1 |
 | `:core:data` | android.library + hilt | All repository implementations except audio and prayer; `PackManagerImpl`; `ContentPolicy` (tier/eligibility filter); `BackupSerializer` (JSON); `DailyMaintenanceWorker` | Hilt `@Binds` only | domain, model, content, database, remote | P0 |
-| `:core:audio` | android.library + hilt | `PlaybackService : MediaLibraryService`, `PlanExpander` (scope to MediaItems), `ResolvingDataSource` chain, `PlaybackStateHub`, `PlaybackControllerImpl` (MediaController wrapper), sleep timer | `PlaybackController` binding | domain, model, remote | P1 |
-| `:core:prayer` | android.library + hilt | adhan2 wrapper, `HijriCalendarImpl` (java.time `HijrahDate` + offset + Maghrib rollover + PK feed), Qibla sensor fusion, `LocationProviderImpl` (LocationManagerCompat + cities DB via `CitiesRepository`), `AlarmSchedulerImpl`, `AdhanAlarmReceiver`, `SystemEventsReceiver`, `AdhanPlaybackService`, `ReminderScheduler`, notification channels | Bindings for `PrayerTimesRepository`, `LocationProvider`, `HijriCalendar`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler` | domain, model | P2 |
+| `:core:audio` | android.library + hilt | `QuranPlaybackService : MediaLibraryService`, `PlanExpander` (scope to MediaItems), `ResolvingDataSource` chain, `PlaybackStateHubImpl` (implements the `:core:domain` `PlaybackStateHub`), `PlaybackControllerImpl` (MediaController wrapper), sleep timer, `DataStore<PlaybackResume>` | `PlaybackStateHub` and `PlaybackController` bindings | domain, model, remote | P1 |
+| `:core:prayer` | android.library + hilt | adhan2 wrapper, `HijrahHijriCalendarProvider` (java.time `HijrahDate` + offset + Maghrib rollover + PK feed; ICU `IslamicCalendar` fallback, D-27), Qibla sensor fusion, `LocationProviderImpl` (LocationManagerCompat + cities DB via `CitiesRepository`), `AlarmSchedulerImpl`, `AdhanAlarmReceiver`, `SystemEventsReceiver`, `AdhanPlaybackService`, `ReminderScheduler`, notification channels | Bindings for `PrayerTimesRepository`, `LocationProvider`, `HijriCalendarProvider`, `QiblaSensor`, `AlarmScheduler`, `ReminderScheduler` | domain, model | P2 |
 | `:core:designsystem` | `criterion.android.library.compose` | Theme (light/sepia/night/AMOLED, F-RD-03), typography (Noto Nastaliq Urdu UI, D-21), icons (vector drawables, no `material-icons-extended`), components, model-bound rows (`SurahRow`, `ParaRow`, `DownloadButton`), `AppError` → string mapping | Composables, `CriterionTheme` | model | P0 |
 | `:core:navigation` | android.library.compose + serialization | Every `@Serializable` NavKey (§8), `NavigationState`, `Navigator`, `DeepLinkParser` | Keys and navigator | model | P0 |
 | `:core:mushaf-render` | android.library.compose | Canvas renderer, hit-testing, highlight layer ([05](05-mushaf-rendering-engine.md)) | `MushafPage(...)` composable, `HitTester` | model, designsystem | P1 |
@@ -152,26 +155,60 @@ flowchart TB
 - `:core:prayer` becomes `:core:location` + `:core:notifications` when reminders grow beyond prayer.
 - `:feature:bookmarks` loses `:feature:khatam` when the planner exceeds 3 screens.
 
-**P3 additions:** `:feature:hifz` (F-CP-12), `:core:sync` (QF PKCE, F-BM-07), `:core:groupkhatam` (play flavor Firestore, F-CP-11). P4 adds `:core:asr`.
+**P3 additions:** `:feature:hifz` (F-CP-12), `:core:sync` (QF PKCE, F-BM-07), `:core:groupkhatam` (play flavor Firestore, F-CP-11). P4 adds `:core:asr`. Lint rules live in the non-shipping `:lint-rules` module.
+
+**Names used in other drafts → doc 04 names.** Other docs must use the right-hand column. Rows marked "split" become their own module only when §3.2's split trigger fires.
+
+| Name in another doc | Doc 04 module / type |
+|---|---|
+| `:core:audio-api` (doc 06) | none. `PlaybackStateHub` and `PlaybackController` interfaces are in `:core:domain`; `PlaybackState`, `HighlightTarget` and `AudioError` are in `:core:model` |
+| `AudioController` (doc 06) | `PlaybackController` |
+| `NowPlaying` (doc 06) | `PlaybackState` (§6.1) |
+| `AyahKey` (doc 06) | `VerseKey` |
+| `StopAt` (doc 06) | `Until` |
+| `:core:download` (doc 06) | `:core:remote` (split) |
+| `:core:network` | `:core:remote` (split) |
+| `:core:ui` (doc 06) | `:core:designsystem` |
+| `:core:common` (doc 07, for `Clock`) | `:core:domain` (injected `kotlin.time.Clock`) |
+| `:core:location`, `:core:notifications` (doc 07) | `:core:prayer` (split) |
+| `:feature:qibla` (doc 07) | `:feature:prayer` |
+| `:feature:adhkar` (doc 07) | `:feature:companion` |
+| `:feature:khatam` (doc 07) | `:feature:bookmarks` (split) |
+| `:core:hifz` (doc 07, P3) | `:core:domain` (`HifzPlanner`) + `:feature:hifz` |
+| `:core:mushaf`, `:core:mushaf-ui` (doc 05) | `:core:mushaf-render`. `MushafRepositoryImpl` is in `:core:data` |
+| `HijriService` (doc 07), `HijriCalendar` (earlier draft) | `HijriCalendarProvider` (D-27) |
+| `PageLayout` (earlier draft) | `PageModel` (fields owned by doc 05) |
 
 ### 3.3 Feature → module map
 
 | Feature IDs | Module(s) |
 |---|---|
 | F-RD-01..08, F-RD-12, F-RD-13 | `:feature:reader`, `:core:mushaf-render`, `:core:data` (Mushaf/Content/Translation repos) |
+| F-RD-09 | `:feature:reader` + `:core:mushaf-render` |
+| F-RD-10/11 | `:core:mushaf-render` (P3) |
 | F-IX-01..09 | `:feature:home` (index tabs, go-to, popular, continue reading) |
 | F-BM-01 | `:core:data` `ReadingProgressRepository` (written by reader) |
 | F-BM-02..05 | `:feature:bookmarks` |
 | F-BM-06 | `:core:data` `BackupSerializer` + `:feature:settings` (SAF UI, P2) |
 | F-AU-01..10 | `:core:audio`, `:core:remote` (downloads), `:feature:audio` |
+| F-AU-11/12 | `:core:audio` (P3) |
 | F-TR-01..03 | `:core:data` `TranslationRepository`, `PackManager`; `:feature:settings` (pack manager UI) |
+| F-TR-04/05 | `:core:data` + packs (P3) |
 | F-SR-01..03 | `:feature:search`, `:core:data` `SearchRepository` |
+| F-SR-04/05 | `:feature:search`, `:core:data` (P3) |
 | F-CP-01..04, F-CP-07 (times) | `:core:prayer`, `:feature:prayer` |
 | F-CP-05, F-CP-06, F-CP-07 (duas, plan) | `:feature:companion` (khatam plan logic in `:core:domain`) |
 | F-CP-08 | `:app` (Glance) |
 | F-CP-09 | `:core:prayer` `ReminderScheduler` |
 | F-CP-10 | `:feature:reader` (share sheet) + `:core:data` (`shareText`) |
+| F-CP-11 | Text sheet: `:feature:bookmarks` (khatam screens). Realtime: `:core:groupkhatam` (play, P3) |
+| F-CP-12..14 | `:feature:hifz` + `:core:domain` (P3); `:core:asr` (P4) |
 | F-PL-01..07 | `:feature:settings` (onboarding, settings, credits, report error, packs/storage), `:core:designsystem` (a11y) |
+| F-PL-08 | `:app` `src/play/` (Play Billing, v1.5) |
+| F-PL-09 | `:app` ACRA, opt-in, posting to the crash-report Worker (v1.1, D-32) |
+| F-PL-10 | `:app` `src/play/` `InAppReview` (review-ktx); foss = no-op |
+| F-PL-11 | `:core:remote` `SignedFileFetcher` + `PackManager.notices()`; Home card in `:feature:home`, info chip in `:feature:reader` chrome (never over Quran text) |
+| F-PL-12 | `:app` `res/xml/shortcuts.xml` → §8.3 deep links (`criterion://resume`, `/play?scope=resume`, `/qibla`, `/tasbeeh`) |
 
 ### 3.4 Dependency rules (enforced by the `criterion.root` check task in CI)
 
@@ -277,6 +314,8 @@ suspend inline fun <T> appCatching(crossinline block: suspend () -> T): AppResul
 fun Throwable.toAppError(): AppError                                         // maps UnknownHost/SocketTimeout→Offline, IOException(ENOSPC)→NoSpace, …
 ```
 
+**Identity rules.** Public APIs take the value types above (`SurahId`, `ParaId`, `ManzilId`, `RukuId`, `VerseKey`, `MushafId`, `PageIndex`, `RecitationId`, `WordIndex`), never raw `Int` ids. Raw ints appear only inside entities and DAOs.
+
 **Rules**
 - One-shot repository calls that can fail for **environmental** reasons (network, disk, permission, licence) return `AppResult<T>`.
 - Reads of bundled content return plain values. A failure there is a bug, and it throws.
@@ -295,11 +334,11 @@ class AppScope(val scope: CoroutineScope)   // SupervisorJob() + dispatchers.def
 |---|---|---|
 | Room (content, packs, user) | `setQueryCoroutineContext(dispatchers.io)` | DAOs are `suspend` or `Flow` only (Room 3) |
 | DataStore | its own scope on `io` | One `DataStore<UserSettings>` instance per process |
-| Page layout assembly (pack rows plus words into `PageLayout`) | `default` | Off the main thread, cached (§13) |
+| Page assembly (pack rows plus words into `PageModel`) | `default` | Off the main thread, cached (§13) |
 | Canvas drawing | main/RenderThread | No allocation and no DB access in `draw` |
 | Media3 `MediaController`, session, player | **application main looper** | Media3 1.11 rule: getters throw off the main looper (r07 §2.6) |
 | FTS search | `io`, debounced 250 ms, `flatMapLatest` | Cancel on new input. `LIMIT 200` per page |
-| Downloads | `io.limitedParallelism(3)` overall, 2 per host | Inside a UIDT job or worker only |
+| Downloads | `io.limitedParallelism(3)` overall, 2 per host | Inside the worker (P1) or UIDT job (S5+) only |
 | Signature and sha256 checks | `default` | Streaming hash. Never on main |
 | Sensors (Qibla) | sensor callback looper, then `conflate()` | Low-pass filter in `default` |
 | Alarm receivers | `goAsync()` + `AppScope` | Finish in under 5 s; `rescheduleAll` is idempotent |
@@ -318,13 +357,16 @@ StrictMode is set in debug `Application.onCreate` (thread and VM policies, `pena
 @Serializable @JvmInline value class ManzilId(val value: Int) { init { require(value in 1..7) } }
 @Serializable @JvmInline value class RukuId(val value: Int) { init { require(value in 1..558) } }  // global ruku number
 @Serializable @JvmInline value class AyahId(val value: Int) { init { require(value in 1..6236) } } // Kufan global index; 1 = 1:1
-@Serializable @JvmInline value class WordIndex(val value: Int) { init { require(value in 1..83_669) } } // DK token id (D-06)
+@Serializable @JvmInline value class WordIndex(val value: Int) { init { require(value in 1..83_669) } } // DK token id (D-06) = pack word.id
+@Serializable @JvmInline value class RecitationId(val value: String)   // doc 06 format, e.g. "alafasy.murattal.mp3q123"
 
-/** Kufan verse key. Canonical key for user data, audio, translations, search, sync ("2:255"). */
+/** Kufan verse key. Canonical key for user data, audio, translations, search, sync ("2:255"). There is no `AyahKey`. */
 @Serializable
 data class VerseKey(val surah: Int, val ayah: Int) : Comparable<VerseKey> {
     init { require(surah in 1..114 && ayah in 1..QuranMeta.ayahCount(surah)) { "bad key $surah:$ayah" } }
     val ayahId: AyahId get() = AyahId(QuranMeta.surahFirstAyahId(surah) + ayah - 1)
+    fun id(): Int = ayahId.value                                       // Kufan global index 1..6236
+    val surahId: SurahId get() = SurahId(surah)
     override fun compareTo(other: VerseKey) = compareValuesBy(this, other, VerseKey::surah, VerseKey::ayah)
     override fun toString() = "$surah:$ayah"
     companion object {
@@ -346,14 +388,21 @@ data class AyahRange(val from: VerseKey, val to: VerseKey) {
 ### 5.2 Mushaf identity and pages
 
 ```kotlin
-@Serializable @JvmInline value class MushafId(val code: String) {
+/** Serialized (NavKeys, settings, JSON export) as `code` via @SerialName. user.db stores `code` (TEXT);
+ *  mushaf packs store the numeric `id` (doc 05 `pack_info`/`mushaf`) plus `mushaf_code`. */
+@Serializable
+enum class MushafId(val code: String, val id: Int) {
+    @SerialName("indopak16_taj")    INDOPAK_16_TAJ("indopak16_taj", 1),       // default, 548 pages (D-04)
+    @SerialName("indopak15_hafizi") INDOPAK_15_HAFIZI("indopak15_hafizi", 2), // P3, 610 pages
+    @SerialName("indopak13_taj")    INDOPAK_13_TAJ("indopak13_taj", 3),       // P3, 847 pages
+    @SerialName("madani15")         MADANI_15("madani15", 4);                 // P4, 604 pages
     companion object {
-        val INDOPAK_16_TAJ = MushafId("indopak16_taj")       // default, 548 pages (D-04)
-        val INDOPAK_15_HAFIZI = MushafId("indopak15_hafizi") // P3, 610 pages
-        val INDOPAK_13_TAJ = MushafId("indopak13_taj")       // P3, 847 pages
-        val MADANI_15 = MushafId("madani15")                 // P4, 604 pages
+        fun ofCode(code: String): MushafId? = entries.firstOrNull { it.code == code }
+        fun ofId(id: Int): MushafId? = entries.firstOrNull { it.id == id }
     }
 }
+/** Layout pack id = "mushaf.<code>.<script>", e.g. "mushaf.indopak16_taj.dk" (doc 05). */
+fun MushafId.packId(script: String = "dk") = "mushaf.$code.$script"
 /** 1-based storage index of a page in a layout (QUL index for Taj-16: 1..548). Never shown in UI. */
 @Serializable @JvmInline value class PageIndex(val value: Int)
 /** Printed page number shown everywhere in UI (Taj-16: index + 1 → 2..549). Never stored. */
@@ -365,13 +414,15 @@ data class MushafSpec(
     val packVersion: Int, val displayName: LocalizedText,
 ) {
     fun labelOf(p: PageIndex) = PageLabel(p.value + pageLabelOffset)
-    fun indexOf(l: PageLabel): PageIndex? = PageIndex(l.value - pageLabelOffset).takeIf { it.value in 1..pageCount }
+    fun indexOf(l: PageLabel): PageIndex? = PageIndex(l.value - pageLabelOffset).takeIf { it.value in 1..pageCount } // null → UI shows "2–549"
 }
 data class ReadingPosition(val mushaf: MushafId, val page: PageIndex, val anchor: VerseKey, val mode: ReaderMode, val at: Instant)
 enum class ReaderMode { MUSHAF, TRANSLATION }
 ```
 
-`PageLayout`, `PageLine`, `PlacedWord`, `PageFurniture` and `MarginMarker` are defined in `:core:model` with the fields from [05](05-mushaf-rendering-engine.md). Doc 05 owns that field list. This doc only requires `PageLayout(mushaf, page, verseRange: AyahRange, para: ParaId, manzil: ManzilId, lines: List<PageLine>, furniture: PageFurniture)`.
+`PageModel` and its parts (lines, placed words, furniture, margin markers, `MushafGeometry`) are defined in `:core:model` with the names and fields from [05](05-mushaf-rendering-engine.md). Doc 05 owns that field list. This doc only requires that `PageModel` carries `mushaf: MushafId`, `page: PageIndex` and `verseRange: AyahRange`, plus the page's Para and Manzil. `labelOf`/`indexOf` above are the **only** place that converts between index and label.
+
+**Para boundaries in the Taj-16 layout.** Para 1 starts at page index 1 (label 2). For n = 2…28, Para n starts at page index 18n − 16; the formula does not hold for n = 1 (g01 §2.8). Code never relies on the formula: start pages come from the pack's `ayah_page` table via `MushafRepository.startPage`.
 
 ### 5.3 Structure types
 
@@ -393,37 +444,56 @@ data class Passage(val code: String, val title: LocalizedText, val ranges: List<
 data class LocalizedText(val en: String, val ur: String, val ar: String? = null) { fun pick(lang: UiLanguage) = if (lang == UiLanguage.UR) ur else en }
 ```
 
-### 5.4 Audio-facing domain types (field details in [06](06-audio-engine.md))
+### 5.4 Audio-facing domain types (`:core:model`; behaviour in [06](06-audio-engine.md))
+
+These signatures are the shared contract. Docs 02, 05, 06, 07, 10 and 13 use them verbatim.
 
 ```kotlin
-@Serializable @JvmInline value class RecitationId(val value: String)   // e.g. "alafasy.murattal.gapless.mp3quran"
+// RecitationId is declared in §5.1. Its string format is owned by doc 06 (e.g. "alafasy.murattal.mp3q123",
+// "alafasy.murattal.ea", "huthaify.murattal.kfgqpc"); ids are permanent once published.
+
+@Serializable
+enum class Until { END_OF_SURAH, END_OF_PARA, CONTINUOUS }   // CONTINUOUS = "play from here" runs until stopped
+
 @Serializable
 sealed interface PlayScope {
     @Serializable data class Surah(val surah: SurahId) : PlayScope
     @Serializable data class Para(val para: ParaId) : PlayScope            // Indo-Pak boundaries (D-07, D-13)
     @Serializable data class Manzil(val manzil: ManzilId) : PlayScope
     @Serializable data class Ruku(val ruku: RukuId) : PlayScope
-    @Serializable data class Page(val mushaf: MushafId, val page: PageIndex) : PlayScope
+    @Serializable data class Page(val mushaf: MushafId, val page: PageIndex) : PlayScope  // from the first ayah STARTING on the page
     @Serializable data class Range(val range: AyahRange) : PlayScope
     @Serializable data class Ayah(val key: VerseKey) : PlayScope
-    @Serializable data class FromHere(val start: VerseKey, val until: Until) : PlayScope
-    enum class Until { END_OF_SURAH, END_OF_PARA, END_OF_QURAN }
+    @Serializable data class FromHere(val start: VerseKey, val until: Until = Until.CONTINUOUS) : PlayScope
+    /** Multi-range playlist, e.g. the Manzil dua (18 ranges / 79 ayahs). `titleRes` names the string resource
+     *  used for the notification/now-playing title (e.g. "passage_manzil_dua"). Built from content-DB `passage_range`. */
+    @Serializable data class Passage(val ranges: List<AyahRange>, val titleRes: String) : PlayScope
+    /** The whole mushaf 1:1 → 114:6. The plan is windowed by surah (doc 06). */
+    @Serializable data object Quran : PlayScope
 }
 @Serializable
-data class RepeatSpec(val ayahTimes: Int = 1, val rangeTimes: Int = 1 /*0 = ∞*/,
-                      val pauseAfterAyah: PauseRule = PauseRule.None, val cumulative: Boolean = false)
+data class RepeatSpec(val ayahTimes: Int = 1 /*1..20*/, val rangeTimes: Int = 1 /*1..20, 0 = ∞*/,
+                      val pauseAfterAyah: PauseRule = PauseRule.None, val cumulative: Boolean = false) {
+    init { require(ayahTimes in 1..20 && rangeTimes in 0..20) }
+}
 @Serializable sealed interface PauseRule {
     @Serializable data object None : PauseRule
     @Serializable data class Fixed(val ms: Long) : PauseRule
     @Serializable data class Proportional(val factor: Float) : PauseRule
 }
 @Serializable
-data class PlayRequest(val scope: PlayScope, val recitation: RecitationId? = null /*null = favourite*/,
-                       val repeat: RepeatSpec = RepeatSpec(), val speed: Float = 1f,
-                       val translationVoice: RecitationId? = null)
+data class PlayRequest(
+    val scope: PlayScope,
+    val recitation: RecitationId? = null,          // null = favourite reciter
+    val repeat: RepeatSpec = RepeatSpec(),
+    val speed: Float = 1f,                         // 0.5..2.0; defaults from settings.audio.speed
+    val translationVoice: RecitationId? = null,    // F-AU-10 interleave
+    val startAt: VerseKey? = null,                 // resume / start inside the scope (must lie inside it)
+    val startOffsetMs: Long = 0,                   // resume offset into the startAt ayah
+)
 ```
 
-`:core:domain` contains `ResolvePlayScope(index, mushaf): suspend (PlayScope) -> AyahRange`. It is pure and unit-tested (for example, "Para 4 = 3:92–4:23"). `:core:audio`'s `PlanExpander` turns that range into Media3 items ([06](06-audio-engine.md)).
+`:core:domain` contains `ResolvePlayScope(index, mushaf): suspend (PlayScope) -> List<AyahRange>`. It is pure and unit-tested (for example, "Para 4 = [3:92–4:23]", "Passage(manzil dua) = 18 ranges, 79 ayahs", "Page(taj16, p) starts at the first ayah that starts on p"). `Quran` and `FromHere(CONTINUOUS)` resolve to `[1:1–114:6]` and `[start–114:6]`; doc 06's `PlanExpander` windows them by surah and starts the window at `startAt` when set. Doc 06 turns the ranges into Media3 items. Deep links and reminders name passages by code (`passage:manzil-dua`). `DeepLinkParser` resolves the code through `IndexRepository.passages()` into `PlayScope.Passage(ranges, titleRes)`.
 
 ### 5.5 `QuranMeta` (static structure, pure Kotlin)
 
@@ -471,21 +541,23 @@ interface ContentRepository {
     suspend fun surah(id: SurahId): Surah
     suspend fun ayah(key: VerseKey): AyahText                         // uthmani + imlaei (Tanzil, verbatim)
     suspend fun ayahs(range: AyahRange): List<AyahText>
-    suspend fun words(range: IntRange /*WordIndex values*/): List<Word>
-    suspend fun ayahMarkers(range: IntRange): List<AyahMarker>        // DK display numbers incl. 118 disputed marks
+    suspend fun words(range: AyahRange): List<Word>                   // DK tokens of the range, WordIndex order
+    suspend fun ayahMarkers(range: AyahRange): List<AyahMarker>       // Kufan display numbers incl. 118 disputed marks;
+                                                                      // layout overrides come from pack `ayah_display_override`
     suspend fun resolveDisplayNumber(surah: SurahId, displayNumber: Int): VerseKey? // "Fatiha 6" → 1:7
     suspend fun shareText(range: AyahRange, format: ShareFormat): String // sanitized, with attribution line (F-CP-10)
     suspend fun contentInfo(): ContentInfo                            // content_version, built_at, sources hash
-    fun attributions(): Flow<List<Attribution>>                       // content + installed packs (F-PL-04)
+    fun attributions(): Flow<List<Attribution>>                       // content + installed packs (F-PL-04), grouped by section
+    suspend fun dailyAyah(date: LocalDate): AyahRange?                // v1.1 (F-CP-08/09); null while daily_ayah is empty
 }
 
 interface MushafRepository {
     fun available(): Flow<List<MushafSpec>>                           // installed layout packs, eligibility-filtered
     suspend fun spec(id: MushafId): MushafSpec
-    suspend fun page(id: MushafId, page: PageIndex): PageLayout       // cached LRU; errata overlay applied
+    suspend fun page(id: MushafId, page: PageIndex): PageModel        // cached LRU; no runtime text overlay (§14.2)
     suspend fun pageOf(id: MushafId, key: VerseKey): PageIndex
     suspend fun verseRange(id: MushafId, page: PageIndex): AyahRange
-    suspend fun startPage(id: MushafId, target: IndexTarget): PageIndex  // surah/para/manzil/ruku → page
+    suspend fun startPage(id: MushafId, target: IndexTarget): PageIndex  // surah/para/manzil/ruku → page (from pack ayah_page)
     fun prefetch(id: MushafId, center: PageIndex, radius: Int = 3)
 }
 
@@ -536,22 +608,34 @@ interface NoteRepository {                                            // P2 (F-B
 
 interface ReadingProgressRepository {
     fun lastRead(mushaf: MushafId? = null): Flow<ReadingPosition?>    // null = current mushaf (F-BM-01)
-    suspend fun setLastRead(pos: ReadingPosition)                     // callers debounce 1 s
+    /** Only caller: `LastReadTracker` in :feature:reader. It calls this once a settled page has been visible
+     *  for ≥ 4 s (F-BM-01), or on ayah interaction or audio on that page. The reader never writes user.db directly. */
+    suspend fun setLastRead(pos: ReadingPosition)
     fun recents(limit: Int = 10): Flow<List<RecentItem>>              // F-IX-09
     suspend fun recordOpen(item: RecentItem)
-    suspend fun recordDwell(mushaf: MushafId, page: PageIndex, seconds: Int) // stats + khatam auto-suggest
-    fun readingDays(from: LocalDate, to: LocalDate): Flow<List<ReadingDay>>  // F-BM-05 (P2)
+    suspend fun recordDwell(mushaf: MushafId, page: PageIndex, dwellMs: Long) // page_dwell (per Quran-day) → stats, khatam suggest
+    fun readingDays(from: LocalDate, to: LocalDate): Flow<List<ReadingDay>>  // F-BM-05 (P2), reading_day
 }
 
-interface KhatamRepository {                                          // P2 (F-BM-04, F-CP-07 plan)
+interface KhatamRepository {                                          // P2 (F-BM-04, F-CP-07 Taraweeh preset); algorithm doc 07 §14
     fun plans(): Flow<List<KhatamPlan>>; fun plan(id: Long): Flow<KhatamPlanWithProgress?>
-    suspend fun create(plan: NewKhatamPlan): Long
-    suspend fun markDone(planId: Long, unitIndex: Int, done: Boolean)
+    suspend fun create(plan: NewKhatamPlan): Long                     // writes khatam_plan + generated khatam_progress portions
+    suspend fun markDone(planId: Long, seq: Int, done: Boolean, via: PortionVia = PortionVia.MANUAL)
+    suspend fun replan(planId: Long, from: LocalDate)                 // re-date after a missed day or a Ramadan-start shift
     suspend fun archive(planId: Long)
 }
-interface TasbeehRepository {                                         // P2 (F-CP-05)
-    fun counters(): Flow<List<TasbeehCounter>>
-    suspend fun increment(id: Long, by: Int = 1); suspend fun reset(id: Long); suspend fun upsert(c: TasbeehCounter): Long
+interface TasbeehRepository {                                         // F-CP-05 (v1.0-stretch); doc 07 §8
+    fun presets(): Flow<List<TasbeehPreset>>                          // seeded built-ins + user presets
+    fun session(presetId: Long): Flow<TasbeehSession?>
+    suspend fun increment(presetId: Long, by: Int = 1); suspend fun reset(presetId: Long)
+    suspend fun upsertPreset(p: TasbeehPreset): Long
+    fun dailyTotals(from: LocalDate, to: LocalDate): Flow<List<TasbeehDayTotal>>
+}
+interface AzkarRepository {                                           // F-CP-06 (v1.1; Manzil-dua part v1.0-stretch)
+    fun categories(): Flow<List<DhikrCategory>>                       // from the installed `azkar` pack (§7.3)
+    fun items(category: Int, lang: UiLanguage): Flow<List<DhikrItem>>
+    fun progress(day: LocalDate): Flow<Map<Int, Int>>                 // dhikrId → count (azkar_progress)
+    suspend fun increment(day: LocalDate, category: Int, dhikr: Int)
 }
 
 interface AudioCatalogRepository {                                    // schema: doc 06
@@ -563,20 +647,72 @@ interface AudioCatalogRepository {                                    // schema:
 }
 
 interface PlaybackController {                                        // impl :core:audio (MediaController wrapper)
-    val state: StateFlow<PlaybackState>                               // = PlaybackStateHub
+    val state: StateFlow<PlaybackState>                               // == PlaybackStateHub.state (same instance)
     suspend fun play(request: PlayRequest): AppResult<Unit>           // user-initiated only (Android 17)
     fun pause(); fun resume(); fun stop()
     fun seekTo(key: VerseKey); fun nextAyah(); fun previousAyah()
     fun setSpeed(speed: Float); fun setRepeat(spec: RepeatSpec)
-    fun setSleepTimer(timer: SleepTimer?)                             // minutes or end of ayah/surah/para
+    fun setSleepTimer(timer: SleepTimer?)                             // minutes or end of ayah/surah/para/plan
     fun playerForUi(): Flow<Any?>                                     // androidx.media3.common.Player, typed Any in domain
 }
-data class PlaybackState(val status: Status, val request: PlayRequest?, val current: VerseKey?, val word: Int?,
-                         val recitation: RecitationId?, val positionMs: Long, val durationMs: Long,
-                         val highlightAvailable: Boolean, val sleepTimer: SleepTimer?, val error: AppError?) {
-    enum class Status { IDLE, BUFFERING, PLAYING, PAUSED, ENDED, ERROR }
+```
+
+#### 6.1 Playback state (one shape for reader, player UI, widgets, hifz and stats)
+
+`PlaybackStateHub` is the single source of playback state. The interface lives in `:core:domain`, the types in `:core:model`, and `PlaybackStateHubImpl` (a Hilt `@Singleton`) in `:core:audio`. Field semantics and emission rules are in [06](06-audio-engine.md) §9.
+
+```kotlin
+interface PlaybackStateHub {
+    val state: StateFlow<PlaybackState>
+    val events: SharedFlow<PlaybackEvent>
 }
 
+data class PlaybackState(
+    val status: Status = Status.IDLE,
+    val planId: Long? = null,                 // changes on every new plan
+    val request: PlayRequest? = null,
+    val recitation: RecitationId? = null,
+    val segment: Segment? = null,
+    val highlight: HighlightTarget? = null,   // what the reader paints; kept while paused; null = nothing
+    val highlightAvailable: Boolean = false,  // false → reader shows "highlighting off for this surah", no auto-turn
+    val ayahStartMs: Long? = null,            // media time of the current ayah in the current source; null when untimed
+    val ayahEndMs: Long? = null,
+    val positionMs: Long = 0,                 // sampled at emission; the hub never emits on position ticks
+    val durationMs: Long = 0,
+    val ayahRep: Int = 0, val ayahRepOf: Int = 0,
+    val rangePass: Int = 0, val rangeOf: Int = 0,   // rangeOf 0 = ∞
+    val speed: Float = 1f,
+    val sleep: SleepTimerState? = null,
+    val error: AudioError? = null,
+    val seq: Long = 0,                        // increments on every emission
+) {
+    enum class Status { IDLE, PREPARING, BUFFERING, PLAYING, PAUSED, ENDED, ERROR }
+    val isPlaying: Boolean get() = status == Status.PLAYING
+}
+sealed interface Segment {
+    data class Intro(val surah: SurahId) : Segment
+    data class Basmala(val surah: SurahId) : Segment
+    data class Ayah(val key: VerseKey, val rep: Int, val repOf: Int) : Segment
+    data class Translation(val key: VerseKey) : Segment
+    data class SurahOnly(val surah: SurahId) : Segment
+}
+sealed interface HighlightTarget {
+    data class Ayah(val key: VerseKey) : HighlightTarget               // also while its translation item plays
+    data class BasmalaLine(val surah: SurahId) : HighlightTarget
+    data class Word(val key: VerseKey, val wordId: WordIndex) : HighlightTarget   // v1.x (F-AU-12)
+}
+sealed interface PlaybackEvent {
+    data class AyahCompleted(val key: VerseKey, val recitation: RecitationId, val atEpochMs: Long) : PlaybackEvent
+    data object PlanEnded : PlaybackEvent
+    data class Error(val error: AudioError) : PlaybackEvent
+}
+// SleepTimer (request), SleepTimerState and the AudioError cases are defined by doc 06; they live in :core:model.
+// :core:designsystem maps AudioError to a user message the same way as AppError.
+```
+
+Consumers: the reader paints `highlight` and owns auto page-turn, using `ayahStartMs`/`ayahEndMs`/`positionMs`/`speed`/`isPlaying` (doc 05). The player UI reads the repeat and sleep fields. Doc 07 uses `AyahCompleted` for stats and hifz. The listening pointer (Home "Continue listening" card, `onPlaybackResumption`) is doc 06's `DataStore<PlaybackResume>`, not a user.db table.
+
+```kotlin
 interface DownloadManager {                                           // impl :core:remote; NOT android.app.DownloadManager
     suspend fun enqueue(request: DownloadRequest): AppResult<DownloadId>  // must be called while UI visible (UIDT rule)
     suspend fun cancel(id: DownloadId); suspend fun pauseAll(); suspend fun resumeAll()
@@ -600,7 +736,7 @@ interface PackManager {                                               // impl :c
     suspend fun install(packId: String): AppResult<DownloadId>        // via DownloadManager
     suspend fun uninstall(packId: String): AppResult<Unit>            // bundled packs: only "disable"
     suspend fun ensureBundledInstalled()                              // first run / content bump (§14)
-    fun notices(): Flow<List<Notice>>                                 // kill-switches & text-error notices
+    fun notices(): Flow<List<Notice>>                                 // F-PL-11: kill-switches, text-error notices, min-version nudge
 }
 
 interface SettingsRepository {
@@ -619,7 +755,9 @@ interface LocationProvider {                                          // P2; coa
     suspend fun searchCities(query: String, limit: Int = 20): List<City>      // offline GeoNames cities15000
     suspend fun nearestCity(p: GeoPoint): City?
 }
-interface HijriCalendar { fun today(): Flow<HijriDate>; suspend fun convert(date: LocalDate, afterMaghrib: Boolean): HijriDate }
+interface HijriCalendarProvider {                                     // D-27: HijrahDate (desugared) default, ICU IslamicCalendar fallback
+    fun today(): Flow<HijriDate>; suspend fun convert(date: LocalDate, afterMaghrib: Boolean): HijriDate
+}
 interface QiblaSensor { fun readings(): Flow<QiblaReading> /* bearing, heading, accuracy */ }
 interface AlarmScheduler { suspend fun rescheduleAll(reason: RescheduleReason); fun exactAlarmsAllowed(): Boolean; fun health(): Flow<AdhanHealth> }
 interface ReminderScheduler { suspend fun rescheduleReminders() }    // ≤3/day; tap-to-play (F-CP-09)
@@ -627,7 +765,7 @@ interface BackupManager { suspend fun export(out: OutputStreamProvider): AppResu
 interface DiagnosticsLog { fun log(tag: String, msg: String); suspend fun bundle(): AppResult<FileRef> }
 ```
 
-`Clock` comes from `kotlinx.datetime` / `kotlin.time`. It is injected so that schedulers and the Hijri rollover can be tested.
+`Clock` is `kotlin.time.Clock`. It is injected (bound in `DispatchersModule`) so that schedulers, the Quran-day boundary (03:00, doc 07 §2.6) and the Hijri rollover can be tested.
 
 ---
 
@@ -638,11 +776,14 @@ interface DiagnosticsLog { fun log(tag: String, msg: String); suspend fun bundle
 | Store | Location | Written by | Lifecycle | Backup |
 |---|---|---|---|---|
 | `quran_content.db` | `databases/quran_content.db` (copied from `assets/content/quran_content.db`) | Pipeline only (read-only in the app) | Room `createFromAsset` + `fallbackToDestructiveMigration(dropAllTables = true)`; re-copied when `@Database(version)` is bumped | Excluded |
-| Bundled packs | `assets/packs/<type>/<id>@<ver>.db` → `files/packs/<type>/<id>/<ver>/pack.db` | Pipeline | Copied by `PackManager.ensureBundledInstalled()` | Excluded |
-| Downloaded packs | `files/packs/<type>/<id>/<ver>/pack.db` | `PackManager` (verified) | Atomic install and uninstall | Excluded |
+| Bundled packs | Per tier: `src/{personal,public}/assets/packs/<type>/<id>@<ver>.db` (timing packs: `assets/audio/timing/<id>@<ver>.db.gz`) → `files/packs/<type>/<id>/<ver>/pack.db` | Pipeline | Copied (timing: gunzipped) by `PackManager.ensureBundledInstalled()`, sha256 from `bundled.json` | Excluded |
+| Downloaded packs | `files/packs/<type>/<id>/<ver>/pack.db` | `PackManager` (verified) | Atomic install and uninstall (v1.1) | Excluded |
 | `user.db` | `databases/user.db` | The app | Room migrations; **never destructive** in release | **Included** |
+| `downloads.db` | `databases/downloads.db` | `DownloadManager` (`:core:remote`; DDL in [06](06-audio-engine.md) §13.3) | Device-local download queue + verified-file index | Excluded (restored rows without files would lie) |
 | Settings | `files/datastore/settings.json` | `SettingsRepository` | Typed DataStore, versioned JSON | **Included** |
-| Remote cache | `files/remote/{index,catalogue,notices,hijri-pk}.json` (+`.sig`, `.etag`) | `SignedFileFetcher` | Replaced only after verification | Excluded |
+| Playback resume | `files/datastore/playback_resume.json` | `:core:audio` `DataStore<PlaybackResume>` ([06](06-audio-engine.md) §10.3) | Listening pointer + `onPlaybackResumption` | Excluded |
+| Remote cache | `files/remote/<channel>/{index,catalogue,notices}.json`, `files/remote/feeds/hijri-pk.json` (+`.sig`, `.etag`) | `SignedFileFetcher` | Replaced only after verification | Excluded |
+| Alarm snapshot | Device-protected storage: `alarm_snapshot.json`, `boot_log.jsonl` ([07](07-companion-engagement-features.md) §5.4) | `:core:prayer` | Readable in direct boot | Excluded |
 | Audio | `<getExternalFilesDirs()[i]>/audio/<recitationId>/…` + `.nomedia` | `DownloadManager` | User-managed | Excluded |
 | Stream cache | `cache/media3/` (SimpleCache LRU 256 MB, user-settable) | Media3 | OS may clear it | Excluded |
 | Logs | `files/logs/app-{0,1}.log` (256 KB ring) | `DiagnosticsLog` | Rolling | Excluded |
@@ -686,7 +827,8 @@ CREATE TABLE ayah (
   juz_madani       INTEGER NOT NULL,                     -- Madani mode only (P4)
   rub_madani       INTEGER NOT NULL,                     -- 1..240, Madani mode only
   first_word_index INTEGER NOT NULL,                     -- DK token range of this ayah (incl. end token)
-  last_word_index  INTEGER NOT NULL
+  last_word_index  INTEGER NOT NULL,
+  letters          INTEGER NOT NULL                      -- simple-clean letter count (timing QA, reading stats; doc 08)
 );
 CREATE UNIQUE INDEX ix_ayah_key   ON ayah(surah_id, ayah_no);
 CREATE INDEX        ix_ayah_para  ON ayah(para_id);
@@ -695,6 +837,7 @@ CREATE INDEX        ix_ayah_ruku  ON ayah(ruku_id);
 CREATE TABLE para (
   id                  INTEGER NOT NULL PRIMARY KEY,      -- 1..30
   name_ar             TEXT    NOT NULL,                  -- الٓمّٓ، سَیَقُوْلُ، تِلْكَ الرُّسُلُ … (curated)
+  name_ur             TEXT    NOT NULL,
   name_roman          TEXT    NOT NULL,                  -- Alif Lam Meem, Sayaqool …
   start_ayah_id       INTEGER NOT NULL,                  -- P4=3:92, P7=5:83, P11=9:94, P14=15:2, P20=27:60, P21=29:45, P23=36:22
   end_ayah_id         INTEGER NOT NULL,
@@ -728,6 +871,7 @@ CREATE TABLE para_quarter (
   quarter   INTEGER NOT NULL,                            -- 1=ربع 2=نصف 3=ثلٰثة
   ayah_id   INTEGER NOT NULL,                            -- e.g. P4 ¾ = 3:198; P7 ¼ = 5:113
   after_word_pos INTEGER,                                -- mid-ayah marks, e.g. P7 ¾ = 6:73 after word 10
+  verified_source TEXT,                                  -- print/edition the mark was checked against; release CI requires non-NULL
   PRIMARY KEY (para_id, quarter)
 );
 
@@ -747,9 +891,12 @@ CREATE TABLE ayah_marker (                               -- property of the scri
   word_index     INTEGER NOT NULL,                       -- end token, or the word carrying U+08E2
   surah          INTEGER NOT NULL,
   verse_ayah     INTEGER NOT NULL,                       -- Kufan ayah CONTAINING the token
-  display_number INTEGER,                                -- printed number; NULL = bare marker (1:1)
+  display_number INTEGER,                                -- Kufan number of the ayah it ends (1:1 = 1); NULL for the 118 disputed marks.
+                                                         -- Layout-specific display (Taj Fatiha's 7 empty circles) = pack `ayah_display_override`
   is_kufan_end   INTEGER NOT NULL,                       -- exactly 6,236 rows = 1
   disputed_end   INTEGER NOT NULL,                       -- exactly 118 rows = 1 (glyph only; never a boundary)
+  has_ruku_sign  INTEGER NOT NULL,                       -- marker carries the ع ruku sign
+  has_sajda_sign INTEGER NOT NULL,                       -- marker carries a sajda sign
   PRIMARY KEY (script_id, word_index)
 );
 CREATE INDEX ix_marker_display ON ayah_marker(script_id, surah, display_number);
@@ -780,18 +927,32 @@ CREATE TABLE passage (                                   -- F-IX-08 quick access
   title_ar TEXT, sort_order INTEGER NOT NULL, is_quick_access INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX ix_passage_code ON passage(code);
-CREATE TABLE passage_range (
+CREATE TABLE passage_range (                             -- Manzil dua = 18 rows / 79 ayahs → PlayScope.Passage
   passage_id INTEGER NOT NULL, seq INTEGER NOT NULL, from_ayah_id INTEGER NOT NULL, to_ayah_id INTEGER NOT NULL,
   PRIMARY KEY (passage_id, seq)
+);
+CREATE TABLE daily_ayah (                                -- F-CP-08 widget / F-CP-09 reminder (v1.1); may ship empty in v1.0
+  day_of_year  INTEGER NOT NULL PRIMARY KEY,             -- 1..366
+  from_ayah_id INTEGER NOT NULL,
+  to_ayah_id   INTEGER NOT NULL                          -- curated list, reviewer recorded in the pipeline CSV (doc 08)
 );
 
 -- ===== Provenance =====
 CREATE TABLE content_meta (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL);
--- keys: content_version, built_at, pipeline_git_sha, sources_lock_sha256, normalizer_version, dk_font_sha256
-CREATE TABLE attribution (
-  dataset_id TEXT NOT NULL PRIMARY KEY,                  -- 'tanzil-uthmani', 'dk-indopak-text', 'qul-ruku', 'geonames' …
+-- keys: content_version, built_at, pipeline_git_sha, sources_lock_sha256, normalizer_version, dk_font_sha256, content_tier
+CREATE TABLE source (                                    -- one row per dataset (DS-xx, doc 03) shipped inside this DB
+  dataset_id   TEXT NOT NULL PRIMARY KEY,
+  licence_json TEXT NOT NULL                             -- LicenceInfo JSON: licenceStatus, basis, eligibleTiers, commercialOk, fossOk, … (doc 03 §4.1)
+);
+CREATE TABLE attribution (                               -- drives the grouped Credits screen (F-PL-04); one row per credit string
+  dataset_id TEXT NOT NULL PRIMARY KEY,                  -- credit-string id, e.g. 'ATTR-01' (doc 03)
   title TEXT NOT NULL, source_url TEXT NOT NULL, licence TEXT NOT NULL, version TEXT NOT NULL,
-  notice_en TEXT NOT NULL, notice_ur TEXT
+  notice_en TEXT NOT NULL, notice_ur TEXT,
+  section TEXT NOT NULL,                                 -- 'quran_text'|'mushaf'|'metadata'|'translation'|'tafsir'|'audio'|'fonts_art'
+                                                         -- |'companion'|'proofreading'|'disclaimer'|'code' (pipeline-validated)
+  sort INTEGER NOT NULL,
+  title_ur TEXT,
+  licence_text_asset TEXT                                -- e.g. 'licenses/OFL-1.1.txt'
 );
 ```
 
@@ -815,7 +976,8 @@ internal data class AyahFts(@ColumnInfo(name = "norm_imlaei") val imlaei: String
 @Database(entities = [SurahEntity::class, AyahEntity::class, ParaEntity::class, ManzilEntity::class, RukuEntity::class,
     SajdaEntity::class, ParaQuarterEntity::class, WordEntity::class, AyahMarkerEntity::class, AyahSearchEntity::class,
     AyahFts::class, AyahFtsTri::class, AliasEntity::class, PassageEntity::class, PassageRangeEntity::class,
-    ContentMetaEntity::class, AttributionEntity::class], version = CONTENT_DB_VERSION, exportSchema = true)
+    DailyAyahEntity::class, ContentMetaEntity::class, SourceEntity::class, AttributionEntity::class],
+    version = CONTENT_DB_VERSION, exportSchema = true)
 internal abstract class QuranContentDb : RoomDatabase() {
     companion object {
         const val ASSET = "content/quran_content.db"
@@ -844,36 +1006,49 @@ internal abstract class QuranContentDb : RoomDatabase() {
 - `manzil` has 7 rows, starting at surahs {1, 5, 10, 17, 26, 37, 50}.
 - `ruku` has 558 rows, contiguous. The by-end counts per Para are exactly 16, 16, 17, 14, 17, 14, 19, 17, 18, 17, 16, 16, 19, 22, 21, 17, 17, 17, 19, 16, 19, 18, 17, 19, 20, 18, 20, 20, 22, 39. Fatiha's `ruku_in_para` is NULL.
 - `sajda` has 15 rows: 14 numbered `hanafi` plus 22:77 as `shafii_only`.
-- `para_quarter` has 90 rows.
+- `para_quarter` has 90 rows, and every `verified_source` is non-NULL in a BETA or PUBLIC build (the 53 unverified quarters are a closed-test blocker, doc 03).
 - `word` has 83,669 rows, and every ayah's `[first_word_index, last_word_index]` is contiguous and ends on an `is_end` token.
-- `ayah_marker` has 6,354 rows (`is_kufan_end` XOR `disputed_end`).
+- `ayah_marker` has 6,354 rows (`is_kufan_end` XOR `disputed_end`). It lives here, not in the mushaf pack, because it belongs to the script, not the layout.
+- `daily_ayah` has 0 rows (v1.0) or 366 rows (v1.1), each a valid range.
+- Every `dataset_id` used by an `attribution` or content row has a `source` row.
 - Opening the DB **without** `room_master_table` passes `onValidateSchema`. This exercises the full validation path that a hash-only open skips (g04 §1.5).
 
-### 7.3 Pack databases (read-only, one Room `@Database` class per pack type in `:core:content`)
+### 7.3 Pack databases (read-only; one Room `@Database` class per pack type in `:core:content`, except timing)
 
-Every pack is a single SQLite file built from **that pack type's exported Room schema**, with the same contract as §7.2. Every pack contains `pack_info(key TEXT PRIMARY KEY, value TEXT NOT NULL)`, which holds id, type, version, schema_version, lang, dir, title, licence, attribution, source_url, source_sha256, min_content_version and built_at.
+Every pack except timing packs is a single SQLite file built from **that pack type's exported Room schema**, with the same contract as §7.2. Every pack contains `pack_info(key TEXT PRIMARY KEY, value TEXT NOT NULL)`, which holds id, type, version, schema_version, lang, dir, title, licence, attribution, source_url, source_sha256, min_content_version, built_at, and the eligibility fields `licence_status`, `basis`, `eligible_tiers`, `commercial_ok`, `foss_ok` (§11).
 
-Packs are opened with `Room.databaseBuilder<T>(ctx, absolutePath)`. A name that is an absolute path "is used as is" (verified in Room 3 `Room.android.kt` docs). The builder uses `BundledSQLiteDriver()` and has **no** migration fallback: a `schema_version` other than the app's supported version means the pack is never opened (`NEEDS_APP_UPDATE`). `PackDbOpener` keeps a reference-counted LRU of open pack DBs (max 6) and closes them on uninstall.
+**Exception: timing packs are plain SQLite.** They follow doc 06 §5.1 exactly (`pack_info`, `audio_file`, `ayah_timing`, `WITHOUT ROWID`, no `room_master_table`). They are shipped as `.db.gz` and read through `androidx.sqlite` with `BundledSQLiteDriver` by `TimingPackReader` (three fixed queries). Room is not used for them, so they are free of Room identity hashes.
+
+Room packs are opened with `Room.databaseBuilder<T>(ctx, absolutePath)`. A name that is an absolute path "is used as is" (verified in Room 3 `Room.android.kt` docs; P0 spike S-1). The builder uses `BundledSQLiteDriver()` and has **no** migration fallback: a `schema_version` other than the app's supported version means the pack is never opened (`NEEDS_APP_UPDATE`). `PackDbOpener` keeps a reference-counted LRU of open pack DBs (max 6) and closes them on uninstall.
 
 | Pack type | `type` | Tables (owner) | Bundled in APK |
 |---|---|---|---|
-| Translation | `translation` | `pack_info`; `translation(ayah_id INTEGER PK, text TEXT NOT NULL, footnotes TEXT)`; `translation_search(ayah_id PK, text_norm TEXT NOT NULL)`; `translation_fts` FTS5 unicode61 + `translation_fts_tri` FTS5 trigram, both external content over `translation_search` (**doc 04**) | `ur.junagarhi.qe` (with Ahsan-ul-Bayan footnotes), `en.saheeh.qe` (D-09) |
+| Translation | `translation` | `pack_info`; `translation(ayah_id INTEGER PK, text TEXT NOT NULL, footnotes TEXT)`; `translation_search(ayah_id PK, text_norm TEXT NOT NULL)`; `translation_fts` FTS5 unicode61 + `translation_fts_tri` FTS5 trigram, both external content over `translation_search` (**doc 04**) | `ur.junagarhi.qe` (with Ahsan-ul-Bayan footnotes), `en.saheeh.qe` (D-09), in `src/main/assets/packs/translation/` only if eligible in every tier, otherwise per tier |
 | Tafsir | `tafsir` | `pack_info`; `tafsir(id INTEGER PK, from_ayah_id INTEGER NOT NULL, to_ayah_id INTEGER NOT NULL, text TEXT NOT NULL)` + index `(from_ayah_id, to_ayah_id)` (**doc 04**) | none (P3) |
-| Mushaf layout | `mushaf_layout` | `pack_info` + page/line/word-placement/furniture/margin-marker/`ayah_page`/`word_override` (errata overlay) tables (**doc 05 owns the DDL**). References `word.word_index` and `ayah_marker` from the content DB | `indopak16_taj` (the eligible source per tier, §11) |
-| Timing | `timing` | `pack_info`; `ayah_timing`, `audio_file`, `properties` (**doc 06 owns the DDL**; one pack per gapless recitation) | none (downloaded with the first audio use, about 100 KB each) |
+| Mushaf layout | `mushaf_layout` | **Doc 05 owns the DDL**: `pack_info` (incl. `mushaf_id` numeric, `mushaf_code`, `proof_certificate_id`), `mushaf`, `page` (incl. `page_hash`), `line`, `word` (`word.id` = content-DB `word_index`), `ayah_page`, `surah_header`, `margin_marker`, `furniture_run`, `ornament_item`, `calibration`, `ayah_display_override` (Taj Fatiha's empty circles), `word_override` (**build-time** errata record, §14.2). Uses `word` and `ayah_marker` from the content DB; never duplicates them. Pack id `mushaf.<code>.<script>`, e.g. `mushaf.indopak16_taj.dk` | **Per tier, never `src/main`:** `src/personal/assets/packs/mushaf_layout/mushaf.indopak16_taj.dk@<ver>.db` (QUL-derived allowed); `src/public/assets/packs/mushaf_layout/` holds only a G1-cleared or clean-room pack, otherwise the public build fails (§11.3) |
+| Timing | `timing` | **Doc 06 §5.1 owns the DDL**: `pack_info`, `audio_file`, `ayah_timing`. Plain SQLite (see above); one pack per gapless recitation, id `timing.<recitation-suffix>` (doc 06) | The 12 public timing packs in `assets/audio/timing/` (about 1–4 MB in total; highlight works offline from first launch). Updates via the index (v1.1) |
 | Font | `font` | `pack_info` + font file beside it (`font.ttf`) | DK IndoPak glyf TTF ships in `assets/fonts/` (not a pack) |
-| Azkar | `azkar` | **doc 07 owns** (Arabic, ur, en, source reference, audio reference) | `azkar.core` (P2) |
-| Cities | `cities` | `city(id PK, name, name_ur, ascii, country, admin1, lat, lon, tz, population)` + FTS5 unicode61 on names (**doc 04**, GeoNames cities15000, CC BY 4.0) | yes (P2, about 1.5 MB zipped) |
+| Azkar | `azkar` | **Doc 04** (content and review in doc 07 §9, rights in doc 03): `pack_info`; `dhikr_category(id INTEGER PK, slug TEXT NOT NULL, name_en TEXT NOT NULL, name_ur TEXT NOT NULL, sort INTEGER NOT NULL)`; `dhikr(id INTEGER PK, category_id INTEGER NOT NULL, sort INTEGER NOT NULL, arabic TEXT NOT NULL, repeat INTEGER NOT NULL, reference TEXT NOT NULL, quran_ranges TEXT, audio TEXT NOT NULL /*NONE|QURAN|CLIP*/, clip TEXT, source_dataset TEXT NOT NULL, licence TEXT NOT NULL, reviewed_by TEXT, reviewed_on TEXT)` + index `(category_id, sort)`; `dhikr_translation(dhikr_id INTEGER NOT NULL, lang TEXT NOT NULL /*en, ur, ur-Latn*/, text TEXT NOT NULL, transliteration TEXT, source TEXT NOT NULL, licence TEXT NOT NULL, PRIMARY KEY(dhikr_id, lang))`. Quranic items reference ayahs by `quran_ranges` ("2:255;112:1-4") and render from the content DB | `azkar.core` from v1.1 (F-CP-06). The Manzil dua is a content-DB `passage`, not an azkar row |
+| Cities | `cities` | **Columns per doc 07 §3**: `city`, `city_alias`, `country`, `admin1` + FTS5 unicode61 on names (GeoNames cities15000, CC BY 4.0) | yes (P2, about 1.5 MB compressed) |
 
 Normalization for translation search: `TextNormalizer.urdu()` for `ur` and `TextNormalizer.english()` for `en` and Latin-script packs. There is no stemmer in v1 (FTS tokenizer settings are part of Room's schema validation, so one translation entity class serves every language).
 
 ### 7.4 `user.db` (schema owned here)
 
-**Schema v1** is frozen on the day the P1 daily-use build ships (2026-12-21). It **already contains the P2 tables** (notes, khatam, tasbeeh, reminders, adhan log), so the Ramadan release needs no migration. P3 tables (hifz, sync state, group khatam cache) arrive through migrations.
+**Schema v1** is frozen on the day the P1 daily-use build ships (2026-12-21). It **already contains every P1 and P2 table** that docs 01, 02 and 07 need, including the tables for features that slipped to v1.1. Neither the Ramadan release nor v1.1 therefore needs a migration. **P3 tables arrive in v2** (the first migration): `hifz_plan`, `hifz_page`, `hifz_session`, `hifz_mistake`, `hifz_recording` (doc 07 §18.2), QF sync state (F-BM-07) and the realtime group-khatam cache (F-CP-11, play flavor).
+
+Doc 07 uses the table names below. Where an earlier doc 07 draft used another name, the mapping is: `khatam_portion` → `khatam_progress`, `page_read_log` → `page_dwell`, `activity_day` → `reading_day`, `alarm_log` → `adhan_log` (it logs every alarm type, not only adhan). `tasbeeh_preset`, `tasbeeh_session`, `tasbeeh_day`, `azkar_progress`, `alarm_schedule`, `reminder_log`, `group_khatam` and `group_khatam_part` keep doc 07's names.
+
+**Deliberately not tables.**
+- The prayer location, Hijri user offset and other companion choices are single values in `UserSettings.companion` (§7.5). The PK month-start feed is a cached signed file (`files/remote/feeds/`).
+- The listening pointer is doc 06's `DataStore<PlaybackResume>`. The download queue and the verified-audio index are doc 06's `downloads.db`. Both are device-local and excluded from backup, so a restore never claims files that are not there.
+
+Conventions: `mushaf_id TEXT` holds `MushafId.code`. Verse references are Kufan `(surah, ayah)` integer pairs. `day` columns hold the local epochDay of the **Quran-day** (03:00 → 03:00, doc 07 §2.6). Times are epoch milliseconds.
 
 `user.db` opens with `setJournalMode(JournalMode.TRUNCATE)` (the API exists in Room 3 `RoomDatabase.Builder`) so the file is self-contained for Auto Backup. It is a small, write-light DB, so the cost is negligible.
 
 ```sql
+-- ===== P1: reading, bookmarks, recents, search =====
 CREATE TABLE bookmark_collection (
   id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   uuid TEXT NOT NULL, name TEXT NOT NULL, color INTEGER NOT NULL, icon TEXT,
@@ -899,99 +1074,138 @@ CREATE INDEX ix_bm_key  ON bookmark(surah, ayah);
 CREATE INDEX ix_bm_page ON bookmark(mushaf_id, page_index);
 CREATE INDEX ix_bm_coll ON bookmark(collection_id);
 
-CREATE TABLE last_read (                    -- F-BM-01: one pointer per mushaf; never touched by bookmarks
+CREATE TABLE last_read (                    -- F-BM-01: one pointer per mushaf; written after a 4 s dwell; never touched by bookmarks
   mushaf_id TEXT PRIMARY KEY NOT NULL, page_index INTEGER NOT NULL,
   surah INTEGER NOT NULL, ayah INTEGER NOT NULL, mode TEXT NOT NULL, updated_at INTEGER NOT NULL
-);
-CREATE TABLE listening_position (           -- resume card + onPlaybackResumption
-  id INTEGER PRIMARY KEY NOT NULL,          -- always 1
-  request_json TEXT NOT NULL,               -- kotlinx-serialized PlayRequest
-  item_index INTEGER NOT NULL, position_ms INTEGER NOT NULL, current_surah INTEGER, current_ayah INTEGER,
-  updated_at INTEGER NOT NULL
 );
 CREATE TABLE recent_item (                  -- F-IX-09
   kind TEXT NOT NULL,                       -- 'SURAH' | 'PARA' | 'MANZIL' | 'PAGE' | 'PASSAGE'
   ref TEXT NOT NULL,                        -- "36", "23", "indopak16_taj/50", "manzil-dua"
   opened_at INTEGER NOT NULL, PRIMARY KEY (kind, ref)
 );
-CREATE TABLE page_dwell (                   -- khatam auto-suggest + stats; local only (D-20)
-  mushaf_id TEXT NOT NULL, page_index INTEGER NOT NULL,
-  total_seconds INTEGER NOT NULL, last_at INTEGER NOT NULL, PRIMARY KEY (mushaf_id, page_index)
+CREATE TABLE page_dwell (                   -- per Quran-day page reading (doc 07 "page_read_log"): khatam suggest, streaks, stats
+  day INTEGER NOT NULL, mushaf_id TEXT NOT NULL, page_index INTEGER NOT NULL,
+  dwell_ms INTEGER NOT NULL,                -- a page counts as read at ≥ 20 s (doc 07 §15)
+  PRIMARY KEY (day, mushaf_id, page_index)
 );
-CREATE TABLE reading_day (                  -- F-BM-05 streaks/stats (P2 UI)
-  day INTEGER PRIMARY KEY NOT NULL,         -- local epochDay
-  read_seconds INTEGER NOT NULL, pages INTEGER NOT NULL, listen_seconds INTEGER NOT NULL, ayahs_listened INTEGER NOT NULL
+CREATE TABLE reading_day (                  -- F-BM-05 streaks/stats (doc 07 "activity_day"); local only (D-20)
+  day INTEGER PRIMARY KEY NOT NULL,
+  pages_read INTEGER NOT NULL, read_ms INTEGER NOT NULL, listen_ms INTEGER NOT NULL,
+  ayahs_listened INTEGER NOT NULL, portion_done INTEGER NOT NULL DEFAULT 0, freeze_used INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE search_history (query TEXT PRIMARY KEY NOT NULL, used_at INTEGER NOT NULL);  -- max 20, user-clearable
+CREATE TABLE pref_kv (                      -- "settings not in DataStore": per-entity or unbounded prefs
+  namespace TEXT NOT NULL,                  -- 'mushaf_view' (key 'zoom.<mushafCode>', 1.0–2.0), 'reciter_override' (per-surah reciter)
+  key TEXT NOT NULL, value TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (namespace, key)
+);
+CREATE TABLE installed_pack (
+  pack_id TEXT PRIMARY KEY NOT NULL, type TEXT NOT NULL, version INTEGER NOT NULL, schema_version INTEGER NOT NULL,
+  path TEXT NOT NULL, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, source TEXT NOT NULL,  -- 'BUNDLED' | 'DOWNLOADED'
+  state TEXT NOT NULL,                      -- 'ACTIVE' | 'DISABLED' | 'UPDATE_AVAILABLE' | 'BLOCKED'
+  licence_json TEXT NOT NULL, attribution_json TEXT NOT NULL,
+  eligibility_json TEXT NOT NULL,           -- {licenceStatus, basis, eligibleTiers, commercialOk, fossOk} (§11)
+  installed_at INTEGER NOT NULL
 );
 
-CREATE TABLE note (                         -- F-BM-03 (P2)
+-- ===== P2: notes, khatam, group sheet =====
+CREATE TABLE note (                         -- F-BM-03
   id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, uuid TEXT NOT NULL,
   surah INTEGER NOT NULL, ayah INTEGER NOT NULL, end_surah INTEGER, end_ayah INTEGER,
-  body TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER
+  mushaf_id TEXT, page_index INTEGER,       -- where the note was written (optional)
+  body TEXT NOT NULL,                       -- plain text, ≤ 10,000 chars
+  color INTEGER,
+  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER
 );
 CREATE UNIQUE INDEX ix_note_uuid ON note(uuid);
 CREATE INDEX ix_note_key ON note(surah, ayah);
+CREATE INDEX ix_note_updated ON note(updated_at);
 
-CREATE TABLE khatam_plan (                  -- F-BM-04, F-CP-07 Taraweeh plan (P2)
+CREATE TABLE khatam_plan (                  -- F-BM-04, F-CP-07 Taraweeh preset; algorithm doc 07 §14
   id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, uuid TEXT NOT NULL,
   title TEXT NOT NULL, kind TEXT NOT NULL,  -- 'PERSONAL' | 'RAMADAN' | 'GROUP_SHEET'
+  preset TEXT,                              -- e.g. 'TARAWEEH_27', NULL = custom
   mushaf_id TEXT NOT NULL, unit TEXT NOT NULL,            -- 'PAGE' | 'PARA' | 'RUKU' | 'MANZIL'
-  start_surah INTEGER NOT NULL, start_ayah INTEGER NOT NULL, end_surah INTEGER NOT NULL, end_ayah INTEGER NOT NULL,
-  start_day INTEGER NOT NULL, target_day INTEGER NOT NULL, rest_days_mask INTEGER NOT NULL DEFAULT 0,
-  stop_at_ruku INTEGER NOT NULL DEFAULT 1, reminder_minute INTEGER,  -- minute of day, NULL = none
-  dedication TEXT, group_ref TEXT,          -- WhatsApp sheet id / P3 Firestore id
+  snap_to_ruku INTEGER NOT NULL DEFAULT 1,
+  start_page INTEGER NOT NULL, end_page INTEGER NOT NULL, -- page_index range
+  start_day INTEGER NOT NULL, target_day INTEGER NOT NULL, rest_days_mask INTEGER NOT NULL DEFAULT 0, -- bit0 = Mon … bit6 = Sun
+  cursor_surah INTEGER NOT NULL, cursor_ayah INTEGER NOT NULL, cursor_page INTEGER NOT NULL,     -- first unread Kufan key
+  reminder_minute INTEGER,                  -- minute of day, NULL = none
+  dedication TEXT, group_ref TEXT,          -- group sheet id / P3 Firestore id
   created_at INTEGER NOT NULL, completed_at INTEGER, archived_at INTEGER
 );
-CREATE TABLE khatam_progress (
+CREATE TABLE khatam_progress (              -- one row per planned portion (doc 07 "khatam_portion")
   plan_id INTEGER NOT NULL REFERENCES khatam_plan(id) ON DELETE CASCADE,
-  unit_index INTEGER NOT NULL,              -- 1..30 paras / 1..548 pages / …
-  done_at INTEGER NOT NULL, claimed_by TEXT, -- group sheet name (text only)
-  PRIMARY KEY (plan_id, unit_index)
+  seq INTEGER NOT NULL,                     -- 1..n in plan order
+  day INTEGER NOT NULL,                     -- planned Quran-day
+  from_surah INTEGER NOT NULL, from_ayah INTEGER NOT NULL, to_surah INTEGER NOT NULL, to_ayah INTEGER NOT NULL,
+  from_page INTEGER NOT NULL, to_page INTEGER NOT NULL,
+  done_at INTEGER, via TEXT,                -- 'MANUAL' | 'SUGGESTED' | 'AUDIO'
+  claimed_by TEXT,                          -- group sheet name (text only)
+  PRIMARY KEY (plan_id, seq)
+);
+CREATE TABLE group_khatam (                 -- F-CP-11 text sheet (P2; ships v1.1). Realtime cache is P3 (v2)
+  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  sheet_id TEXT NOT NULL,                   -- 6 chars Crockford base32
+  title TEXT NOT NULL, dedication TEXT, unit TEXT NOT NULL,  -- 'PARA' | 'MANZIL'
+  copies INTEGER NOT NULL, deadline_day INTEGER, mushaf_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL, completed_at INTEGER, owner INTEGER NOT NULL
+);
+CREATE TABLE group_khatam_part (
+  khatam_id INTEGER NOT NULL REFERENCES group_khatam(id) ON DELETE CASCADE,
+  copy INTEGER NOT NULL, part INTEGER NOT NULL, name TEXT,
+  status TEXT NOT NULL,                     -- 'FREE' | 'CLAIMED' | 'DONE'
+  updated_at INTEGER NOT NULL, PRIMARY KEY (khatam_id, copy, part)
 );
 
-CREATE TABLE tasbeeh_counter (              -- F-CP-05 (P2)
-  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, uuid TEXT NOT NULL,
-  title TEXT NOT NULL, phrase_ar TEXT, target INTEGER NOT NULL DEFAULT 33,
-  count INTEGER NOT NULL DEFAULT 0, rounds INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0,
-  updated_at INTEGER NOT NULL
+-- ===== P2: tasbeeh, azkar =====
+CREATE TABLE tasbeeh_preset (               -- F-CP-05; built-ins seeded (Tasbih-e-Fatimah 33/33/34 …)
+  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  title_en TEXT NOT NULL, title_ur TEXT NOT NULL,
+  phases_json TEXT NOT NULL,                -- [{"ar":"سُبْحَانَ اللّٰهِ","target":33}, …]
+  builtin_key TEXT, sort INTEGER NOT NULL, loop INTEGER NOT NULL
 );
-CREATE TABLE tasbeeh_day (counter_id INTEGER NOT NULL REFERENCES tasbeeh_counter(id) ON DELETE CASCADE,
-  day INTEGER NOT NULL, count INTEGER NOT NULL, PRIMARY KEY (counter_id, day));
+CREATE TABLE tasbeeh_session (
+  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  preset_id INTEGER NOT NULL REFERENCES tasbeeh_preset(id) ON DELETE CASCADE,
+  started_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+  phase INTEGER NOT NULL, count_in_phase INTEGER NOT NULL, total INTEGER NOT NULL, rounds INTEGER NOT NULL
+);
+CREATE TABLE tasbeeh_day (                  -- private daily totals ("history")
+  day INTEGER NOT NULL, preset_id INTEGER NOT NULL REFERENCES tasbeeh_preset(id) ON DELETE CASCADE,
+  total INTEGER NOT NULL, PRIMARY KEY (day, preset_id)
+);
+CREATE TABLE azkar_progress (               -- F-CP-06 (v1.1); ids refer to the `azkar` pack
+  day INTEGER NOT NULL, category_id INTEGER NOT NULL, dhikr_id INTEGER NOT NULL, count INTEGER NOT NULL,
+  PRIMARY KEY (day, category_id, dhikr_id)
+);
 
-CREATE TABLE reminder (                     -- F-CP-09 (P2); prayer alarms are derived, not stored
+-- ===== P2: alarms and reminders =====
+CREATE TABLE alarm_schedule (               -- desired set written by rescheduleAll (doc 07 §5.2); rebuilt after restore
+  request_code INTEGER PRIMARY KEY NOT NULL,-- (epochDay mod 10000) * 100 + slot
+  type TEXT NOT NULL, prayer TEXT, fire_at INTEGER NOT NULL,
+  api TEXT NOT NULL,                        -- 'CLOCK' | 'EXACT_IDLE' | 'INEXACT' | 'RTC' | 'WINDOW'
+  mode TEXT, created_at INTEGER NOT NULL
+);
+CREATE TABLE adhan_log (                    -- every alarm firing incl. lateness (doc 07 "alarm_log"); keep newest 200
+  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+  request_code INTEGER NOT NULL, type TEXT NOT NULL, prayer TEXT,
+  scheduled_at INTEGER NOT NULL, fired_at INTEGER, lateness_ms INTEGER,
+  outcome TEXT NOT NULL,                    -- 'PLAYED_FULL'|'PLAYED_SHORT'|'NOTIFIED_SILENT'|'SUPPRESSED_SILENT'|'SUPPRESSED_DND'
+                                            -- |'IN_CALL'|'LATE_NOTIFIED'|'MISSED'|'FGS_DENIED'|'STOPPED_BY_USER'
+  exact_allowed INTEGER NOT NULL, standby_bucket INTEGER, api TEXT NOT NULL
+);
+CREATE INDEX ix_adhan_log_sched ON adhan_log(scheduled_at);
+CREATE TABLE reminder (                     -- F-CP-09 custom and khatam reminders; Kahf/Mulk/daily-ayah toggles live in settings
   id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
   kind TEXT NOT NULL,                       -- 'KAHF_FRIDAY' | 'MULK_NIGHT' | 'DAILY_AYAH' | 'KHATAM' | 'CUSTOM'
   enabled INTEGER NOT NULL, minute_of_day INTEGER NOT NULL, days_mask INTEGER NOT NULL,
   payload_json TEXT, next_at INTEGER
 );
-CREATE TABLE adhan_log (                    -- adhan health check diagnostics; keep newest 200
-  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, prayer TEXT NOT NULL, day INTEGER NOT NULL,
-  scheduled_at INTEGER NOT NULL, fired_at INTEGER, mode TEXT NOT NULL, outcome TEXT NOT NULL  -- 'PLAYED'|'SILENCED_DND'|'LATE'|'MISSED'
-);
-
-CREATE TABLE installed_pack (
-  pack_id TEXT PRIMARY KEY NOT NULL, type TEXT NOT NULL, version INTEGER NOT NULL, schema_version INTEGER NOT NULL,
-  path TEXT NOT NULL, bytes INTEGER NOT NULL, sha256 TEXT NOT NULL, source TEXT NOT NULL,  -- 'BUNDLED' | 'DOWNLOADED'
-  state TEXT NOT NULL,                      -- 'ACTIVE' | 'DISABLED' | 'UPDATE_AVAILABLE' | 'BLOCKED'
-  licence_json TEXT NOT NULL, attribution_json TEXT NOT NULL, eligibility_json TEXT NOT NULL,
-  installed_at INTEGER NOT NULL
-);
-CREATE TABLE download_task (
-  id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, kind TEXT NOT NULL,   -- 'AUDIO' | 'PACK'
-  ref TEXT NOT NULL,                        -- recitation id | pack id
-  unit TEXT NOT NULL,                       -- "surahs:2,3" | "para:4" | "full" | "pack:3"
-  state TEXT NOT NULL,                      -- 'QUEUED'|'RUNNING'|'PAUSED'|'DONE'|'FAILED'|'CANCELLED'
-  bytes_total INTEGER, bytes_done INTEGER NOT NULL DEFAULT 0, wifi_only INTEGER NOT NULL,
-  error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-);
-CREATE TABLE audio_file (                   -- index of verified local files (semantics: doc 06)
-  recitation_id TEXT NOT NULL, surah INTEGER NOT NULL, ayah INTEGER NOT NULL,   -- ayah 0 = whole-surah gapless file
-  volume_index INTEGER NOT NULL, rel_path TEXT NOT NULL, bytes INTEGER NOT NULL,
-  checksum TEXT NOT NULL, verified_at INTEGER NOT NULL, PRIMARY KEY (recitation_id, surah, ayah)
-);
-CREATE TABLE search_history (query TEXT PRIMARY KEY NOT NULL, used_at INTEGER NOT NULL);  -- max 20, user-clearable
-CREATE TABLE pref_kv (                      -- "settings not in DataStore": per-entity or unbounded prefs
-  namespace TEXT NOT NULL,                  -- 'mushaf_view' (zoom per mushaf), 'reciter_override' (per-surah reciter)
-  key TEXT NOT NULL, value TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (namespace, key)
+CREATE TABLE reminder_log (                 -- enforces ≤ 3/day and quiet hours (doc 07 §11)
+  day INTEGER NOT NULL, type TEXT NOT NULL,
+  scheduled_at INTEGER NOT NULL, delivered_at INTEGER,
+  outcome TEXT NOT NULL,                    -- 'DELIVERED'|'SUPPRESSED_DONE'|'SUPPRESSED_CAP'|'SUPPRESSED_QUIET'|'DISMISSED_TODAY'
+  PRIMARY KEY (day, type)
 );
 ```
 
@@ -1013,42 +1227,41 @@ data class UserSettings(
     val schema: Int = 1,
     val onboardingDone: Boolean = false,
     val ui: Ui = Ui(), val reader: Reader = Reader(), val translation: Translation = Translation(),
-    val audio: Audio = Audio(), val downloads: Downloads = Downloads(), val prayer: Prayer = Prayer(),
-    val hijri: Hijri = Hijri(), val reminders: Reminders = Reminders(), val privacy: Privacy = Privacy(),
+    val audio: Audio = Audio(), val downloads: Downloads = Downloads(),
+    val companion: CompanionSettings = CompanionSettings(),   // prayer, adhan, hijri, reminders, ramadan, tasbeeh, streaks
+    val privacy: Privacy = Privacy(),
 ) {
     @Serializable data class Ui(val language: UiLanguage = UiLanguage.SYSTEM, val theme: Theme = Theme.SYSTEM,
-                                val fontScaleUrdu: Float = 1f)
+                                val fontScaleUrdu: Float = 1f, val haptics: Boolean = false,
+                                val openTo: StartDestination = StartDestination.HOME)   // HOME | READER ("open straight into reader")
     @Serializable data class Reader(
-        val mushaf: MushafId = MushafId.INDOPAK_16_TAJ, val keepScreenOn: Boolean = true,
+        val mushaf: MushafId = MushafId.INDOPAK_16_TAJ,
+        val keepScreenOn: Boolean = true, val keepScreenOnMinutes: Int = 15, // on while the reader is visible; off after 15 min idle
         val immersive: Boolean = true, val rotationLock: RotationLock = RotationLock.OFF, // phones only (D-23)
-        val pageTurnLock: Boolean = false, val pageCurl: Boolean = false,                 // F-RD-12 (P2)
+        val pageTurnLock: Boolean = false,           // blocks user swipes, never audio auto-turn
+        val pageTurnHaptics: Boolean = false, val pageCurl: Boolean = false,            // F-RD-12 (v1.1)
         val numbering: Numbering = Numbering.INDOPAK,                                     // Fatiha display vs Kufan
         val followAlong: Boolean = true, val autoPageTurn: Boolean = true,
-        val nightInk: NightInk = NightInk.WARM, val autoScrollSpeed: Int = 3,             // F-RD-09 (P2)
-    )
+        val nightInk: NightInk = NightInk.WARM, val autoScrollSpeed: Int = 3,             // F-RD-09 (v1.1)
+    )   // per-mushaf zoom (1.0–2.0) is in pref_kv('mushaf_view', 'zoom.<code>'); renderer keys in doc 05
     @Serializable data class Translation(val urdu: String? = "ur.junagarhi.qe", val english: String? = "en.saheeh.qe",
                                          val showUnderAyah: Boolean = true, val showFootnotes: Boolean = true)
     // NB: there is deliberately no "translation only" flag — Arabic is always shown (D-09, D-22).
-    @Serializable data class Audio(val recitationId: String = "alafasy.murattal.gapless.mp3quran", // doc 06 id
-                                   val speed: Float = 1f, val defaultRepeat: RepeatSpec = RepeatSpec(),
+    @Serializable data class Audio(val recitationId: RecitationId = RecitationId("alafasy.murattal.mp3q123"), // doc 06 id
+                                   val speed: Float = 1f /*0.5..2.0*/, val defaultRepeat: RepeatSpec = RepeatSpec(),
                                    val duckInsteadOfPause: Boolean = false, val nextPrevUnit: NextPrevUnit = NextPrevUnit.AYAH,
+                                   val streamOnCellular: CellularPolicy = CellularPolicy.ASK, // ASK = ask once, then remember
                                    val streamQuality: StreamQuality = StreamQuality.AUTO, val cacheMb: Int = 256)
     @Serializable data class Downloads(val wifiOnly: Boolean = true, val volumeIndex: Int = 0)
-    @Serializable data class Prayer(
-        val location: LocationChoice? = null,               // City(id) | Coordinates(lat, lon, tz, label)
-        val method: CalcMethod = CalcMethod.KARACHI, val madhab: AsrMadhab = AsrMadhab.HANAFI,
-        val highLatitudeRule: HighLatRule = HighLatRule.RECOMMENDED,
-        val offsetsMin: Map<PrayerName, Int> = emptyMap(),
-        val adhanMode: Map<PrayerName, AdhanMode> = emptyMap(),        // OFF | SILENT | SHORT | FULL
-        val adhanSoundId: String = "adhan.pk.default", val playInSilent: Boolean = false,
-        val useAlarmClock: Boolean = true, val preReminderMin: Int? = null, val ayatulKursiAfterFard: Boolean = false,
-    )
-    @Serializable data class Hijri(val offsetDays: Int = 0 /*-2..+2*/, val maghribRollover: Boolean = true,
-                                   val usePkFeed: Boolean = true)
-    @Serializable data class Reminders(val kahfFriday: Boolean = false, val mulkNight: Boolean = false,
-                                       val dailyAyah: Boolean = false, val maxPerDay: Int = 3)
-    @Serializable data class Privacy(val crashReportsOptIn: Boolean = false /*P3*/, val keepSearchHistory: Boolean = true)
+    @Serializable data class Privacy(val crashReportsOptIn: Boolean = false /*v1.1, F-PL-09*/, val keepSearchHistory: Boolean = true,
+                                     val ratingPromptShownAt: Long? = null /*F-PL-10, play only*/)
 }
+// CompanionSettings and its parts (LocationSetting, PrayerSettings, AdhanSettings, HijriSettings, ReminderSettings,
+// RamadanSettings, TasbeehSettings, StreakSettings) are defined in doc 07 §2.4 and live in :core:model. Doc 04 fixes
+// these defaults: location = null (prayer features idle until set; coordinates rounded to 0.01°); calculation method
+// and Asr school = region default (Karachi/Hanafi for PK); the adhan enable flow pre-selects FULL for all five fard
+// prayers; playInSilent = false (silent/vibrate/DND respected unless opted in); Hijri userOffsetDays in −2..+2,
+// followRegionFeed = true, maghribRollover = true; reminders ≤ 3/day with quiet hours 22:30–05:00.
 enum class UiLanguage { SYSTEM, EN, UR }
 enum class Theme { SYSTEM, LIGHT, SEPIA, NIGHT, AMOLED }
 ```
@@ -1060,7 +1273,7 @@ enum class Theme { SYSTEM, LIGHT, SEPIA, NIGHT, AMOLED }
 
 ### 7.6 Pack index (`index.json`) and signature verification
 
-**Transport.** Every signed file `X.json` has a sibling `X.json.sig` whose content is the base64 encoding of the 64-byte Ed25519 signature over the **exact bytes** of `X.json`. There is no JSON canonicalization. The app pins **two** public keys, active and standby, in `BuildConfig.TRUSTED_KEYS` (hex), and a file verifies if either key accepts it. The private keys stay offline with the owner ([08](08-data-pipelines.md)).
+**Transport (the signing format for every remote JSON: index, catalogue, notices, Hijri feed).** Every signed file `X.json` has a sibling `X.json.sig` whose content is the base64 encoding of the 64-byte Ed25519 signature over the **exact bytes** of `X.json`. There is no envelope and no JSON canonicalization. Every signed JSON carries `schema`, `sequence` (monotonic, anti-rollback), `generatedAt`, `expiresAt` and an optional `kid` (which pinned key signed it). The app pins **two** public keys, active and standby, in `BuildConfig.TRUSTED_KEYS` (hex), and a file verifies if either key accepts it. The private keys stay offline with the owner and never enter CI ([08](08-data-pipelines.md)). Both files are uploaded with `Cache-Control: max-age=60`.
 
 JSON Schema (2020-12, abridged to the normative fields):
 
@@ -1068,19 +1281,22 @@ JSON Schema (2020-12, abridged to the normative fields):
 {
   "$id": "https://criterion.invalid/schema/pack-index-1.json",
   "type": "object",
-  "required": ["schema", "sequence", "generatedAt", "expiresAt", "packs"],
+  "required": ["schema", "sequence", "generatedAt", "expiresAt", "channel", "packs"],
   "properties": {
     "schema":      { "const": 1 },
-    "sequence":    { "type": "integer", "minimum": 1, "description": "monotonic; app rejects < last accepted (anti-rollback)" },
+    "kid":         { "type": "string", "description": "id of the signing key (informational; verification tries both pinned keys)" },
+    "sequence":    { "type": "integer", "minimum": 1, "description": "monotonic; see the acceptance rule below (anti-rollback)" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "expiresAt":   { "type": "string", "format": "date-time", "description": "after expiry: no new installs offered; installed packs keep working" },
+    "channel":     { "enum": ["beta", "public"], "description": "must equal the channel the app fetched from" },
     "minAppVersionCode": { "type": "integer" },
     "packs": { "type": "array", "items": { "$ref": "#/$defs/pack" } }
   },
   "$defs": {
     "pack": {
       "type": "object",
-      "required": ["id", "type", "version", "schemaVersion", "title", "url", "bytes", "sha256", "licence", "attribution", "eligibility"],
+      "required": ["id", "type", "version", "schemaVersion", "title", "url", "bytes", "sha256", "licence", "attribution",
+                   "licenceStatus", "basis", "eligibleTiers", "commercialOk", "fossOk", "enabled"],
       "properties": {
         "id":            { "type": "string", "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$" },
         "type":          { "enum": ["translation", "tafsir", "mushaf_layout", "timing", "font", "azkar", "cities"] },
@@ -1096,16 +1312,19 @@ JSON Schema (2020-12, abridged to the normative fields):
         "sha256":        { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "of the downloaded (compressed) file" },
         "unpackedSha256":{ "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "minContentVersion": { "type": "integer" }, "maxContentVersion": { "type": "integer" },
-        "licence": { "type": "object", "required": ["name", "commercialUse", "redistribution"],
+        "licence": { "type": "object", "required": ["name", "redistribution"],
           "properties": { "name": {"type":"string"}, "spdx": {"type":"string"}, "url": {"type":"string"},
-                          "commercialUse": {"type":"boolean"}, "redistribution": {"type":"boolean"},
+                          "redistribution": {"type":"boolean"},
                           "conditions": {"type":"array", "items": {"type":"string"}} } },
         "attribution": { "type": "object", "required": ["en"], "properties": { "en": {"type":"string"}, "ur": {"type":"string"} } },
-        "eligibility": { "type": "object", "required": ["personal", "public", "monetized"],
-          "properties": { "personal": {"type":"boolean"}, "public": {"type":"boolean"}, "monetized": {"type":"boolean"} } },
-        "autoUpdate": { "type": "boolean", "description": "QuranEnc 'keep updated' condition → true" },
-        "disabled":   { "type": "boolean", "description": "kill-switch: hide + block opening" },
-        "disabledReason": { "type": "object" }
+        "licenceStatus": { "enum": ["PERMITTED", "HOST_GRANT", "PENDING", "PERSONAL_ONLY", "REVOKED"], "description": "D-29" },
+        "basis":         { "type": "string", "description": "free text: why the status holds (licence name, permission ref PERM-xx, 'clean-room')" },
+        "eligibleTiers": { "type": "array", "items": { "enum": ["PERSONAL", "BETA", "PUBLIC"] }, "uniqueItems": true },
+        "commercialOk":  { "type": "boolean", "description": "false for every Tanzil translation; required when MONETIZED" },
+        "fossOk":        { "type": "boolean", "description": "may ship in fossPublic builds" },
+        "enabled":       { "type": "boolean", "description": "kill-switch: false = hide + block opening" },
+        "disabledReason": { "type": "object", "properties": { "en": {"type":"string"}, "ur": {"type":"string"} } },
+        "autoUpdate":    { "type": "boolean", "description": "QuranEnc 'keep updated' condition → true" }
       }
     }
   }
@@ -1120,23 +1339,36 @@ Example entry:
   "url": "https://cdn.example.invalid/v1/packs/translation/ur.jalandhari.tanzil/1/ur.jalandhari.tanzil-1.zip",
   "compression": "zip", "bytes": 731004, "sha256": "…", "unpackedBytes": 2201088, "unpackedSha256": "…",
   "minContentVersion": 1,
-  "licence": { "name": "Tanzil translation terms (non-commercial)", "commercialUse": false, "redistribution": true },
+  "licence": { "name": "Tanzil translation terms (non-commercial, verbatim, with attribution)", "redistribution": true },
   "attribution": { "en": "Translation by Fateh Muhammad Jalandhari, via Tanzil.net", "ur": "…" },
-  "eligibility": { "personal": true, "public": true, "monetized": false }, "autoUpdate": false }
+  "licenceStatus": "PERMITTED", "basis": "Tanzil translation terms (DS-xx, doc 03)",
+  "eligibleTiers": ["PERSONAL", "BETA", "PUBLIC"], "commercialOk": false, "fossOk": true, "enabled": true,
+  "autoUpdate": false }
 ```
 
 **Verification and acceptance algorithm** (`SignedFileFetcher`, used for index, catalogue, notices and feeds):
 
 ```
-fetch(name):
+fetch(name):                                              // name = "<channel>/index.json", "feeds/hijri-pk.json", …
   resp = GET name with If-None-Match: cachedEtag          // OkHttp, 15 s connect / 30 s read
-  if resp == 304: touch cache; return cached
+  if resp == 304: touch cache; return checkExpiry(cached)
   body = resp.bytes (cap 2 MB); sig = GET name + ".sig" (cap 1 KB) → base64 decode (must be 64 bytes)
-  if not any(Ed25519.verify(pubKey, body, sig) for pubKey in TRUSTED_KEYS): log; return AppError.Integrity("sig")
-  doc = Json.decode(body); require doc.schema == SUPPORTED
-  if doc.sequence < lastAcceptedSequence[name]: return AppError.Integrity("rollback")
-  write body+sig to files/remote/<name>.tmp → fsync → atomic rename; store etag + sequence
-  return doc
+  if not verifies(body, sig):
+      // a publish can race the two GETs (new body, old sig): retry both once, bypassing caches
+      body, sig = GET name, GET name + ".sig" with Cache-Control: no-cache
+      if not verifies(body, sig): log; keep cached copy; return AppError.Integrity("sig")
+  doc = Json.decode(body); require doc.schema == SUPPORTED (else NEEDS_APP_UPDATE, keep cached)
+  if doc has channel and doc.channel != expectedChannel: return AppError.Integrity("channel")
+  last = lastAccepted[name]                               // (sequence, sha256)
+  accept only if doc.sequence > last.sequence
+          or (doc.sequence == last.sequence and sha256(body) == last.sha256)   // same file re-served
+  else: return AppError.Integrity("rollback")             // lower sequence, or same sequence with different bytes
+  write body+sig to files/remote/<name>.tmp → fsync → atomic rename; store etag, sequence, sha256
+  return checkExpiry(doc)
+
+verifies(body, sig) = any(Ed25519.verify(pubKey, body, sig) for pubKey in TRUSTED_KEYS)
+checkExpiry(doc): if now > doc.expiresAt → keep the doc for installed items and active kill-switches,
+                  offer no new installs, and show "content list out of date" in the pack/reciter screens
 ```
 
 **Pack install** (`PackManagerImpl.install`):
@@ -1497,7 +1729,7 @@ android {
 
 | Threat | Control |
 |---|---|
-| Tampered manifests or packs (CDN compromise, MITM) | Ed25519 detached signature on every JSON doc (two pinned keys); sha256 of every pack and timing file before install; anti-rollback `sequence`; `expiresAt`; schema-version gate; `PRAGMA quick_check` |
+| Tampered manifests or packs (CDN compromise, MITM) | Ed25519 detached signature on every JSON doc (two pinned keys); sha256 of every pack and timing file before install; anti-rollback `sequence` (same sequence must mean same bytes); `expiresAt`; channel check; schema-version gate; `PRAGMA quick_check`. The remote plane can disable or annotate content but never changes Quran text or layout (D-30) |
 | Malicious ZIP | Zip-slip guard, entry-count and size caps, staging dir, atomic rename |
 | Secrets in the APK | **None exist.** All endpoints are public and read-only. R2 write tokens live only in GitHub Actions secrets / the owner's machine; signing keys are offline. The QF client (P3) is a PKCE public client with no secret (D-20). `google-services.json` (P3, play flavor) is not secret |
 | Transport | HTTPS only (`usesCleartextTraffic=false` plus a network-security-config `cleartextTrafficPermitted="false"`); system trust store. **No certificate pinning.** Content integrity comes from signatures, and pinning third-party CDNs would break on rotation |

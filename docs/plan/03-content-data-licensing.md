@@ -7,47 +7,51 @@
 > Not legal advice. Licence quotes are carried verbatim from the research reports (r05, r09, g01–g03), which fetched them on 2026-10-19 unless tagged otherwise. Items tagged **[unverified]** must be confirmed by the task named next to them.
 
 **Key decisions in this doc**
-- Every shipped artefact carries a machine-readable licence record and a derived **build-eligibility** (personal / beta / public-free / monetized); CI refuses any build that includes an ineligible artefact (D-10, D-17).
-- Mushaf = DigitalKhatt MIT token text + QUL resource 11 layout, public only after **G1**; QA oracles (Waqar144, QuranApp, QUL previews, QF API) never ship (D-05, D-06).
+- Every shipped artefact carries a machine-readable licence record (`licenceStatus` ∈ {PERMITTED, HOST_GRANT, PENDING, PERSONAL_ONLY, REVOKED} + free-text `basis`) and a derived set of **eligible content tiers** (`BuildConfig.CONTENT_TIER` ∈ {PERSONAL, BETA, PUBLIC} + `BuildConfig.MONETIZED`); CI refuses any build that includes an ineligible artefact (D-10, D-17, D-29).
+- Mushaf = DigitalKhatt MIT token text + QUL resource 11 layout. The QUL-derived layout reaches third parties (BETA closed test or PUBLIC) only after **G1**; otherwise they get the clean-room layout. QA oracles (Waqar144, QuranApp, QUL previews, QF API) never ship (D-05, D-06).
 - Arabic for search/copy/share = **Tanzil Uthmani + Simple-Clean, verbatim** (D-08). Never bundle QF/quran.com content (D-09).
 - Bundled translations: **Urdu Junagarhi (+Ahsan-ul-Bayan notes)** and **English Saheeh International**, both QuranEnc; Tanzil-sourced packs are **non-commercial** (D-09, D-17).
 - Indexing metadata is **our own curated, print-verified** data: Indo-Pak Para table, 7 Manzils, 558 rukus with the print's triple rule, 14 + 1 sajdas, 90 Para quarters (D-07). Page labels = index + 1 (D-04).
-- Public audio = mp3quran gapless + our validated timing packs; gapped per-ayah = `PENDING` (personal/beta); three items personal-only; Alafasy refusal ⇒ default switches to Ghamdi (D-12).
-- Content governance: recognized scholars, sect-balanced Urdu set, Shia opt-in and labelled, no Ahmadi content, Arabic always shown, hafiz certificate per layout (G5), 24 h advisory / 48 h fix SLA, signed kill-switch (D-22).
+- Public audio = mp3quran gapless (`HOST_GRANT`) + our validated timing packs; gapped per-ayah = `PENDING` (PERSONAL and BETA only, never PUBLIC); three items personal-only; Alafasy refusal ⇒ default switches to Saad Al-Ghamdi (read 30) (D-12, D-28).
+- Content governance: recognized scholars, sect-balanced Urdu set, Shia opt-in and labelled, no Ahmadi content, Arabic always shown, hafiz certificate per layout (G5). Text-error SLA: triage ≤ 24 h, signed notice/kill-switch ≤ 48 h, corrected build submitted ≤ 72 h of confirmation (D-22, D-30).
 - User content never leaves the device except by user action (backup, export, error-report email) (D-20).
 
 ---
 
 ## 1. Definitions and hard rules
 
-### 1.1 Build classes (what "eligibility" means)
+### 1.1 Content tiers (what "eligibility" means)
 
-| Build class | Who gets it | Distribution | May contain |
-|---|---|---|---|
-| **personal** | Owner's own devices | Sideload / Play internal track, owner only | Anything with a lawful personal-use basis, incl. `PERSONAL_ONLY` and `PENDING` items |
-| **beta** | Closed testers (incl. the 12 × 14-day closed test, D-22) | Play closed track | `PERMITTED` + `PENDING`; **no** `PERSONAL_ONLY` |
-| **public-free** | Everyone | Play production (and `foss` flavour if G4 allows) | `PERMITTED` only; app is free, no ads, no IAP |
-| **monetized** | Everyone, any build with Play Billing IAP/subscription (v1.5+, `play` flavour) | Play production | `PERMITTED` **and** `commercialOk = true` |
+The tier names and Gradle wiring are owned by [doc 04 §11](04-architecture.md) and decision D-29 ([doc 12](12-decisions-risks.md)). Flavor dimensions are `distribution` {play, foss} × `tier` {personal, public}. The personal flavor always builds `CONTENT_TIER = PERSONAL`. The public flavor builds `BETA` by default, and builds `PUBLIC` only with `-Pcriterion.release=production`, which requires G1 + G5 evidence. `-Pcriterion.monetized=true` sets `BuildConfig.MONETIZED` (v1.5+, play only). Remote channels are named the same: `personal` (never uploaded to R2), `beta` and `public`.
 
-`foss` flavour inherits public-free eligibility (no Billing); F-Droid anti-feature assessment is part of G4.
+| `CONTENT_TIER` | Who gets it | Distribution | May contain (`licenceStatus`) | Extra rule |
+|---|---|---|---|---|
+| **PERSONAL** | Owner's own devices | Sideload `fossPersonalRelease` (`com.chughtai.criterion.personal`); `playPersonal*` is disabled | All except `REVOKED`, incl. `PERSONAL_ONLY` and `PENDING` | Pre-G1 QUL export allowed (private use) |
+| **BETA** | Closed testers (12+ testers × 14 days). They are third parties, so this tier counts as distribution | Play internal/closed tracks (public flavor) | `PERMITTED`, `HOST_GRANT`, `PENDING`; **no** `PERSONAL_ONLY` | Mushaf layout data must be **G1-cleared or clean-room**; never a QUL-derived layout before G1 (the DK word text follows its `requiredGates`, §5.3). A "pre-release — proofreading in progress" banner shows until G5 |
+| **PUBLIC** | Everyone | Play production (and the `foss` flavor if G4 allows) | `PERMITTED`, `HOST_GRANT` | G1 + G5 for each shipped layout; app is free, no ads, no IAP |
+| **PUBLIC + `MONETIZED`** | Everyone, on a build with Play Billing IAP/subscription (v1.5+, `play` flavor) | Play production | `PERMITTED`, `HOST_GRANT` **and** `commercialOk = true` | Commercial-content audit signed first (doc 11) |
+
+The `foss` flavor inherits PUBLIC eligibility (never MONETIZED; no Billing). The F-Droid anti-feature assessment is part of G4.
 
 ### 1.2 Licence record vocabulary
 
-- `licenceStatus` (runtime enum, shared with [Audio engine](06-audio-engine.md) catalogue): `PERMITTED` | `PENDING` | `PERSONAL_ONLY`.
-- `basis` (why): `open_licence` (CC/MIT/OFL/…), `public_domain`, `host_grant` (host's written blanket statement), `producer_grant` (producer's published free-use statement), `written_permission` (PERM-xx reply on file), `own_work`, `commissioned` (work-for-hire with assignment), `none`.
-- `commercialOk`: terms do not exclude IAP/subscriptions. `noModification`, `mustKeepUpdated`, `linkBackRequired`: obligations the pipeline/UI must honour.
+- `licenceStatus` (runtime enum, D-29; shared with the [Audio engine](06-audio-engine.md) catalogue and the [doc 04](04-architecture.md) pack index): `PERMITTED` (written permission or a clearly permissive licence) | `HOST_GRANT` (archived written host statement, e.g. mp3quran) | `PENDING` (host terms allow free-app use, no rights evidence yet, request sent) | `PERSONAL_ONLY` | `REVOKED` (refused or withdrawn; never shipped, kill-switched if already out).
+- `basis` (why; **free text**, replacing D-29's `evidenceType`): it starts with one of these tokens, then gives detail. Tokens: `open_licence` (CC/MIT/OFL/…), `public_domain`, `host_grant` (host's written blanket statement), `producer_grant` (producer's published free-use statement), `written_permission` (PERM-xx reply on file), `own_work`, `commissioned` (work-for-hire with assignment), `none`. Example: `"host_grant: mp3quran.net/eng/privacy, archived 2026-10-21 sha256=…"`.
+- `commercialOk`: the terms (or the grant) do not exclude IAP/subscriptions. It is false for every Tanzil translation file, whatever the PD status of the work. The v1.5 audit confirms every `true`. `fossOk`: allowed in the foss flavor (doc 11). `noModification`, `mustKeepUpdated`, `linkBackRequired`: obligations the pipeline/UI must honour.
 
 **Derivation (CI computes; manifests must agree):**
 ```
-eligible.personal   = true                                        (lawful personal basis exists)
-eligible.beta       = licenceStatus in {PERMITTED, PENDING}
-eligible.publicFree = licenceStatus == PERMITTED && gatesCleared(item.requiredGates)
-eligible.monetized  = eligible.publicFree && commercialOk && monetizedScopeConfirmed(item)
+PERSONAL ∈ eligibleTiers  ⇔ licenceStatus != REVOKED                       (lawful personal basis exists)
+BETA     ∈ eligibleTiers  ⇔ licenceStatus in {PERMITTED, HOST_GRANT, PENDING}
+                            && (item is not mushaf layout data || G1 cleared || item is clean-room)
+                            && ("G1" not in item.requiredGates || G1 cleared)
+PUBLIC   ∈ eligibleTiers  ⇔ licenceStatus in {PERMITTED, HOST_GRANT} && gatesCleared(item.requiredGates)
+monetizedOk               ⇔ PUBLIC ∈ eligibleTiers && commercialOk
 ```
 
 ### 1.3 Never-list (CI-enforced where possible)
 
-1. Never ship or fetch-at-build QF / quran.com / qurancdn content into any bundled DB or pack (QF terms: ≤ 1-week storage, "does not itself authorize distributing a prepackaged database", no client secret in app — r05 §2.6). CI lint: pipeline `sources.lock.json` hosts ∉ {`*.quran.com`, `*.quran.foundation`, `*.qurancdn.com`}.
+1. Never ship or fetch-at-build QF / quran.com / qurancdn content into any bundled DB or pack (QF terms: ≤ 1-week storage, "does not itself authorize distributing a prepackaged database", no client secret in app — r05 §2.6). CI lint: hosts in the pipeline's `data/pins.lock` ([doc 08](08-data-pipelines.md)) ∉ {`*.quran.com`, `*.quran.foundation`, `*.qurancdn.com`}.
 2. Never ship Waqar144, QuranApp (GPL) or scraped QUL-preview data — QA oracles only, stored outside the repo (g01 §2.7).
 3. Never ship mushaf scans or images derived from them; the archive.org Taj scan is used to *check facts* only, never in repo, assets or CI artefacts (g02 Rec. 12).
 4. Never alter displayed Tanzil text; normalized search columns are never displayed (Tanzil "verbatim… CHANGING IT IS NOT ALLOWED").
@@ -62,26 +66,26 @@ eligible.monetized  = eligible.publicFree && commercialOk && monetizedScopeConfi
 
 ## 2. Dataset catalogue
 
-Columns: **Elig.** = personal / beta / public-free / monetized (✅ yes, ⏳ after named gate/permission, ❌ no). **Ship** = Bundled (APK) / Download (R2 pack) / Stream / Build-input (used by the pipeline, not shipped as such) / Oracle (never shipped). **Attr.** = credit string ID in §9.
+Columns: **Elig. P/B/F/M** = PERSONAL / BETA / PUBLIC / PUBLIC + MONETIZED (✅ yes, ⏳ after named gate/permission, ❌ no). **Ship** = Bundled (APK) / Download (R2 pack) / Stream / Build-input (used by the pipeline, not shipped as such) / Oracle (never shipped). **Attr.** = credit string ID in §9.
 
 ### 2.1 Quran text and mushaf
 
 | ID | Dataset | Source & pin | Format · size | Licence (decisive terms) | Elig. P/B/F/M | Ship | Attr. |
 |---|---|---|---|---|---|---|---|
-| DS-01 | Tanzil **Uthmani** v1.1 (Feb 2021) | `https://tanzil.net/pub/download/index.php?quranType=uthmani&outType=xml&marks=true&sajdah=true&rub=false&tatweel=true&agree=true`; pin SHA-256 in `sources.lock.json` | XML 1.54 MB (0.29 MB gz); 70 code points | "Tanzil Quran Text Copyright (C) 2007-2021 Tanzil Project / License: Creative Commons Attribution 3.0 … Permission is granted to copy and distribute verbatim copies of this text, but CHANGING IT IS NOT ALLOWED … provided that its source (Tanzil Project) is clearly indicated, and a link is made to tanzil.net" | ✅ ✅ ✅ ✅ | Bundled (content DB): copy/share/search, optional "Usmani" text | ATTR-01 |
+| DS-01 | Tanzil **Uthmani** v1.1 (Feb 2021) | `https://tanzil.net/pub/download/index.php?quranType=uthmani&outType=xml&marks=true&sajdah=true&rub=false&tatweel=true&agree=true`; pin SHA-256 in `data/pins.lock` | XML 1.54 MB (0.29 MB gz); 70 code points | "Tanzil Quran Text Copyright (C) 2007-2021 Tanzil Project / License: Creative Commons Attribution 3.0 … Permission is granted to copy and distribute verbatim copies of this text, but CHANGING IT IS NOT ALLOWED … provided that its source (Tanzil Project) is clearly indicated, and a link is made to tanzil.net" | ✅ ✅ ✅ ✅ | Bundled (content DB): copy/share/search, optional "Usmani" text | ATTR-01 |
 | DS-02 | Tanzil **Simple-Clean** v1.1 | same endpoint, `quranType=simple-clean` | XML 0.94 MB; 46 code points | as DS-01 | ✅ ✅ ✅ ✅ | Bundled: search column source only | ATTR-01 |
 | DS-03 | Tanzil metadata `quran-data.js/.xml` v1.0 | `https://tanzil.net/res/text/metadata/quran-data.js` | JS/XML 25 KB | `copyright="(C) 2008-2009 Tanzil.info" license="cc-by"` | ✅ ✅ ✅ ✅ | Build-input: surah/ayah counts, Madani juz/hizb (Madani mode only) | ATTR-02 |
-| DS-04 | **DigitalKhatt Indo-Pak token text** `ClientApp/src/app/services/quran_text_indopak_15.ts` | `github.com/DigitalKhatt/digitalkhatt.org` @ **4213fab** (MIT since `abbb69c`, 2024-01-31; file added `ad9f3d7`, no AGPL header) | TS → 83,669 tokens (77,433 words + 6,236 ends); 84 code points | "MIT License, Copyright (c) 2024 DigitalKhatt". Upstream: QUL res. 59 / QuranWBW text whose README says "DO NOT SELL, MANIPULATE, DISTRIBUTE WITHOUT CREDITS OR TAMPER…" (g01 §2.1) | ✅ ✅ ⏳G1 ⏳G1+PERM-03 | Bundled (canonical word table) | ATTR-03 |
-| DS-05 | **QUL resource 11** — Indo-Pak 16-line Taj layout (548 pp) | `https://qul.tarteel.ai/resources/mushaf-layout/11` (SQLite; owner's free login); store at `~/criterion-data/qul/<date>/` + SHA-256 | SQLite `pages(page_number,line_number,line_type,is_centered,first_word_id,last_word_id,surah_number)` + `info`; ~0.3 MB | Resource page: "We don't have copyright information for this resource." FAQ: "Yes, you can use QUL data in commercial projects. However, please review the licensing terms for each resource." Tarteel ToS: "You shall not (a) copy the Services or any part…" | ✅ ✅ ⏳G1 ⏳G1 (commercial scope) | Bundled (line table) after G1 | ATTR-05 |
-| DS-06 | QUL **script 565** (DK Indo-Pak WBW) or **59** (Indopak Nastaleeq WBW) | `https://qul.tarteel.ai/resources/quran-script/565` (or `/59`), login | SQLite `words(word_index, word_key, …)` | as DS-05 | ✅ ✅ ⏳G1 ⏳G1 | Build-input: `word_index → word_key` join for DS-05 only (g01 §2.8 step 5) | ATTR-05 |
-| DS-07 | QUL res. 313 — 13-line Taj (847 pp) [P3, F-RD-11] | `/resources/mushaf-layout/313` | SQLite ~0.3 MB | as DS-05 | ✅ ✅ ⏳G1+G5 ⏳ | Download (layout pack) | ATTR-05 |
-| DS-08 | 15-line Hafizi (610 pp) [P3]: DK 15-line breaks (MIT, = QUL layout 6 on 369/370 lines) and/or QUL res. 12 | DK @4213fab (same file); `/resources/mushaf-layout/12` | ~0.3 MB | DK MIT; QUL as DS-05 | ✅ ✅ ⏳G1+G5 ⏳ | Download (layout pack) | ATTR-03/05 |
-| DS-09 | Madani 604 layout + DK New Madina font [P4] | QUL layout 10; DK New Madina (OFL 1.1) | ~0.3 MB + 2.4 MB otf | QUL as DS-05; font OFL | ✅ ✅ ⏳ ⏳ | Download | ATTR-04/05 |
+| DS-04 | **DigitalKhatt Indo-Pak token text** `ClientApp/src/app/services/quran_text_indopak_15.ts` | `github.com/DigitalKhatt/digitalkhatt.org` @ **4213fab** (MIT since `abbb69c`, 2024-01-31; file added `ad9f3d7`, no AGPL header) | TS → 83,669 tokens (77,433 words + 6,236 ends); 84 code points | "MIT License, Copyright (c) 2024 DigitalKhatt". Upstream: QUL res. 59 / QuranWBW text whose README says "DO NOT SELL, MANIPULATE, DISTRIBUTE WITHOUT CREDITS OR TAMPER…" (g01 §2.1) | ✅ ⏳G1/PERM-02 ⏳G1 ⏳G1+PERM-03 | Bundled (canonical `word` table in `quran_content.db`) | ATTR-03 |
+| DS-05 | **QUL resource 11** — Indo-Pak 16-line Taj layout (548 pp) | `https://qul.tarteel.ai/resources/mushaf-layout/11` (SQLite; owner's free login); store at `~/criterion-data/qul/<date>/` + SHA-256 | SQLite `pages(page_number,line_number,line_type,is_centered,first_word_id,last_word_id,surah_number)` + `info`; ~0.3 MB | Resource page: "We don't have copyright information for this resource." FAQ: "Yes, you can use QUL data in commercial projects. However, please review the licensing terms for each resource." Tarteel ToS: "You shall not (a) copy the Services or any part…" | ✅ ⏳G1 ⏳G1+G5 ⏳G1 (commercial scope) | Bundled (layout pack) after G1; before G1 only in PERSONAL builds | ATTR-05 |
+| DS-06 | QUL **script 565** (DK Indo-Pak WBW) or **59** (Indopak Nastaleeq WBW) | `https://qul.tarteel.ai/resources/quran-script/565` (or `/59`), login | SQLite `words(word_index, word_key, …)` | as DS-05 | ✅ ⏳G1 ⏳G1 ⏳G1 | Build-input: `word_index → word_key` join for DS-05 only (g01 §2.8 step 5) | ATTR-05 |
+| DS-07 | QUL res. 313 — 13-line Taj (847 pp) [P3, F-RD-11] | `/resources/mushaf-layout/313` | SQLite ~0.3 MB | as DS-05 | ✅ ⏳G1 ⏳G1+G5 ⏳ | Download (layout pack) | ATTR-05 |
+| DS-08 | 15-line Hafizi (610 pp) [P3]: DK 15-line breaks (MIT, = QUL layout 6 on 369/370 lines) and/or QUL res. 12 | DK @4213fab (same file); `/resources/mushaf-layout/12` | ~0.3 MB | DK MIT; QUL as DS-05 | ✅ ⏳G1 ⏳G1+G5 ⏳ | Download (layout pack) | ATTR-03/05 |
+| DS-09 | Madani 604 layout + DK New Madina font [P4] | QUL layout 10; DK New Madina (OFL 1.1) | ~0.3 MB + 2.4 MB otf | QUL as DS-05; font OFL | ✅ ⏳G1 ⏳ ⏳ | Download | ATTR-04/05 |
 | DS-10 | **QA oracles**: Waqar144 @b6470fb (MIT label, QUL-derived), QuranApp @c496013 (GPL-3.0), QUL preview HTML (548 pp, 76 MB), QF API v4 per-verse metadata, archive.org Taj scan | local only: `~/criterion-data/oracles/` | — | Waqar: "the text is taken from Quranic Universal Library" (commit `4b0e4bf`); QuranApp GPL; scraping conflicts with Tarteel ToS; scan © Taj Company ("جملہ قانونی حقوق … بحق تاج کمپنی لمیٹڈ محفوظ ہیں") | Oracle only | **Never shipped**; delete scraped HTML once DS-05 arrives | — |
 
 ### 2.2 Curated metadata (our own work, print-verified)
 
-All curated tables live as CSV in the pipeline's `curated/` directory (path per [doc 08](08-data-pipelines.md)), are reviewed by the content reviewer, and are compiled into `quran_content.db`. Specification and full data in §7. Licence: `own_work` (facts + our compilation); commercial OK.
+All curated tables live as CSV in `data/curated/` ([doc 08 §3.3](08-data-pipelines.md)), are reviewed by the content reviewer, and are compiled into `quran_content.db` (layout-independent data; DDL owned by [doc 04 §7.2](04-architecture.md)) or, for layout-specific data, into the mushaf layout pack (DDL owned by [doc 05](05-mushaf-rendering-engine.md)). Specification and full data in §7. Licence: `own_work` (facts + our compilation); commercial OK.
 
 | ID | Dataset | Derivation | Rows | Verified against | Elig. | Ship | Attr. |
 |---|---|---|---|---|---|---|---|
@@ -89,10 +93,10 @@ All curated tables live as CSV in the pipeline's `curated/` directory (path per 
 | DS-12 | **Manzil** table | Hand-curated (§7.3) | 7 | Tanzil + QF boundaries; scan footers/margins (g02 §2.7) | ✅✅✅✅ | Bundled | ATTR-06 |
 | DS-13 | **Ruku** table (558) | Derived from DS-04 U+08D6 ruku-end marks (558) + print rule; triples computed against DS-11 | 558 | 29 print-sampled triples (g02 §2.3); surah-header counts | ✅✅✅✅ | Bundled | ATTR-06 |
 | DS-14 | **Sajda** table | Derived from DS-04 U+08DB (15) + print table leaf 553 | 15 | g02 §2.6 (all 15) | ✅✅✅✅ | Bundled | ATTR-06 |
-| DS-15 | **Para quarters** (ربع/نصف/ثلٰثة) | Seeded from Waqar list (fact positions) with 3 print corrections; every row hand-verified before public | 90 | 37 verified (g02 App. A); 53 to verify | ✅✅⏳⏳ (53 rows to verify) | Bundled | ATTR-06 |
-| DS-16 | **ayah_marker** (Kufan ends + «۵» disputed ends) | Pipeline from DS-04 (g01 §2.6), Taj Fatiha override | 6,354 | Tanzil per-surah counts; scan p.2 | ✅✅✅✅ | Bundled | ATTR-03 |
-| DS-17 | **Surah** table (names ar/ur/roman/en, meanings, revelation, counts, Indo-Pak header strings) | Hand-curated; cross-checked with Tanzil counts; header strings proofed vs scan | 114 | ~75 headers verified (g02); 39 to proof | ✅✅⏳⏳ (39 headers to proof, G5) | Bundled | ATTR-06 |
-| DS-18 | **Page furniture** (`page_meta`: template, header Para/surahs, footer manzil, outer margin side) | Pipeline rules (§7.8) | 548 | g02 §2.8 | ✅✅✅✅ | Bundled | ATTR-06 |
+| DS-15 | **Para quarters** (ربع/نصف/ثلٰثة) | Seeded from Waqar list (fact positions) with 3 print corrections; every row hand-verified before public | 90 | 37 verified (g02 App. A); 53 to verify | ✅⏳⏳⏳ (53 rows to verify before the closed test) | Bundled | ATTR-06 |
+| DS-16 | **ayah_marker** (Kufan ends + «۵» disputed ends) | Pipeline from DS-04 (g01 §2.6) into `quran_content.db`; the Taj Fatiha display override is layout data in the pack | 6,354 | Tanzil per-surah counts; scan p.2 | ✅✅✅✅ | Bundled | ATTR-03 |
+| DS-17 | **Surah** table (names ar/ur/roman/en, meanings, revelation, counts → content-DB `surah`) + Indo-Pak header strings (→ pack `surah_header`) | Hand-curated; cross-checked with Tanzil counts; header strings proofed vs scan | 114 | ~75 headers verified (g02); 39 to proof | ✅⏳⏳⏳ (39 headers to proof before the closed test; G5) | Bundled | ATTR-06 |
+| DS-18 | **Page furniture** (pack `page` table, doc 05: template, header Para/surahs, footer manzil, outer margin side) | Pipeline rules (§7.8) | 548 | g02 §2.8 | ✅✅✅✅ | Bundled | ATTR-06 |
 | DS-19 | **Aliases & popular passages** (incl. Manzil-dua playlist) | Hand-curated (§7.9) | ~120 | Content reviewer | ✅✅✅✅ | Bundled | — |
 
 ### 2.3 Translations and tafsir
@@ -134,26 +138,26 @@ Host statements (g03 §2.1, verified): **mp3quran.net** — *"Copyrights: All ri
 
 | ID | Dataset | Source | Licence basis → status | Elig. P/B/F/M | Ship | Attr. |
 |---|---|---|---|---|---|---|
-| DS-38 | **Gapless per-surah MP3 (public shortlist)** with highlight: Alafasy (read 123, default, 128 kbps, 1.72 GB), Saad Al-Ghamdi (30, 96 kbps/22.05 kHz, 1.07 GB), Abdul Basit Mujawwad (51, surah-9 relabel, 3.49 GB), Sudais (54, clamp), Abu Bakr Ash-Shatri (4, 1.50 GB), Hani Ar-Rifai (89), Muhammad Ayyub (109, 1.40 GB), Khalid Al-Muhanna (159, 48 kbps, 0.64 GB); highlight off in faulty surahs: Husary (118: s1, s21), Minshawi (112: s52, s53; s9 relabel), Shuraim (31: s12, s40, s65, s80, s83, s91; s9 relabel), Yasser Ad-Dosari (92: s4) | `https://cdn.mp3quran.net/audio/{folder}/rN/{sss}.mp3` (folder from `https://www.mp3quran.net/api/v3/ayat_timing/reads` `folder_url`; e.g. `mishary-alafasy/r1/001.mp3`) | `host_grant` → `PERMITTED` (rights-holder unconfirmed; PERM-04 for Alafasy) | ✅✅✅✅(v1.5 audit) | Stream + user download; never in APK | ATTR-11a |
-| DS-39 | **Our timing packs** (normalized mp3quran `ayat_timing`, guard = Content-Length + ETag + duration; per-surah DISABLE) | Built from `https://www.mp3quran.net/api/v3/ayat_timing?surah=N&read=R` by pipeline (g03 §2.6); hosted on R2 | `host_grant` (derived) → `PERMITTED` | ✅✅✅✅ | Download (R2) | ATTR-11b |
-| DS-40 | **Gapped per-ayah** (verse-by-verse/hifz, F-AU-04) for shortlist reciters + Abdul Basit Murattal, Maher Al-Muaiqly, Ahmed Al-Ajmy, Huthaify | `https://everyayah.com/data/{folder}/{sss}{aaa}.mp3` (+ `000_checksum.md5`); mirror `https://cdn.islamic.network/quran/audio/{kbps}/{edition}/{n}.mp3` | `none` / host terms → **`PENDING`** until PERM-05 (+PERM-04 for Alafasy) | ✅✅⏳G2⏳ | Stream + download | ATTR-11c |
+| DS-38 | **Gapless per-surah MP3 (public shortlist)** with highlight: Alafasy (read 123, default, 128 kbps, 1.72 GB), Saad Al-Ghamdi (30, 96 kbps/22.05 kHz, 1.07 GB), Abdul Basit Mujawwad (51, surah-9 relabel, 3.49 GB), Sudais (54, clamp), Abu Bakr Ash-Shatri (4, 1.50 GB), Hani Ar-Rifai (89), Muhammad Ayyub (109, 1.40 GB), Khalid Al-Muhanna (159, 48 kbps, 0.64 GB); highlight off in faulty surahs: Husary (118: s1, s21), Minshawi (112: s52, s53; s9 relabel), Shuraim (31: s12, s40, s65, s80, s83, s91; s9 relabel), Yasser Ad-Dosari (92: s4) | `https://cdn.mp3quran.net/audio/{folder}/rN/{sss}.mp3` (folder from `https://www.mp3quran.net/api/v3/ayat_timing/reads` `folder_url`; e.g. `mishary-alafasy/r1/001.mp3`) | basis `host_grant` → **`HOST_GRANT`** (rights-holder unconfirmed; PERM-04 for Alafasy) | ✅✅✅✅(v1.5 audit) | Stream + user download; never in APK | ATTR-11a |
+| DS-39 | **Our timing packs** (normalized mp3quran `ayat_timing`, guard = Content-Length + ETag + duration; per-surah DISABLE) | Built from `https://www.mp3quran.net/api/v3/ayat_timing?surah=N&read=R` by pipeline (g03 §2.6); hosted on R2 | basis `host_grant` (derived) → `HOST_GRANT` | ✅✅✅✅ | Bundled (12 public packs, doc 06) + Download (R2) | ATTR-11b |
+| DS-40 | **Gapped per-ayah** (verse-by-verse/hifz, F-AU-04) for shortlist reciters + Abdul Basit Murattal, Maher Al-Muaiqly, Ahmed Al-Ajmy, Huthaify | `https://everyayah.com/data/{folder}/{sss}{aaa}.mp3` (+ `000_checksum.md5`); mirror `https://cdn.islamic.network/quran/audio/{kbps}/{edition}/{n}.mp3` | basis `none` / host terms → **`PENDING`** until PERM-05 (+PERM-04 for Alafasy) | ✅✅⏳G2⏳ (BETA allowed while `PENDING`; never PUBLIC) | Stream + download | ATTR-11c |
 | DS-41 | **King Fahd Complex** recordings (Hafs): Ali Al-Huthaify, Maher Al-Muaiqly, Muhammad Ayyub, Khalid Al-Muhanna, Ibrahim Al-Akhdar (per-ayah 724 MB–1.18 GB each; per-surah similar) | qurancomplex.gov.sa (geo-blocked from our egress; owner downloads from Pakistan) → self-host R2 | `producer_grant` → `PERMITTED` once the official page is archived and PERM-06 sent with no refusal in 30 days; monetized scope asked in PERM-06 | ✅✅⏳G2⏳ | Download/stream from R2 | ATTR-11d |
 | DS-42 | **Personal-only audio**: Urdu translation voice Shamshad Ali Khan ("(C) 1998 Hi-Tech Music Ltd. (P) 1998 Hi-Tech Music Ltd"; everyayah `urdu_shamshad_ali_khan_46kbps`, i.n. `ur.khan`) for F-AU-10; Husary Muallim (everyayah only); Qari Sadaqat Ali (i.n. `ar.sadaqatali` surah-level) | as listed | `PERSONAL_ONLY` until PERM-08/05/09 | ✅❌❌❌ | Personal catalogue only | ATTR-11a pattern |
-| DS-43 | **Adhan audio** (F-CP-02): commissioned Pakistani muezzin — standard adhan, Fajr adhan, ≤ 30 s takbeer (channel sound), post-adhan dua; fallbacks Commons `File:Adhan.ogg` (Aishatu98, **CC0**, 42 s) and `File:Beautiful adhan.ogg` (Adam-synagda, **CC0**, 154 s) | PERM-22 (work-for-hire); Wikimedia Commons | `commissioned`; `open_licence` (CC0) | ✅✅✅✅ | Bundled (format per [doc 07](07-companion-engagement-features.md)) | ATTR-15 |
+| DS-43 | **Adhan audio** (F-CP-02): commissioned Pakistani muezzin — standard adhan, Fajr adhan, ≤ 30 s takbeer (channel sound), post-adhan dua; fallbacks Commons `File:Adhan.ogg` (Aishatu98, **CC0**, 42 s) and `File:Beautiful adhan.ogg` (Adam-synagda, **CC0**, 154 s) | PERM-22 (work-for-hire); Wikimedia Commons | `commissioned`; `open_licence` (CC0) | ✅✅✅✅ | Bundled (format per [doc 07](07-companion-engagement-features.md)) [P2 · v1.1 with F-CP-02] | ATTR-15 |
 
-Never used: QuranicAudio ("you may not use these files for commercial purposes"; personal use only), QUL/Tarteel audio (130/130 "no copyright information"; Tarteel ToS bars copying) until PERM-01 covers it, QF/QDC audio offline (QF terms).
+Never used, in any tier (D-28 bars them from PUBLIC; this doc keeps them out of PERSONAL and BETA too): QuranicAudio ("you may not use these files for commercial purposes"; personal use only), QUL/Tarteel audio (130/130 "no copyright information"; Tarteel ToS bars copying) until PERM-01 covers it, QF/QDC audio (QF terms), and archive.org rips.
 
 ### 2.6 Companion data
 
 | ID | Dataset | Source & pin | Size | Licence | Elig. | Ship | Attr. |
 |---|---|---|---|---|---|---|---|
-| DS-44 | **GeoNames cities15000** (34,173 cities; PK 372; Urdu alternate names) | `https://download.geonames.org/export/dump/cities15000.zip` (3.36 MB), retrieved date + SHA-256 | 3.14 MB SQLite / 1.49 MB zip (cols: id, name, ascii, Arabic-script alt names, lat, lon, cc, admin1, tz, population) | "licensed under a Creative Commons Attribution 4.0 License" | ✅✅✅✅ | Bundled [P2] | ATTR-12 |
-| DS-45 | **Azkar Arabic corpus** | `github.com/osamayy/azkar-db` (2024-09-19), 345 rows / 135 categories | small | README: «هذه الملفات بدون رخصة استخدام، يحق لك فعل ما تريد بها مجانا…» (public-domain dedication) | ✅✅✅✅ | Bundled [P2] (curated subset + hadith refs) | ATTR-14 |
-| DS-46 | Azkar English | `github.com/fitrahive/dua-dhikr` (MIT, 2025-11-29) | small | MIT | ✅✅✅✅ | Bundled [P2] | ATTR-14 |
-| DS-47 | Azkar **Urdu** (~150 core duas) | Commissioned translation + scholar review (PERM-24); alternative HadeethEnc with permission (PERM-19) | small | `commissioned` / `written_permission` | ✅✅⏳⏳ | Bundled [P2] | ATTR-14 |
-| DS-48 | **PK month-start feed** (Hijri override, D-15) | Ours; owner updates after each Central Ruet-e-Hilal Committee announcement; Ed25519-signed JSON on R2 | < 2 KB | `own_work` (public facts) | ✅✅✅✅ | Remote feed (daily fetch, cached) | ATTR-16 |
-| DS-49 | Hijri events table (neutral labels, toggles) | Ours (r08 §2.7 list) | < 5 KB | `own_work` | ✅✅✅✅ | Bundled [P2] | — |
-| DS-50 | OEM battery guidance (Adhan health check) | `https://dontkillmyapp.com/api/v2/{vendor}.json` | small | "licenced under CC-BY … free to be shared, adapted, even commercially" with attribution | ✅✅✅✅ | Bundled snapshot [P2] | ATTR-13 |
+| DS-44 | **GeoNames cities15000** (34,173 cities; PK 372; Urdu alternate names) | `https://download.geonames.org/export/dump/cities15000.zip` (3.36 MB), retrieved date + SHA-256 | 3.14 MB SQLite / 1.49 MB zip (cols: id, name, ascii, Arabic-script alt names, lat, lon, cc, admin1, tz, population) | "licensed under a Creative Commons Attribution 4.0 License" | ✅✅✅✅ | Bundled `cities` pack (doc 04 §7.3) [P2 · v1.0] | ATTR-12 |
+| DS-45 | **Azkar Arabic corpus** | `github.com/osamayy/azkar-db` (2024-09-19), 345 rows / 135 categories | small | README: «هذه الملفات بدون رخصة استخدام، يحق لك فعل ما تريد بها مجانا…» (public-domain dedication) | ✅✅✅✅ | Bundled `azkar` pack (doc 04 §7.3) [P2 · v1.1; Manzil-dua part v1.0-stretch] (curated subset + hadith refs) | ATTR-14 |
+| DS-46 | Azkar English | `github.com/fitrahive/dua-dhikr` (MIT, 2025-11-29) | small | MIT | ✅✅✅✅ | Bundled `azkar` pack [P2 · v1.1] | ATTR-14 |
+| DS-47 | Azkar **Urdu** (~150 core duas) | Commissioned translation + scholar review (PERM-24); alternative HadeethEnc with permission (PERM-19) | small | `commissioned` / `written_permission` | ✅✅⏳⏳ | Bundled `azkar` pack [P2 · v1.1] | ATTR-14 |
+| DS-48 | **PK month-start feed** (Hijri override, D-15) | Ours; owner updates after each Central Ruet-e-Hilal Committee announcement; Ed25519-signed JSON on R2 (detached `.sig`, D-30) | < 2 KB | `own_work` (public facts) | ✅✅✅✅ | Remote feed (daily fetch, cached) | ATTR-16 |
+| DS-49 | Hijri events table (neutral labels, toggles) | Ours (r08 §2.7 list) | < 5 KB | `own_work` | ✅✅✅✅ | Bundled [P2 · v1.0] | — |
+| DS-50 | OEM battery guidance (Adhan health check) | `https://dontkillmyapp.com/api/v2/{vendor}.json` | small | "licenced under CC-BY … free to be shared, adapted, even commercially" with attribution | ✅✅✅✅ | Bundled snapshot [P2 · v1.1 with the adhan health check] | ATTR-13 |
 | DS-51 | Excluded: hisnmuslim.com API (no licence), Seen-Arabic English (MIT label over hisnmuslim/sunnah.com text — use only its structure and `source` refs), Darussalam Urdu Hisn-ul-Muslim (©) | — | — | — | ❌ | — | — |
 
 ### 2.7 Code and libraries (summary; detail in [doc 04](04-architecture.md))
@@ -166,44 +170,51 @@ Never used: QuranicAudio ("you may not use these files for commercial purposes";
 
 ## 3. Licence matrix by build type
 
-| Content | personal | beta | public-free (v1.0) | monetized (v1.5+) | Gate / condition |
+| Content | PERSONAL | BETA (closed test) | PUBLIC (v1.0) | PUBLIC + MONETIZED (v1.5+) | Gate / condition |
 |---|---|---|---|---|---|
 | Tanzil Uthmani / Simple-Clean / metadata (DS-01–03) | ✅ | ✅ | ✅ | ✅ | Verbatim; ATTR-01/02 |
-| DK token text (DS-04) | ✅ | ✅ | ✅ after G1 | ⏳ G1 grant must cover commercial use of 565/DK text, or PERM-03 consent | MIT + upstream notice |
-| QUL 16-line layout (DS-05/06) | ✅ (owner's download) | ✅ | ✅ after **G1** + **G5** | ⏳ only if G1 grant covers commercial | else fallback clean-room (§5.3) |
-| 13/15-line layouts (DS-07/08) [P3] | ✅ | ✅ | after G1 + own G5 | as DS-05 | each layout its own certificate |
-| Curated metadata (DS-11–19) | ✅ | ✅ | ✅ (DS-15 all 90 verified; DS-17 all 114 proofed) | ✅ | G5 covers metadata |
+| DK token text (DS-04) | ✅ | ✅ after G1 (or PERM-02 under fallback E) | ✅ after G1 | ⏳ G1 grant must cover commercial use of 565/DK text, or PERM-03 consent | MIT + upstream notice |
+| QUL 16-line layout (DS-05/06) | ✅ (owner's download) | ✅ after **G1** only (else the clean-room layout) | ✅ after **G1** + **G5** | ⏳ only if G1 grant covers commercial | else fallback clean-room (§5.3) |
+| 13/15-line layouts (DS-07/08) [P3] | ✅ | after G1 | after G1 + own G5 | as DS-05 | each layout its own certificate |
+| Curated metadata (DS-11–19) | ✅ | ✅ once DS-15 all 90 verified and DS-17 all 114 proofed | ✅ (same) | ✅ | G5 covers metadata |
 | QuranEnc translations/tafsir (DS-20, 21, 25–30) | ✅ | ✅ | ✅ | ✅ (no ads ever) | keep-updated job; no modification |
 | Tanzil-sourced packs (DS-22–24, 27-interim, 33) | ✅ | ✅ | ✅ | ❌ | PERM-11 or own PD transcription before IAP |
 | Permission-gated works (DS-31/32) | dev only | ❌ | after permission | per grant | PERM-12…18 |
 | DK IndoPak / Noto Nastaliq fonts (DS-34/35) | ✅ | ✅ | ✅ | ✅ | OFL text shipped |
 | Commissioned art / adhan / Urdu duas (DS-36/37/43/47) | ✅ | ✅ | ✅ (signed assignment on file) | ✅ | PERM-22/23/24 |
-| mp3quran gapless + our timing (DS-38/39) | ✅ | ✅ | ✅ | ⚠️ ✅ by host grant; re-check in v1.5 audit | **G2**: evidence archived (PERM-07); no refusal from PERM-04 |
-| Gapped everyayah / i.n. (DS-40) | ✅ | ✅ | ⏳ after PERM-05 (+PERM-04) | ⏳ | `PENDING` |
+| mp3quran gapless + our timing (DS-38/39), `HOST_GRANT` | ✅ | ✅ | ✅ | ⚠️ ✅ by host grant; re-check in v1.5 audit | **G2** (2027-01-04): evidence archived (PERM-07); no refusal from PERM-04 |
+| Gapped everyayah / i.n. (DS-40) | ✅ | ✅ (`PENDING` is allowed in BETA) | ⏳ after PERM-05 (+PERM-04) | ⏳ | `PENDING` |
 | King Fahd Complex self-hosted (DS-41) | ✅ | ✅ | ⏳ (§5.2 rule) | ⏳ scope in PERM-06 | **G2** |
 | Personal-only audio (DS-42) | ✅ | ❌ | ❌ | ❌ | PERM-05/08/09 |
 | GeoNames, DontKillMyApp, azkar-db, fitrahive, CC0 adhan (DS-44–46, 50) | ✅ | ✅ | ✅ | ✅ | attribution |
 | QF / quran.com content | ❌ bundled | ❌ | ❌ | ❌ | User-API sync (F-BM-07, P3) carries no content |
 
-**What monetization removes** (v1.5 commercial-content audit, owned by [doc 11](11-release-compliance-business.md)): DS-22/23/24/33 Tanzil files (replace or get PERM-11), any `PENDING` audio, DS-04/05 unless the G1 grant covers commercial use, and anything whose `monetizedScopeConfirmed` is false. Reading, listening, indexes and downloads remain free in every build (D-17).
+**What monetization removes** (v1.5 commercial-content audit, owned by [doc 11](11-release-compliance-business.md)): DS-22/23/24/33 Tanzil files (replace or get PERM-11), DS-04/05 unless the G1 grant covers commercial use, and anything whose `commercialOk` the audit has not confirmed. (`PENDING` audio is already absent from every PUBLIC build.) Reading, listening, indexes and downloads remain free in every build (D-17).
 
 ### 3.1 CI enforcement
 
+The Gradle task is `verifyContentEligibility<Variant>` ([doc 04 §11.3](04-architecture.md)); the same check runs in the pipeline's publish step ([doc 08](08-data-pipelines.md)) and on device (`ContentPolicy`).
 ```
-for variant in releaseVariants:                       # flavour × buildClass (Gradle property criterion.buildClass)
-  cls = variant.buildClass                            # personal | beta | public | monetized
-  for item in bundledArtefacts(variant) + catalogueEntries(channel(cls)) + packIndexEntries(channel(cls)):
+for variant in releaseVariants:                       # distribution {play, foss} × tier {personal, public} (doc 04 §11)
+  tier      = variant.CONTENT_TIER                    # PERSONAL | BETA | PUBLIC (public flavor = BETA unless -Pcriterion.release=production)
+  monetized = variant.MONETIZED                       # -Pcriterion.monetized=true (v1.5+, play only)
+  for item in bundledArtefacts(variant) + catalogueEntries(channel(tier)) + packIndexEntries(channel(tier)):
     rec = item.licence
-    require(rec.licenceName and rec.attributionEn and rec.sourceUrl and rec.sha256Source, item)
-    require(derivedEligibility(rec)[cls] == rec.eligible[cls], item)        # manifest must match derivation
-    require(rec.eligible[cls], item)
-    for g in rec.requiredGates: require(permissions.yml.gates[g].cleared or cls in {personal, beta}, item)
-  require(no host in sources.lock.json matches QF_HOSTS)
+    require(rec.licenceName and rec.attributionEn and rec.sourceUrl and rec.sha256Source and rec.basis, item)
+    require(rec.licenceStatus != REVOKED and not rec.disabled, item)
+    require(derivedTiers(rec) == rec.eligibleTiers, item)                    # manifest must match §1.2 derivation
+    require(tier in rec.eligibleTiers, item)
+    require(not monetized or rec.commercialOk, item)
+    for g in rec.requiredGates:                                             # BETA is exempt from every gate except G1
+      require(permissions.yml.gates[g].cleared or tier == PERSONAL or (tier == BETA and g != "G1"), item)
+  if tier != PERSONAL:
+    require(bundled layout pack is G1-cleared or clean-room)               # never a QUL-derived layout before G1
+  require(no host in data/pins.lock matches QF_HOSTS)
   require(no image asset larger than 200 KB under assets/mushaf/)      # scans can't sneak in
   require(attributionsComplete(variant))                               # every shipped DS has an ATTR row
 ```
-- The remote catalogue and pack index are **channel-split** (`public`, `beta`, `personal` files, D-24 hosting); the app also filters by `BuildConfig.CONTENT_CLASS` at runtime (defence in depth). CI fails if a `public` file lists an item with `eligible.publicFree = false`.
-- Release builds (`public`, `monetized`) also fail unless `permissions.yml` shows G1 cleared when DS-05 is bundled, and a G5 certificate exists for the bundled layout + `content_version`.
+- The remote catalogue and pack index are **channel-split** (`public` and `beta` files on R2, D-24 hosting). The `personal` channel is **never uploaded to R2**: personal-only items are bundled into personal APKs or fetched from their original hosts via the personal overlay (doc 04 §11.2). The app also filters by `BuildConfig.CONTENT_TIER` + `BuildConfig.MONETIZED` at runtime (defence in depth). CI fails if a `public` file lists an item whose `eligibleTiers` lacks `PUBLIC`.
+- PUBLIC builds (`-Pcriterion.release=production`) also fail unless `permissions.yml` shows G1 cleared when a QUL-derived layout (DS-05) is bundled, and a G5 certificate exists for the bundled layout + `content_version` whose `certified_pages.json` per-page hashes match the build ([doc 05](05-mushaf-rendering-engine.md), [doc 08](08-data-pipelines.md)).
 
 ---
 
@@ -211,19 +222,20 @@ for variant in releaseVariants:                       # flavour × buildClass (G
 
 ### 4.1 Licence object (embedded in pack `index.json`, `catalogue.json` and the content-DB `source` table)
 
+Field names follow D-29 ([doc 12](12-decisions-risks.md)). The catalogue serializes `eligibleTiers` as `buildEligibility` ([doc 06](06-audio-engine.md)).
+
 ```kotlin
-@Serializable enum class LicenceStatus { PERMITTED, PENDING, PERSONAL_ONLY }
-@Serializable enum class LicenceBasis { open_licence, public_domain, host_grant, producer_grant,
-                                         written_permission, own_work, commissioned, none }
-@Serializable data class Eligibility(val personal: Boolean, val beta: Boolean,
-                                     val publicFree: Boolean, val monetized: Boolean)
+@Serializable enum class LicenceStatus { PERMITTED, HOST_GRANT, PENDING, PERSONAL_ONLY, REVOKED }   // D-29
+@Serializable enum class ContentTier { PERSONAL, BETA, PUBLIC }        // = BuildConfig.CONTENT_TIER (doc 04 §11)
 @Serializable data class LicenceInfo(
     val datasetId: String,              // "DS-20"
     val licenceName: String,            // "QuranEnc republish terms (7 conditions)"
     val licenceUrl: String,             // "https://quranenc.com/en/home/api/"
-    val basis: LicenceBasis,
+    val basis: String,                  // free text, starts with a §1.2 token: "open_licence: QuranEnc terms 1–7"
     val licenceStatus: LicenceStatus,
-    val commercialOk: Boolean,
+    val eligibleTiers: Set<ContentTier>,                  // derived per §1.2; CI re-derives and compares
+    val commercialOk: Boolean,                            // MONETIZED builds require true
+    val fossOk: Boolean = true,                           // foss flavor (doc 11)
     val noModification: Boolean,
     val mustKeepUpdated: Boolean,
     val linkBackRequired: Boolean,
@@ -236,43 +248,47 @@ for variant in releaseVariants:                       # flavour × buildClass (G
     val attributionId: String,          // "ATTR-08"
     val attributionEn: String,
     val attributionUr: String? = null,
-    val eligible: Eligibility,
-    val killed: Boolean = false,        // remote kill-switch (§8.8)
-    val killReason: String? = null,
+    val disabled: Boolean = false,      // kill-switch; carried as `disabled` in index.json / `enabled=false` in catalogue.json (§8.8)
+    val disabledReason: String? = null,
 )
 ```
 
-### 4.2 Content-DB tables (logical; final Room entities in [doc 04](04-architecture.md))
+### 4.2 Content-DB tables (logical; DDL owned by [doc 04 §7.2](04-architecture.md))
 
+Doc 04's `attribution` columns are used as-is. Columns marked `(+)` are additions this doc needs; **doc 04 must add them**: the `source` table for the licence records, and `section`/`sort`/`title_ur`/`licence_text_asset` so the table can drive the grouped Credits screen (F-PL-04).
 ```sql
-CREATE TABLE source(            -- one row per DS-xx shipped inside quran_content.db
-  dataset_id TEXT PRIMARY KEY, licence_json TEXT NOT NULL);           -- LicenceInfo JSON
-CREATE TABLE attribution(       -- drives F-PL-04
-  id TEXT PRIMARY KEY,          -- 'ATTR-01'
-  sort INT NOT NULL, section TEXT NOT NULL CHECK(section IN
-    ('quran_text','mushaf','metadata','translation','tafsir','audio','fonts_art','companion','proofreading','disclaimer','code')),
-  title_en TEXT NOT NULL, title_ur TEXT NOT NULL,
-  body_en TEXT NOT NULL, body_ur TEXT,             -- licence names/notices stay English
-  url TEXT, licence_text_asset TEXT);              -- e.g. 'licenses/OFL-1.1.txt'
+CREATE TABLE source(            -- (+) one row per DS-xx shipped inside quran_content.db
+  dataset_id TEXT NOT NULL PRIMARY KEY, licence_json TEXT NOT NULL);  -- LicenceInfo JSON (§4.1)
+CREATE TABLE attribution(       -- drives F-PL-04; one row per credit string
+  dataset_id TEXT NOT NULL PRIMARY KEY,   -- holds the credit-string id, e.g. 'ATTR-01'
+  title TEXT NOT NULL, source_url TEXT NOT NULL, licence TEXT NOT NULL, version TEXT NOT NULL,
+  notice_en TEXT NOT NULL, notice_ur TEXT,          -- licence names/notices stay English
+  section TEXT NOT NULL,        -- (+) 'quran_text'|'mushaf'|'metadata'|'translation'|'tafsir'|'audio'|'fonts_art'
+                                --     |'companion'|'proofreading'|'disclaimer'|'code' (pipeline-validated)
+  sort INTEGER NOT NULL,        -- (+)
+  title_ur TEXT,                -- (+) localized section/item title
+  licence_text_asset TEXT);     -- (+) e.g. 'licenses/OFL-1.1.txt'
 ```
-Packs carry the same `LicenceInfo` in their own `pack_info` table; reciters in `catalogue.json`. `content_version` is in `content_meta` (spike schema).
+Packs carry the same `LicenceInfo` in their own `pack_info` table (keys `licence`, `attribution`, doc 04 §7.3); reciters carry it in `catalogue.json` (doc 06). `content_version` is in `content_meta` (doc 04 §7.2).
 
 ### 4.3 Provenance files (repo + private store)
 
 | File | Where | Content |
 |---|---|---|
-| `sources.lock.json` | pipeline (doc 08) | per input: `dataset_id, url, version/commit, retrieved_at, sha256, size`; build fails on hash change without `--accept-update` |
-| `legal/permissions.yml` | repo | PERM-xx status machine (below); CI reads gate status |
+| `data/pins.lock` (TOML) | pipeline repo (doc 08 §3.2 owns the format) | per input: `dataset_id, url, version/commit, retrieved_at, sha256, size`; build fails on hash change without an explicit update |
+| `data/legal/permissions.yml` | repo | PERM-xx status machine (below); CI reads gate status |
 | `docs/legal/data-permissions.md` | repo | human log: dated summary of every send / reply / decision |
 | `docs/legal/provenance-log.md` | repo | dataset ledger: DS-xx, version, transformation applied, reviewer, decision, date; error reports (§8.7) |
 | Evidence store | private (`~/criterion-data/legal/evidence/`, backed up; **not** in repo, because it holds personal emails) | PDF snapshots of terms pages (Tanzil, QuranEnc, QUL copyright pages, mp3quran `/eng/privacy` + `/eng/contact-us`, Complex free-use page, alafasy.co ToS, alquran.cloud terms, GeoNames readme), each with date + SHA-256; raw email threads; signed contracts |
 
 ```yaml
-# legal/permissions.yml
+# data/legal/permissions.yml   (gate dates = doc 09 §2)
 schema: 1
 gates:
   G1: { cleared: false, by: [PERM-01], also: [PERM-02], decision_deadline: 2026-11-19 }
-  G2: { cleared: false, by: [PERM-07], blocking_refusals: [PERM-04, PERM-06], decision_deadline: 2027-01-15 }
+  G2: { cleared: false, by: [PERM-07], blocking_refusals: [PERM-04, PERM-06], decision_deadline: 2027-01-04 }   # catalogue freeze
+  G5: { cleared: false, by: [PERM-20], per_layout: {}, decision_deadline: 2027-01-18 }   # {layout: {content_version, sha256, date}}
+  G6: { cleared: false, by: [PERM-21], decision_deadline: 2027-01-11 }
 permissions:
   - id: PERM-01
     party: "Tarteel / QUL"
@@ -280,7 +296,7 @@ permissions:
     status: not-sent   # not-sent|sent|follow-up-1|follow-up-2|granted|granted-partial|refused|closed-no-reply
     scope: { free: null, monetized: null, attribution: null }
     sent: null
-    follow_ups: [2026-10-31, 2026-11-10]
+    follow_ups: [2026-11-02, 2026-11-12]
     evidence: []       # "evidence/perm-01/2026-11-03-reply.eml#sha256=…"
 ```
 
@@ -288,17 +304,17 @@ permissions:
 
 ## 5. Permission tracker
 
-All rows **status = not-sent** on 2026-10-19. Emails go from the owner's address with the working title "Criterion" (public brand pending G3; say so). Record every send/reply in `legal/permissions.yml` and `docs/legal/data-permissions.md` the same day.
+All rows **status = not-sent** on 2026-10-19. Gate dates follow the integrated schedule in [doc 09 §2](09-roadmap-backlog.md). The G1/G2 emails go out by 2026-10-21 (hard deadline 2026-10-23). Emails go from the owner's address with the working title "Criterion" (public brand pending G3; say so). Record every send/reply in `data/legal/permissions.yml` and `docs/legal/data-permissions.md` the same day.
 
 ### 5.1 Requests (emails)
 
 | ID | Party | What we ask | Contact (verification) | Gate | Datasets | Send by | Follow-up 1 | Follow-up 2 / decision | If refused / no reply |
 |---|---|---|---|---|---|---|---|---|---|
-| PERM-01 | **Tarteel / QUL** | Bundle res. 11 (+313, 12) and script 565/59 offline; free + supporter-IAP scope; attribution; upstream holders | `support@tarteel.ai` cc `naveed.ahmad@tarteel.ai` [verified g01] + public GitHub issue on `TarteelAI/quranic-universal-library` | **G1** | DS-04–08 | 2026-10-21 | 2026-10-31 | 2026-11-10 (+ QUL Discord); **decide 2026-11-19** | Start clean-room Taj-16 (fallback E) 2026-11-20 |
-| PERM-02 | **DigitalKhatt — Dr Amine Anane** | Confirm MIT covers text + 15-line breaks; was QUL relicensing agreed; 16-line plans; U+202E at 1:7:4 | `ananeamine@gmail.com` [verified: git author] ; GitHub @DigitalKhatt | **G1** | DS-04, DS-08, DS-34 | 2026-10-21 | 2026-10-31 | 2026-11-10 | G1 clears on PERM-01 alone if its grant names 565/DK text; log no-reply |
+| PERM-01 | **Tarteel / QUL** | Bundle res. 11 (+313, 12) and script 565/59 offline; free + supporter-IAP scope; attribution; upstream holders | `support@tarteel.ai` cc `naveed.ahmad@tarteel.ai` [verified g01] + public GitHub issue on `TarteelAI/quranic-universal-library` | **G1** | DS-04–08 | 2026-10-21 | 2026-11-02 | 2026-11-12 (+ QUL Discord); **decide 2026-11-19** | Start clean-room Taj-16 (fallback E) 2026-11-20 |
+| PERM-02 | **DigitalKhatt — Dr Amine Anane** | Confirm MIT covers text + 15-line breaks; was QUL relicensing agreed; 16-line plans; U+202E at 1:7:4 | `ananeamine@gmail.com` [verified: git author] ; GitHub @DigitalKhatt | **G1** | DS-04, DS-08, DS-34 | 2026-10-21 | 2026-11-02 | 2026-11-12 | G1 clears on PERM-01 alone if its grant names 565/DK text; log no-reply |
 | PERM-03 | **QuranWBW — Ayman Siddiqui** | Consent + credit wording for the DK-transformed Indo-Pak script; WBW Urdu/English licence (P4) | quranwbw.com contact / GitHub `marwan/quranwbw` [address unverified — find in P0] | G1 (courtesy); monetized | DS-04, DS-32 | 2026-10-21 | 2026-11-04 | 2026-11-18 | Credit anyway; DS-04 `monetized=false`; no WBW |
-| PERM-04 | **Alafasy Berhad** | Stream + in-app offline save of Alafasy (mp3quran gapless; everyayah per-ayah); credit wording; R2 mirror | `ai@alafasy.co`, +603 8682 3105 [verified g03] | **G2** | DS-38/40 (Alafasy) | 2026-10-21 | 2026-11-04 | 2026-11-18; G2 decision 2027-01-15 | **Refusal ⇒ remove Alafasy; default reciter = Saad Al-Ghamdi (read 30).** No reply ⇒ ship (host grant), 48 h removal promise |
-| PERM-05 | **Quran Foundation** (runs everyayah support, quranicaudio, QDC) | everyayah per-ayah sets (all DS-40 rows, Husary Muallim, Yasser 128) for stream + offline; does the 1-week storage cap apply to audio files; heads-up on future Connected App (F-BM-07) | `developers@quran.com` [verified]; `info@quran.foundation`; desk `https://quran.zendesk.com/hc/en-us` | **G2** (gapped layer) | DS-40, DS-42 | 2026-10-21 | 2026-11-04 | 2026-11-18 | Gapped stays `PENDING` (personal/beta); Muallim personal |
+| PERM-04 | **Alafasy Berhad** | Stream + in-app offline save of Alafasy (mp3quran gapless; everyayah per-ayah); credit wording; R2 mirror | `ai@alafasy.co`, +603 8682 3105 [verified g03] | **G2** | DS-38/40 (Alafasy) | 2026-10-21 | 2026-11-04 | 2026-11-18; G2 decision 2027-01-04 | **Refusal ⇒ remove Alafasy; default reciter = Saad Al-Ghamdi (read 30).** No reply ⇒ ship (host grant), 48 h removal promise |
+| PERM-05 | **Quran Foundation** (runs everyayah support, quranicaudio, QDC) | everyayah per-ayah sets (all DS-40 rows, Husary Muallim, Yasser 128) for stream + offline; does the 1-week storage cap apply to audio files; heads-up on future Connected App (F-BM-07) | `developers@quran.com` [verified]; `info@quran.foundation`; desk `https://quran.zendesk.com/hc/en-us` | **G2** (gapped layer) | DS-40, DS-42 | 2026-10-21 | 2026-11-04 | 2026-11-18 | Gapped stays `PENDING` (PERSONAL + BETA, never PUBLIC); Muallim personal |
 | PERM-06 | **King Fahd Glorious Qur'an Printing Complex** | Confirm free-use statement in writing; official ZIP links; R2 mirror; attribution; whether scope includes an app with optional IAP | `info@qurancomplex.gov.sa` [unverified]; owner opens site from Pakistan, saves licence page as PDF and downloads ZIPs on send day | **G2** | DS-41 | 2026-10-21 (EN + AR) | 2026-11-04 | 2026-11-18 | If archived page states free app use and no refusal by 2026-11-20 ⇒ ship self-hosted with ATTR-11d; else Ayyub/Muhanna stay on mp3quran |
 | PERM-07 | **mp3quran.net** (courtesy) | Notify use; archive `/eng/privacy` and `/eng/contact-us` as PDF + SHA-256 + date (evidence for Play review) | form `https://www.mp3quran.net/eng/contact-us` (no email) | **G2** (evidence) | DS-38/39 | 2026-10-21 | — | — | n/a (grant already public) |
 | PERM-08 | **Hi-Tech Music Ltd** (℗ 1998 Urdu album) | Public use of Shamshad Ali Khan Urdu translation audio (F-AU-10), per ayah; licence terms/fee | `info@hi-techmusic.com` (UK), `h.azmat@hi-techmusic.com` (PK) [verified: label profile; possibly stale] | G2 (only if public) | DS-42 | 2026-12-01 | 2026-12-15 | 2027-01-05 | Personal only; public alternative: Complex Urdu meanings audio (Fatiha + Juz 'Amma only) |
@@ -320,22 +336,22 @@ Not emailed: **Islamic Network** (declines individual confirmations — d/291, d
 
 | ID | Engagement | Deliverable | Owner action / deadline | Gate |
 |---|---|---|---|---|
-| PERM-20 | **Hafiz/Qari proofreader** (Moulvi Fazil or qualified Qari who is also a Hafiz — Punjab Act s.5(3) wording) | Full proof of 548 pages + metadata; signed certificate (§8.6); 15–20 h | Identify by 2026-11-30; review window 2026-12-07 → 2027-01-04 | **G5** |
-| PERM-21 | **Pakistani IP / media lawyer** | Written advice on §10 questions | Engage by 2026-11-16; advice by 2026-12-15 | **G6** |
+| PERM-20 | **Hafiz/Qari proofreader** (Moulvi Fazil or qualified Qari who is also a Hafiz — Punjab Act s.5(3) wording) | Full proof of 548 pages + metadata; signed certificate (§8.6); 15–20 h + round 2 | Contract by 2026-11-16; round 1 (proof PDF) 2026-12-01 → 12-21; round 2 (device-rendered captures) 2027-01-05 → 01-15; certificate by **2027-01-18** | **G5** |
+| PERM-21 | **Pakistani IP / media lawyer** | Written advice on §10 questions | Engage by 2026-11-16 (latest 2026-11-30); ask for advice by 2026-12-15; written advice by **2027-01-11** (G6) | **G6** |
 | PERM-22 | **Muezzin** (Pakistani) | 4 adhan clips; written copyright assignment + consent to credit name | Contract by 2026-12-01; recordings by 2026-12-31 | — |
 | PERM-23 | **Ornament/vector artist** | DS-36 art set; assignment of copyright; originality warranty (no traced scans, no third-party or unlicensed assets; AI-tool use disclosed) | Brief by 2026-11-02; interim self-drawn frame for P1; final by 2026-12-14 | — |
 | PERM-24 | **Urdu dua translator + scholar reviewer** | ~150 core duas (Urdu, optional Roman Urdu) with hadith references; assignment | Contract by 2026-11-23; delivery by 2027-01-04 | — |
 | PERM-25 | **Content reviewer** (Sunni Alim from a recognized institution; optional second reviewer from a different maslak) | Approves translation list, labels, azkar, event wording (§8) | Appoint by 2026-11-16 | — |
-| PERM-26 | **Auqaf Punjab / Punjab Quran Board** inquiry | Whether app review/registration is required; fees/timeline | Only after PERM-21 advice (decide 2026-12-15) | **G6** |
+| PERM-26 | **Auqaf Punjab / Punjab Quran Board** inquiry | Whether app review/registration is required; fees/timeline | Only after PERM-21 advice (decide ≤ 2027-01-11) | **G6** |
 
 ### 5.3 Gate clearance rules (content side)
 
 | Gate | Cleared when | Fallback |
 |---|---|---|
-| **G1** | PERM-01 written grant covering res. 11 (and 565 or the DK-derived text) for a free app is on file; PERM-02 answered **or** PERM-01's grant names the DK/565 text. Scope "monetized" recorded separately. | No grant by **2026-11-19**: clean-room Taj-16 from two purchased Taj prints (g01 §2.8 E: ~6 h anchors + 40–60 h corrections + 15–20 h hafiz QA; operators never open QUL/Waqar/QuranApp 16-line data). Personal/beta builds keep using the owner's QUL download meanwhile. |
-| **G2** | PERM-07 evidence archived; PERM-04/05/06 sent ≥ 30 days; no refusal for any reciter in the public catalogue; every public reciter row has `attribution` + `licenceStatus = PERMITTED`. Gapped layer goes public only on PERM-05 grant. | Drop refused reciters; Ghamdi becomes default if Alafasy refuses. |
-| **G5** | Signed certificate per layout + `content_version` (§8.6). | No public release of that layout. |
-| **G6** | PERM-21 written advice received and its actions logged as done. | Ship to closed testers only (D-25). |
+| **G1** (2026-11-19) | PERM-01 written grant covering res. 11 (and 565 or the DK-derived text) for a free app is on file; PERM-02 answered **or** PERM-01's grant names the DK/565 text. Scope "monetized" recorded separately. | No grant by **2026-11-19**: clean-room Taj-16 from two purchased Taj prints, starting 2026-11-20 (g01 §2.8 E: ~6 h anchors + 40–60 h corrections + 15–20 h hafiz QA; ≈ 7 weeks elapsed, doc 09). Operators never open QUL/Waqar/QuranApp 16-line data, so the operator is a **second person, not the owner** (the owner has seen QUL data). Under fallback E the word text stays DS-04 (MIT): its `requiredGates` drops G1 and its `basis` becomes `open_licence: MIT @4213fab + PERM-02 reply` (L6 covers the upstream QuranWBW notice). The owner must approve this re-basing in the decision log (doc 12). Only PERSONAL builds keep using the owner's QUL download; BETA (closed-test) builds carry no QUL-derived layout until G1 is granted, so the closed test waits for the clean-room pack. |
+| **G2** (2027-01-04, catalogue freeze) | PERM-07 evidence archived; PERM-04/05/06 sent ≥ 30 days; no refusal for any reciter in the public catalogue; every public reciter row has `attribution` + `licenceStatus` ∈ {`PERMITTED`, `HOST_GRANT`}. Gapped layer goes public only on PERM-05 grant. | Drop refused reciters (`REVOKED`); Ghamdi becomes default if Alafasy refuses. |
+| **G5** (2027-01-18) | Signed certificate per layout + `content_version` (§8.6), bound to the text layer via `certified_pages.json` per-page hashes. | No public release of that layout; the BETA banner "proofreading in progress" stays. |
+| **G6** (2027-01-11) | PERM-21 written advice received and its actions logged as done. | Ship to closed testers only (D-25). |
 
 ```mermaid
 gantt
@@ -343,16 +359,19 @@ gantt
   title Permissions & content gates (2026-10 → 2027-01)
   section G1 mushaf
   PERM-01/02/03 sent           :milestone, 2026-10-21, 0d
-  Follow-ups                    :2026-10-31, 2026-11-10
+  Follow-ups                    :2026-11-02, 2026-11-12
   G1 decision                   :milestone, 2026-11-19, 0d
-  Fallback E if needed          :2026-11-20, 21d
+  Fallback E if needed          :2026-11-20, 49d
   section G2 audio
   PERM-04..07 sent              :milestone, 2026-10-21, 0d
   Follow-ups                    :2026-11-04, 2026-11-18
-  G2 decision                   :milestone, 2027-01-15, 0d
+  G2 catalogue freeze           :milestone, 2027-01-04, 0d
   section G5/G6
-  Proofreading window           :2026-12-07, 2027-01-04
-  Legal advice                  :2026-11-16, 2026-12-15
+  Proofreading round 1          :2026-12-01, 2026-12-21
+  Proofreading round 2          :2027-01-05, 2027-01-15
+  G5 certificate                :milestone, 2027-01-18, 0d
+  Legal advice                  :2026-11-16, 2027-01-11
+  G6 decision                   :milestone, 2027-01-11, 0d
 ```
 
 ---
@@ -493,21 +512,23 @@ Placeholders: `[Name]`, `[email]`, `[Play developer name]`, `[website]`. Send pl
 ### 7.1 Keys, numbering and page labels
 
 - **Verse key = Kufan** `surah:ayah` (6,236 verses; `ayah_id` 1…6236 in mushaf order). Every bookmark, note, audio item, translation row, search hit and khatam record keys on it. **1:1 is the basmala** (Kufan count).
-- **Word table** = DK token stream: 83,669 tokens (77,433 words + 6,236 ayah-end tokens). Mapping to QUL word keys is identity except **72:16** (QUL position 1 = DK tokens 1–2; DK p ≥ 3 → QUL p − 1). Skeleton-diff whitelist {4:112:3, 18:19:34, 59:13:1}; 59:13:1 and 27:21 spellings are decided by the G5 proofreader against the Taj print.
-- **Pages** (Taj-16): `page_index` 1…548 (QUL index, stored); `page_label = page_index + 1` (2…549) shown and accepted everywhere a user sees or types a page number (toolbar, Go-to-page, bookmarks, indexes, share text). Rule proven on 114 surah-index entries + 15 sajda entries + ~25 headers (g02 §2.2). Printed p.1 is the title page (no QUL equivalent). Per-mushaf `page_label_offset` (Taj-16 = 1); other layouts' offsets are verified before they ship.
-- **ayah_marker** (6,354 rows = 6,236 Kufan ends + 118 «۵» disputed ends):
+- **Word table** = DK token stream: 83,669 tokens (77,433 words + 6,236 ayah-end tokens), stored as `word` in `quran_content.db` (`word_index` 1…83,669 = the canonical token id that mushaf packs, timing and hifz key on; doc 04 §7.2). Mapping to QUL word keys is identity except **72:16** (QUL position 1 = DK tokens 1–2; DK p ≥ 3 → QUL p − 1). Skeleton-diff whitelist {4:112:3, 18:19:34, 59:13:1}; 59:13:1 and 27:21 spellings are decided by the G5 proofreader against the Taj print.
+- **Pages** (Taj-16): `page_index` 1…548 (QUL index, stored); `page_label = page_index + 1` (2…549) shown and accepted everywhere a user sees or types a page number (toolbar, Go-to-page, bookmarks, indexes, share text). Rule proven on 114 surah-index entries + 15 sajda entries + ~25 headers (g02 §2.2). Printed p.1 is the title page (no QUL equivalent). Per-mushaf `page_label_offset` (Taj-16 = 1); other layouts' offsets are verified before they ship. Mushaf identity: `MushafId.INDOPAK_16_TAJ` (code `indopak16_taj`, numeric id 1; doc 04 §5).
+- **ayah_marker** (6,354 rows = 6,236 Kufan ends + 118 «۵» disputed ends) is a property of the script, not of the layout, so it lives in **`quran_content.db`** (logical DDL below; doc 04 §7.2 owns the Room entity). The layout-specific Taj Fatiha override lives in the **mushaf layout pack** (`ayah_display_override`; DDL owned by doc 05, built by doc 08). The pack holds only the marker tokens' positions.
 
 ```sql
+-- quran_content.db (doc 04 §7.2)
 CREATE TABLE ayah_marker(
-  script_id INT NOT NULL,          -- 1 = DK IndoPak
-  word_index INT NOT NULL,         -- end token, or the word carrying U+08E2
-  surah INT NOT NULL, verse_ayah INT NOT NULL,   -- Kufan verse containing the token
-  display_number INT,              -- Kufan ayah number for ends; NULL for disputed marks
-  is_kufan_end INT NOT NULL,       -- exactly 6,236 rows
-  disputed_end INT NOT NULL,       -- exactly 118 rows; glyph only, never a boundary
-  PRIMARY KEY(script_id, word_index)) WITHOUT ROWID;
-CREATE TABLE ayah_display_override(mushaf_id INT, ayah_id INT, show_number INT,
-  PRIMARY KEY(mushaf_id, ayah_id)) WITHOUT ROWID;   -- taj16: 1:1..1:7 show_number = 0
+  script_id INTEGER NOT NULL,          -- 1 = DK IndoPak
+  word_index INTEGER NOT NULL,         -- end token, or the word carrying U+08E2
+  surah INTEGER NOT NULL, verse_ayah INTEGER NOT NULL,   -- Kufan verse containing the token
+  display_number INTEGER,              -- Kufan ayah number for ends (1:1 = 1); NULL for disputed marks
+  is_kufan_end INTEGER NOT NULL,       -- exactly 6,236 rows
+  disputed_end INTEGER NOT NULL,       -- exactly 118 rows; glyph only, never a boundary
+  PRIMARY KEY(script_id, word_index));
+-- mushaf layout pack (doc 05 / doc 08), layout-specific
+CREATE TABLE ayah_display_override(ayah_id INTEGER NOT NULL PRIMARY KEY,
+  show_number INTEGER NOT NULL);       -- indopak16_taj: 1:1..1:7 → 0 (seven empty circles)
 ```
   Invariants: `is_kufan_end XOR disputed_end`; `display_number = verse_ayah` for every end row (this replaces DK's shifted Fatiha digits); disputed rows have `display_number IS NULL`.
 - **Fatiha (Taj-faithful default)**: seven **empty** ayah circles including the basmala's; the «۵» sign with «لا» above after «اَنْعَمْتَ عَلَيْهِمْ» (1:7:4) — rendered from the token with DK's `U+202E ٦` removed (keep U+08E2; device test per g01); «ع» over the final circle; header «سورة الفاتحة مكية وهي سبع آيات». Optional setting "Number Fatiha ayahs" uses Kufan numbers (basmala = ۱ … ۷), never DK style (الحمد = ۱).
@@ -554,7 +575,7 @@ Start page: `page_index` → `page_label`. For n = 2…28 the start is 18n − 1
 
 Bold = the 7 Indo-Pak boundaries that differ from Madani juz (D-07). The Para table is the single source for the index (F-IX-02), page headers, khatam progress (F-BM-04) and "Play Para" ranges (F-AU-02); `juz_madani` is used only in Madani mode (P4). Para page spans: Para 1 = 1–19, Para 28 = 488–507, Para 29 = 508–527, Para 30 = 528–548. Margin label at each Para start (n ≥ 2): «الجزء» + ordinal — الثاني، الثالث، الرابع، الخامس، السادس، السابع، الثامن، التاسع، العاشر، الحادي عشر، الثاني عشر، الثالث عشر، الرابع عشر، الخامس عشر، السادس عشر، السابع عشر، الثامن عشر، التاسع عشر، العشرون، الحادي والعشرون، الثاني والعشرون، الثالث والعشرون، الرابع والعشرون، الخامس والعشرون، السادس والعشرون، السابع والعشرون، الثامن والعشرون، التاسع والعشرون، الثلاثون (✓ seen: الثاني, الثالث والعشرون, التاسع والعشرون; others proofed under G5).
 
-CSV: `para.csv(para_id,name_ar,name_header,name_roman,name_en,start_key,madani_start_key,start_page_index,ayah_count,ruku_count,margin_label_ar)`.
+CSV: `data/curated/paras.csv` (exact columns owned by doc 08 §3.3). It must carry every field of this table: para id, Arabic name, header form, Roman and English names, Indo-Pak and Madani start keys, Taj-16 start page index, ayah and ruku counts, margin label, and `verified_source`. It compiles into content-DB `para` (doc 04 §7.2).
 
 ### 7.3 Manzil table (DS-12)
 
@@ -578,14 +599,15 @@ Rule: `footer_manzil(page) = manzil of the page's last line` (verified on every 
 - **Per-Para counts** must equal: 16,16,17,14,17,14,19,17,18,17,16,16,19,22,21,17,17,17,19,16,19,18,17,19,20,18,20,20,22,39.
 
 ```sql
-CREATE TABLE ruku(id INTEGER PRIMARY KEY,          -- 1..558 mushaf order
-  surah INT NOT NULL, surah_ruku INT NOT NULL,      -- n1
-  first_ayah_id INT NOT NULL, last_ayah_id INT NOT NULL,
-  ayah_count INT NOT NULL,                          -- n2 (whole ruku)
-  para_id INT NOT NULL,                             -- Para containing last_ayah_id
-  para_ruku INT);                                   -- n3; NULL for Fatiha
+-- quran_content.db; column names per doc 04 §7.2
+CREATE TABLE ruku(id INTEGER NOT NULL PRIMARY KEY,   -- 1..558 mushaf order
+  surah_id INTEGER NOT NULL, ruku_in_surah INTEGER NOT NULL,     -- n1
+  para_id INTEGER NOT NULL,                          -- Para containing end_ayah_id
+  ruku_in_para INTEGER,                              -- n3; NULL for Fatiha
+  start_ayah_id INTEGER NOT NULL, end_ayah_id INTEGER NOT NULL,
+  ayah_count INTEGER NOT NULL);                      -- n2 (whole ruku)
 ```
-Test fixture `ruku_print_samples.csv` = the 29 triples of g02 §2.3 (CI asserts equality). Ruku navigation (F-IX-04) and "Play ruku" use `first_ayah_id..last_ayah_id`.
+Test fixture `ruku_print_samples.csv` = the 29 triples of g02 §2.3 (CI asserts equality). Ruku navigation (F-IX-04) and "Play ruku" use `start_ayah_id..end_ayah_id`.
 
 ### 7.5 Sajda (DS-14) — 14 numbered + 22:77
 
@@ -608,14 +630,16 @@ Test fixture `ruku_print_samples.csv` = the 29 triples of g02 §2.3 (CI asserts 
 | 14 | 96:19 | 30 | العلق | 543 → 542 | السجدة |
 
 ```sql
-CREATE TABLE sajda(ayah_id INTEGER PRIMARY KEY, print_no INT,   -- NULL for 22:77
-  kind TEXT NOT NULL CHECK(kind IN ('hanafi','shafii_only')), label_ar TEXT NOT NULL);
+-- quran_content.db; column names per doc 04 §7.2 (`number` = print_no above)
+CREATE TABLE sajda(ayah_id INTEGER NOT NULL PRIMARY KEY, number INTEGER,   -- NULL for 22:77
+  kind TEXT NOT NULL,                  -- 'hanafi' | 'shafii_only' (pipeline-validated)
+  label_ar TEXT);
 ```
-Never show Tanzil's "obligatory/recommended" types. The Sajda list (F-IX-06) shows print_no, surah, ayah, page label; 22:77 appears last-in-sequence with its print label and a neutral Urdu note «امام شافعیؒ کے نزدیک سجدہ».
+Never show Tanzil's "obligatory/recommended" types. The Sajda list (F-IX-06) shows the print number, surah, ayah, page label; 22:77 appears last-in-sequence with its print label and a neutral Urdu note «امام شافعیؒ کے نزدیک سجدہ».
 
 ### 7.6 Para quarters (DS-15) — 90 rows (ربع ¼ · نصف ½ · ثلٰثة ¾)
 
-Mark sits after the ayah-end of the listed ayah (or after `word_pos`). Cell = ayah (printed page·line where the mark is). ✓ = verified on the Taj scan; **✗→** = print correction applied; ○ = seed, **must be verified before public release** (53 rows; ≈ 45–60 min with the crop scripts; g02 expects ~4 errors). ᴿ = also a ruku end. Positions are **not** Madani rub-el-hizb (only 28/90 coincide). Seed values are factual positions from Waqar's list (`salasa_nisf_ruba_data.dart`), re-verified by us; Waqar's file itself is never shipped.
+Mark sits after the ayah-end of the listed ayah (or after `after_word_pos`). Cell = ayah (printed page·line where the mark is). ✓ = verified on the Taj scan; **✗→** = print correction applied; ○ = seed, **must be verified before the closed test (BETA) and public release** (53 rows; ≈ 45–60 min with the crop scripts; g02 expects ~4 errors). ᴿ = also a ruku end. Positions are **not** Madani rub-el-hizb (only 28/90 coincide). Seed values are factual positions from Waqar's list (`salasa_nisf_ruba_data.dart`), re-verified by us; Waqar's file itself is never shipped.
 
 | Para | ربع | نصف | ثلٰثة |
 |---|---|---|---|
@@ -650,20 +674,20 @@ Mark sits after the ayah-end of the listed ayah (or after `word_pos`). Cell = ay
 | 29 | 68:52ᴿ (513·11) ○ | 71:28ᴿ (519·4) ○ | 74:56ᴿ (524·7) ○ |
 | 30 | 82:19ᴿ (534·8) ✓ | 88:26ᴿ (539·6) ✓ | 97:5ᴿ (544·4) ✓ |
 
-Counts: 37 verified (incl. 3 corrections), 53 open. Page·line are **printed labels** (index + 1) predicted from layout 11; 6:73's `word_pos = 10` is [inferred] and must be confirmed against the word keys (if the word split differs, the mark goes after the word carrying the «۵» sign). Audio/"jump to quarter" for 6:73 starts at the ayah start with a note (F-IX-07, P2).
+Counts: 37 verified (incl. 3 corrections), 53 open. Page·line are **printed labels** (index + 1) predicted from layout 11; 6:73's `after_word_pos = 10` is [inferred] and must be confirmed against the word keys (if the word split differs, the mark goes after the word carrying the «۵» sign). Audio/"jump to quarter" for 6:73 starts at the ayah start with a note (F-IX-07, P2).
 
 ```sql
-CREATE TABLE para_quarter(para_id INT NOT NULL, quarter INT NOT NULL CHECK(quarter IN (1,2,3)),
-  ayah_id INT NOT NULL, word_pos INT,                 -- NULL = after ayah end
-  label_ar TEXT NOT NULL,                             -- 'الربع' | 'النصف' | 'الثلثة'
-  verified_source TEXT,                               -- e.g. 'taj16-scan p.70 L7'; NULL = unverified
+-- quran_content.db; column names per doc 04 §7.2; (+) = addition doc 04 must make
+CREATE TABLE para_quarter(para_id INTEGER NOT NULL, quarter INTEGER NOT NULL,   -- 1=ربع 2=نصف 3=ثلٰثة
+  ayah_id INTEGER NOT NULL, after_word_pos INTEGER,   -- NULL = after ayah end
+  verified_source TEXT,                               -- (+) e.g. 'taj16-scan p.70 L7'; NULL = unverified
   PRIMARY KEY(para_id, quarter));
 ```
-Release CI: `count(verified_source IS NULL) == 0` for public/monetized builds. Owner photographs 5 checkpoint pages of his own copy (labels 2, 39, 70, 115, 483) before data freeze, to catch edition variance (g02 §4).
+The margin label («الربع» | «النصف» | «الثلثة») is layout furniture in the mushaf pack (doc 05). Release CI: `count(verified_source IS NULL) == 0` for every public-flavor build, BETA and PUBLIC (doc 08 V-C15), so all 53 open rows must be verified before the closed test. Owner photographs 5 checkpoint pages of his own copy (labels 2, 39, 70, 115, 483) before data freeze, to catch edition variance (g02 §4).
 
 ### 7.7 Surah table and header text rules (DS-17)
 
-**Columns**: `surah_id, name_ar_print` (as printed in the Taj index/headers), `name_ur` (Urdu UI), `name_roman` (Pakistani spelling), `name_en` (standard transliteration), `meaning_ur`, `meaning_en`, `revelation_print ∈ {makki, madani}` (as printed in the header), `ayah_count` (Tanzil), `ruku_count` (558 set), `header_type`, `header_text_ar`, `verified_source`. Names and meanings are our own curated strings (do not copy QF payloads). Indo-Pak print names are primary in the Urdu UI, with the Madani-standard name as an alias for search: verified examples **17 = بنی اسرآءیل**, **41 = حٰمٓ السجدة**; others (e.g., 40, 76, 111) proofed against printed index leaves 555–556 under G5.
+**Columns** (content-DB `surah`, names per doc 04 §7.2): `id`, `name_ar` (as printed in the Taj index/headers), `name_ur` (Urdu UI), `name_roman` (Pakistani spelling), `name_en` (standard transliteration), `meaning_ur`, `meaning_en`, `revelation ∈ {makki, madani}` (as printed in the header), `ayah_count` (Tanzil), `ruku_count` (558 set). The layout-specific `header_type` and header text go to the mushaf pack's `surah_header` table (doc 05 owns the DDL and the variant encoding). The curated CSV `data/curated/surah_headers.csv` (doc 08) keeps `verified_source` per string. Names and meanings are our own curated strings (do not copy QF payloads). Indo-Pak print names are primary in the Urdu UI, with the Madani-standard name as an alias for search: verified examples **17 = بنی اسرآءیل**, **41 = حٰمٓ السجدة**; others (e.g., 40, 76, 111) proofed against printed index leaves 555–556 under G5.
 
 **Header types** (follow QUL line types; g02 §2.8):
 
@@ -680,38 +704,35 @@ Check: 2 + 80 + 31 + 1 = 114.
 
 ### 7.8 Page furniture (DS-18)
 
-```sql
-CREATE TABLE page_meta(mushaf_id INT NOT NULL, page_index INT NOT NULL,
-  template TEXT NOT NULL CHECK(template IN ('sarlauh','regular')),   -- index 1–2 = sarlauh
-  header_para_id INT NOT NULL,        -- Para of the page's last line
-  header_surah_ids TEXT NOT NULL,     -- all surahs with a header or ayah line on the page, e.g. '102,103,104'
-  footer_manzil INT NOT NULL,         -- manzil of the page's last line
-  outer_margin TEXT NOT NULL CHECK(outer_margin IN ('R','L')),        -- R iff page_label even
-  PRIMARY KEY(mushaf_id, page_index)) WITHOUT ROWID;
-```
+These are layout-specific rules. The pipeline writes them into the mushaf pack's `page` table, whose DDL and encodings are owned by [doc 05 §3.3](05-mushaf-rendering-engine.md); the strings themselves are drawn from `furniture_run`. The rules per page:
+
+| Rule (this doc) | Pack column (doc 05 `page`) |
+|---|---|
+| Template: `sarlauh` for indices 1–2, else `regular` | `template` |
+| Header Para = Para of the page's last line | `para_id` |
+| Header surahs = all surahs with a header or ayah line on the page, e.g. '102,103,104' | `surah_ids` |
+| Footer manzil = manzil of the page's last line | `manzil_id` |
+| Outer margin = right iff the page label is even | `outer_side` |
+
 - **Header** (above the frame, identical on odd and even pages): right = Para header form + Para number (e.g., «سیقول ۲»); centre = page label; left = surah name(s) + number(s). On label 2 the right slot reads «سورة».
 - **Footer**: «منزل N», centred under the frame, every page.
 - **Outer margin** (right on even labels, left on odd) holds ruku triples, quarter labels, «السجدة», «المنزل …», «الجزء …». Printed margin **waqf notes** («وقف لازم», «وقف غفران», «وقف النبي صلی اللہ علیہ وسلم», «وقف منزل») are **not captured in v1** (inline waqf signs come from the text); capture is a P3 task.
 - 16 ruled lines per page inside a double-rule frame with a vine band (DS-36 art).
-- Checkpoint for G5: label 509 (index 508) — confirm whether lines 1–2 hold the end of surah 66 (g01) or the Mulk header (g02), and set `header_surah_ids` accordingly.
+- Checkpoint for G5: label 509 (index 508) — confirm whether lines 1–2 hold the end of surah 66 (g01) or the Mulk header (g02), and set the page's header surahs (`surah_ids`) accordingly.
 
 ### 7.9 Aliases and popular passages (DS-19; F-IX-08, F-SR-03)
 
-```sql
-CREATE TABLE alias(alias_norm TEXT NOT NULL, lang TEXT NOT NULL,     -- 'roman'|'ur'|'ar'|'en'
-  target_type TEXT NOT NULL CHECK(target_type IN ('surah','range','playlist')),
-  target TEXT NOT NULL,                                               -- '36' | '2:255' | 'manzil_dua'
-  PRIMARY KEY(alias_norm, lang, target));
-```
-Roman folding before lookup: lowercase, `aa→a`, `ee→i`, `oo→u`, drop `'`, `-`, spaces (r05 §2.7.5). Seed (≥ 120 rows incl. spelling variants): yasin/yaseen/ya-sin/یس → 36; rahman/rehman → 55; mulk/tabarak → 67; waqia/waqiah → 56; kahf → 18; muzammil → 73; ayatul kursi/ayat al kursi/آیت الکرسی → 2:255; "last two ayat of baqarah"/amanar rasool → 2:285–286; manzil dua/منزل دعا → playlist `manzil_dua`; plus every surah's Roman, Urdu and Madani names.
+Stored in content-DB `alias` + `passage` + `passage_range` (DDL owned by doc 04 §7.2): `alias(term_norm, lang ∈ {roman, ur, ar, en}, target_type ∈ {surah, ayah, passage, para, manzil}, target_id, weight)`. Ranges and playlists are `passage` rows addressed by `code`, e.g. `ayatul-kursi`, `baqarah-285-286`, `manzil-dua` (18 ranges).
+
+Roman folding before lookup: lowercase, `aa→a`, `ee→i`, `oo→u`, drop `'`, `-`, spaces (r05 §2.7.5). Seed (≥ 120 rows incl. spelling variants): yasin/yaseen/ya-sin/یس → 36; rahman/rehman → 55; mulk/tabarak → 67; waqia/waqiah → 56; kahf → 18; muzammil → 73; ayatul kursi/ayat al kursi/آیت الکرسی → ayah 2:255; "last two ayat of baqarah"/amanar rasool → passage `baqarah-285-286`; manzil dua/منزل دعا → passage `manzil-dua`; plus every surah's Roman, Urdu and Madani names.
 
 **Quick-access list (F-IX-08)**: Yaseen (36), Ar-Rahman (55), Al-Mulk (67), Al-Waqi'ah (56), Al-Kahf (18), Ayatul Kursi (2:255), Manzil dua, last two ayat of Al-Baqarah (2:285–286).
 
-**Manzil dua playlist** (Kufan; compiled by Shaykh Zakariyya Kandhlawi per r08 [verified via search]; content-reviewer sign-off required): 1:1–7; 2:1–5; 2:163; 2:255–257; 2:284–286; 3:18; 3:26–27; 7:54–56; 17:110–111; 23:115–118; 37:1–11; 55:33–40; 59:21–24; 72:1–4; 109; 112; 113; 114.
+**Manzil dua passage** (`manzil-dua`, played as `PlayScope.Passage`; Kufan; compiled by Shaykh Zakariyya Kandhlawi per r08 [verified via search]; content-reviewer sign-off required): 1:1–7; 2:1–5; 2:163; 2:255–257; 2:284–286; 3:18; 3:26–27; 7:54–56; 17:110–111; 23:115–118; 37:1–11; 55:33–40; 59:21–24; 72:1–4; 109; 112; 113; 114.
 
 ### 7.10 Validation invariants (pipeline CI; doc 08 implements, doc 10 runs)
 
-114 surahs; 6,236 ayahs; per-surah counts = Tanzil; 83,669 DK tokens / 77,433 words / 6,236 ends / 118 U+08E2 / 558 U+08D6 / 15 U+08DB; 6,354 `ayah_marker` rows; 548 pages × 16 slots; every word exactly once and in order; Para starts at index 18n−16 (n = 2…28), 508, 528, all at page top; Para table monotonic and covering; ayahs-per-Para sum 6,236 and equal to §7.2; rukus 558 contiguous with per-Para counts = §7.4 and the 29 print samples; manzil start pages {1, 96, 187, 254, 330, 401, 466} and footers per §7.3; sajda 14 + 1 at the §7.5 pages; 90 quarters, strictly increasing within each Para, 0 unverified for release; 114 header strings present and `verified_source` non-null for release; DK ↔ Uthmani normalized-word agreement ≥ 97 % with the frozen whitelist (r05 §2.2.2); zero `.notdef` after shaping.
+114 surahs; 6,236 ayahs; per-surah counts = Tanzil; 83,669 DK tokens / 77,433 words / 6,236 ends / 118 U+08E2 / 558 U+08D6 / 15 U+08DB; 6,354 `ayah_marker` rows; 548 pages × 16 slots; every word exactly once and in order; Para 1 starts at index 1, Para n at index 18n−16 (n = 2…28 only), Paras 29/30 at 508/528, all at page top; Para table monotonic and covering; ayahs-per-Para sum 6,236 and equal to §7.2; rukus 558 contiguous with per-Para counts = §7.4 and the 29 print samples; manzil start pages {1, 96, 187, 254, 330, 401, 466} and footers per §7.3; sajda 14 + 1 at the §7.5 pages; 90 quarters, strictly increasing within each Para, 0 unverified for BETA and PUBLIC; 114 header strings present and `verified_source` non-null for BETA and PUBLIC; DK ↔ Uthmani normalized-word agreement ≥ 97 % with the frozen whitelist (r05 §2.2.2); zero `.notdef` after shaping.
 
 ---
 
@@ -725,12 +746,12 @@ A work is eligible only if **all** hold: (1) by a recognized Muslim scholar or i
 
 ### 8.2 Defaults and sect balance
 
-| Language | Default (bundled) | Downloadable (P2) | Later with permission |
+| Language | Default (bundled, v1.0) | Downloadable (P2 · ships v1.1) | Later with permission |
 |---|---|---|---|
 | Urdu | Junagarhi (+ Ahsan-ul-Bayan notes) | Jalandhari (general), Kanz-ul-Iman (Barelvi tradition) | Mahmud-ul-Hasan/Usmani (Deobandi; PD, needs transcription), Taqi Usmani, Maududi, Tahir-ul-Qadri, Israr Ahmad |
 | English | Saheeh International | Pickthall, Hilali-Khan | The Clear Quran, Taqi Usmani |
 
-From P2 (F-TR-03), the Urdu translation chooser is shown in onboarding/settings so users pick their own; the list order is alphabetical by translator, not by maslak. **Rationale**: Junagarhi is the only Urdu translation that is both bundle-safe and commercial-OK today; offering Jalandhari and Kanz-ul-Iman one tap away covers the main Pakistani audiences without permission requests (r05, r09).
+v1.0 ships only the D-09 bundle. From v1.1 (2027-03-22; F-TR-02 packs + F-TR-03 chooser, doc 09), the Urdu translation chooser is shown in onboarding/settings so users pick their own; the list order is alphabetical by translator, not by maslak. Until then the Junagarhi default may be read as Ahl-e-Hadith-associated (risk R-37, doc 12). The v1.0 mitigation is neutral labelling (§8.3), the published content policy, and a "more translations coming" note in the translation settings. **Rationale**: Junagarhi is the only Urdu translation that is both bundle-safe and commercial-OK today; offering Jalandhari and Kanz-ul-Iman one tap away covers the main Pakistani audiences without permission requests (r05, r09).
 
 ### 8.3 Labelling rules
 
@@ -756,12 +777,12 @@ Arabic is always on screen with any translation (no translation-only mode, Punja
 ### 8.6 Proofreading process and certificate (G5)
 
 **Process per layout** (budget 15–20 h reviewer + ~4 h dev fix loop):
-1. Pipeline renders every page deterministically to a PDF (`proof_<layout>_<content_version>.pdf`, SHA-256 recorded) plus a metadata sheet (Para/Manzil/ruku triples/sajda/quarters per page).
+1. Pipeline renders every page deterministically to a PDF (`proof_<layout>_<content_version>.pdf`, SHA-256 recorded) plus a metadata sheet (Para/Manzil/ruku triples/sajda/quarters per page) and each page's text-layer `page_hash` (word positions + glyph runs; doc 05 §3.5).
 2. Standard copy: Taj Company 16-line print (two purchased copies; record printing and the registration «11818-Copr.» if present).
 3. Pass 1 (proofreader): page-by-page, word-by-word comparison; errata sheet rows = `page_label, line, word, found, expected, category`. Mandatory focus list: Fatiha page, sar-lauh pages (labels 2–3), 59:13:1, 27:21, 72:16, p.529/530 (79 header/basmala), label 509 checkpoint, all 15 sajda pages, all 90 quarter marks, all 558 ruku triples (sampled ≥ 60 + all straddling cases), 114 header strings, 7 manzil footers.
 4. Dev fixes in the pipeline only (never hand-edit the DB); re-render changed pages; the proofreader re-checks every changed page.
-5. Second reviewer (optional but recommended) checks a 10 % page sample; > 1 % disagreement ⇒ re-review that Para.
-6. Certificate signed; scanned copy in the evidence store; `permissions.yml` gets `G5.<layout>: {content_version, sha256, date}`; Credits shows ATTR-07.
+5. Round 2 (2027-01-05 → 01-15, doc 09): the hafiz checks **device-rendered page captures** with the shipping ornaments. Every page changed since round 1 is re-read in full, and the headers, ayah markers and margin furniture are checked on all pages. Optionally, a second reviewer checks a 10 % page sample; > 1 % disagreement ⇒ re-review that Para.
+6. Certificate signed (target 2027-01-18); scanned copy in the evidence store; `data/legal/permissions.yml` gets `G5.per_layout.<layout>: {content_version, sha256, date}`; the certified `page_hash` list is written to `certified_pages.json`, which PUBLIC builds check (doc 05, doc 11 §5.4); Credits shows ATTR-07.
 7. Any later change touching Arabic text or metadata on a page ⇒ that page is re-proofed and a dated addendum issued before release.
 
 **Certificate template (Urdu + English, one page):**
@@ -772,37 +793,54 @@ Arabic is always on screen with any translation (no translation-only mode, Punja
 > Certificate no. {n} · Date {yyyy-mm-dd} · Signature · Witness (name, signature).
 > *(Private, not shown in app: CNIC number and contact details.)*
 
-### 8.7 Text-error reporting and SLA (F-PL-05, P2)
+### 8.7 Text-error reporting and SLA (F-PL-05, P2 · v1.0)
 
 - **Entry points**: ayah action sheet → "Report an error"; Settings → About → "Report a text error". The form pre-fills `content_version`, mushaf, page label/line, verse key, active translation pack + version, reciter + surah (for highlight issues), app version; user picks a category and may add a note.
 - **Transport (v1, no backend — D-24)**: an `ACTION_SENDTO` email to the errata address on our domain (set at G3), so nothing is sent without the user's explicit action; GitHub issue link as an alternative if the repo is public (G4).
-- **Severity and SLA** (clock starts at report receipt):
+- **Text fixes are app updates.** The content DB and the default layout pack are bundled, and the remote control plane never changes Quran text or layout (D-30). A `word_override` errata table exists only at **build time** (applied by the pipeline to the bundled pack, doc 08). Remote files can only annotate or disable (§8.8).
+- **Severity and SLA.** The S1 row is the D-22 text-error SLA ([doc 12](12-decisions-risks.md)). Triage runs from report receipt; the fix runs from confirmation. Every reporter is acknowledged ≤ 72 h.
 
-| Sev | Example | Acknowledge | Mitigation live | Fix shipped |
+| Sev | Example | Triage | Notice / mitigation live | Fix |
 |---|---|---|---|---|
-| S1 | Wrong/missing Arabic letter, mark or word in mushaf, search or copy text | 24 h | Signed advisory (banner on affected page/ayah) ≤ 24 h after confirmation | Corrected content DB in an expedited release submitted ≤ 48 h after confirmation; hafiz re-proof of affected pages; 100 % rollout |
-| S2 | Translation text error or misalignment | 48 h | Advisory or pack kill ≤ 24 h if misaligned | Our ingestion bug: pack re-published ≤ 7 days. Source error: forwarded to QuranEnc/Tanzil within 48 h (QuranEnc condition 5); we never patch text ourselves |
-| S3 | Metadata (ruku number, quarter, Para start, header string) | 48 h | — | Next release ≤ 14 days |
-| S4 | Audio/highlight mismatch | 48 h | Per-surah highlight disable ≤ 24 h | Timing pack rebuilt ≤ 7 days |
+| S1 — Quran text | Wrong/missing Arabic letter, mark or word in mushaf, search or copy text; wrong ayah marker or Surah/Para boundary in the mushaf | ≤ 24 h | Signed `notices.json` entry (page/ayah `warn`, or layout-pack `disable` if many pages) ≤ 48 h | **Corrected build submitted ≤ 72 h of confirmation** (content DB / bundled pack); hafiz re-proof of affected pages + certificate addendum; 100 % rollout |
+| S2 — translation (non-Quran-text) | Translation text error or misalignment | ≤ 48 h | Notice, or pack `disable` ≤ 48 h if misaligned | Our ingestion bug: pack re-published ≤ 7 days. Source error: forwarded to QuranEnc/Tanzil within 48 h (QuranEnc condition 5); we never patch text ourselves |
+| S3 — metadata (non-Quran-text) | Ruku number, quarter, Para start, header string | ≤ 48 h | Page `warn` notice if visible on the page | Next release ≤ 14 days (a header string printed on the mushaf page is treated as S1) |
+| S4 — audio (non-Quran-text) | Audio/highlight mismatch | ≤ 48 h | `surahHighlight` `disable` ≤ 24 h | Timing pack rebuilt ≤ 7 days |
 
 - Every report and its resolution is logged in `docs/legal/provenance-log.md` (no personal data — see §11).
 
-### 8.8 Kill-switch and advisory procedure
+### 8.8 Kill-switch and notice procedure (F-PL-11)
 
-Signed remote files (Ed25519; public key pinned in the app; private key offline with the owner, backup on a hardware token/paper): pack `index.json` (`killed`, `killReason`, `replacedBy`), `catalogue.json` (recitation `enabled`, `highlightDisabledSurahs`, host `mirrors`), and an `advisories` array:
+Signed remote files follow D-30 and [doc 04 §7.6](04-architecture.md). Each `X.json` has a detached `X.json.sig`: Ed25519 over the exact file bytes. Two public keys (active + standby) are pinned in `BuildConfig.TRUSTED_KEYS`. Each file carries an anti-rollback `sequence` and an `expiresAt`. The private key stays offline with the owner (password manager + encrypted offline backup) and never enters CI. The files are:
+- pack `index.json` (`disabled`, `disabledReason`);
+- `catalogue.json` (recitation `enabled`, `highlightDisabledSurahs`, host `mirrors`; doc 06);
+- `notices.json` (F-PL-11; schema owned by [doc 04 §14.3](04-architecture.md)).
+
+The remote plane may annotate or disable. It **never** modifies Quran text or layout (D-30).
 
 ```json
-{ "id": "ADV-2027-001", "severity": "S1", "scope": { "mushafId": 1, "pages": [86], "verseKeys": ["4:12"] },
-  "action": "banner", "message_en": "A correction for this page is being published.",
-  "message_ur": "اس صفحے کی تصحیح جاری کی جا رہی ہے۔", "since": "2027-01-20T10:00:00Z", "until": null }
+{ "id": "ADV-2027-001", "target": { "type": "page", "mushaf": "indopak16_taj", "page": 85 },
+  "action": "warn",
+  "message": { "en": "A correction for this page is being prepared.", "ur": "اس صفحے کی تصحیح تیار کی جا رہی ہے۔" },
+  "until": null }
 ```
-`action ∈ {banner, hide_highlight, disable_pack, disable_recitation, disable_layout}`. **Procedure**: (1) confirm the report against the print/source (owner + proofreader for S1); (2) write the advisory or kill entry, bump the file version, sign, upload to R2; (3) verify on a test device that the app picks it up within its fetch interval (doc 04 sets it; target ≤ 24 h, plus on app start); (4) log in the provenance log; (5) fix and release; (6) remove the advisory once ≥ 95 % of active installs are on the fixed content version (Play Console). Takedown requests from rights holders: `disable_recitation`/`disable_pack` within **48 h** of the request (promised in PERM emails), then remove from catalogues.
+`page` is the stored page index (label 86). Notice ids use our `ADV-yyyy-nnn` scheme so the provenance log can cite them. `target.type ∈ {page, surahHighlight, pack, recitation, feature}` and `action ∈ {warn, disable}` (doc 04 §14.3). Disabling the layout pack is `pack` + `disable`.
+
+**Procedure:**
+1. Triage ≤ 24 h: confirm the report against the print/source (owner + proofreader for S1).
+2. Within 48 h: write the notice or disable entry, bump `sequence`, sign offline, upload to R2.
+3. Verify on a test device that the app picks it up within its fetch interval (doc 04 sets it; target ≤ 24 h, plus on app start).
+4. Log it in the provenance log.
+5. Submit the corrected build ≤ 72 h of confirmation and release it.
+6. Remove the notice once ≥ 95 % of active installs are on the fixed content version (Play Console).
+
+Takedown requests from rights holders: `recitation`/`pack` `disable` within **48 h** of the request (promised in PERM emails); then the item is set to `REVOKED` and removed from catalogues.
 
 ### 8.9 Provenance log (format)
 
 `docs/legal/provenance-log.md`, one entry per event:
 `date | DS-xx / PERM-xx / ADV-xx | event (ingest, update, permission, correction, kill, takedown) | source version + sha256 | transformation (e.g., "72:16 merge rule", "Fatiha digits suppressed", "p.529 swap") | reviewer | decision | evidence ref`.
-Required events: first ingest of every dataset; every upstream version change (QuranEnc weekly poll, QUL update emails, mp3quran ETag changes); every proofreading certificate; every advisory/kill.
+Required events: first ingest of every dataset; every upstream version change (QuranEnc weekly poll, QUL update emails, mp3quran ETag changes); every proofreading certificate; every notice/disable (ADV-xx).
 
 ### 8.10 Keeping content current
 
@@ -850,7 +888,7 @@ Required events: first ingest of every dataset; every upstream version change (Q
 - Prayer times: "Prayer times are calculated (method: {method}, Asr: {madhab}). Please confirm with your local masjid." / «نماز کے اوقات حساب سے نکالے گئے ہیں (طریقہ: {method}، عصر: {madhab})۔ براہِ کرم اپنی مقامی مسجد سے تصدیق کر لیں۔»
 - Qibla: "Qibla direction depends on your phone's sensors; calibrate and keep away from metal." / «قبلہ کی سمت آپ کے فون کے سینسر پر منحصر ہے؛ کیلیبریٹ کریں اور دھات سے دور رکھیں۔»
 - Hijri: "The Hijri date may differ by a day; in Pakistan the Ruet-e-Hilal Committee's announcement is followed." / «ہجری تاریخ میں ایک دن کا فرق ممکن ہے؛ پاکستان میں رؤیتِ ہلال کمیٹی کے اعلان کی پیروی کی جاتی ہے۔»
-- Errors: "Found an error? Report it from any ayah's menu; we correct Arabic-text errors within 48 hours of confirmation." / «کوئی غلطی نظر آئے تو کسی بھی آیت کے مینو سے اطلاع دیں؛ عربی متن کی تصدیق شدہ غلطی ۴۸ گھنٹوں میں درست کی جاتی ہے۔»
+- Errors: "Found an error? Report it from any ayah's menu. For a confirmed Arabic-text error we show a notice on the affected page within 48 hours and submit a corrected update within 72 hours." / «کوئی غلطی نظر آئے تو کسی بھی آیت کے مینو سے اطلاع دیں۔ عربی متن کی تصدیق شدہ غلطی پر ۴۸ گھنٹوں میں متعلقہ صفحے پر اطلاع دکھائی جاتی ہے اور ۷۲ گھنٹوں میں درست شدہ اپ ڈیٹ جمع کرائی جاتی ہے۔»
 
 **Acceptance**: every DS shipped in the variant has ≥ 1 ATTR row (CI); every installed pack and enabled reciter appears; links open; OFL/CC/MIT/Apache texts are reachable offline; screen passes the accessibility baseline (F-PL-07); store listing repeats the short credits (doc 11).
 
@@ -865,7 +903,7 @@ Required events: first ingest of every dataset; every upstream version change (Q
 | L3 | Text-integrity controls: pinned hashes, CI invariants, error SLA, kill-switch | s.6 literal distortion; s.9 penalties up to 3 years / fine ≥ Rs 20,000 | §7.10, §8.7–8.8 |
 | L4 | Content governance excluding non-Muslim interpretation contrary to Muslim belief; no Ahmadi content | s.7 (applies "whether or not registered"); PTA Dec-2020 removal precedent (Removal and Blocking of Unlawful Online Content Rules 2020, PECA 2016) | §8.4 |
 | L5 | Audio is in scope ("record of the Holy Quran" = recited and recorded by any modern means, s.2(h)): proofreading/QA of recitation sources (known reciters only; validated timings) | s.2(h) | §2.5 |
-| L6 | Lawyer questions (PERM-21): (a) does the Act (and Punjab Quran Board approval reportedly required by a 2019 LHC order for "uploading onto the internet" [unverified]) apply to a Play-distributed app, and is registration needed; (b) typographical-arrangement risk of reproducing Taj Company pagination/line breaks (title page asserts rights over «عکس وطباعت»; Govt. registration 11818-Copr.); (c) PD status in PK (life + 50, s.18) vs global distribution for Jalandhari, Kanz-ul-Iman, Junagarhi, Pickthall; sound recordings 50 years from publication (s.20(2)); (d) sufficiency of mp3quran's host grant and the takedown posture; (e) Play IAP/donation and USD payout tax treatment; (f) entity choice (sole proprietorship vs SMC) for D-U-N-S/Organization account | r09 §2.4, g01 Rec. 10, g02 Rec. 12 | Engage 2026-11-16; advice 2026-12-15 |
+| L6 | Lawyer questions (PERM-21): (a) does the Act (and Punjab Quran Board approval reportedly required by a 2019 LHC order for "uploading onto the internet" [unverified]) apply to a Play-distributed app, and is registration needed; (b) typographical-arrangement risk of reproducing Taj Company pagination/line breaks (title page asserts rights over «عکس وطباعت»; Govt. registration 11818-Copr.); (c) PD status in PK (life + 50, s.18) vs global distribution for Jalandhari, Kanz-ul-Iman, Junagarhi, Pickthall; sound recordings 50 years from publication (s.20(2)); (d) sufficiency of mp3quran's host grant and the takedown posture; (e) Play IAP/donation and USD payout tax treatment; (f) entity choice (sole proprietorship vs SMC) for D-U-N-S/Organization account | r09 §2.4, g01 Rec. 10, g02 Rec. 12 | Engage 2026-11-16 (latest 11-30); written advice by 2027-01-11 (G6) |
 | L7 | If advised: voluntary review/registration with Punjab Quran Board / Auqaf Punjab (PERM-26) | Board mandate includes "electronic digital devices" | After L6 |
 | L8 | Keep a design-provenance log (own sketches, data sources, no reference-app assets) as evidence against impersonation/IP complaints | Play Impersonation/IP policies; r09 §4 risk 10 | §4.3 |
 | L9 | Takedown readiness: 48 h removal promise honoured via kill-switch; contact address in store listing | Play IP policy; host caveats | §8.8 |
@@ -892,9 +930,9 @@ Required events: first ingest of every dataset; every upstream version change (Q
 2. **Android Auto Backup** includes only `user.db` + settings; excludes audio, packs, content DB and caches (`dataExtractionRules` / `fullBackupContent`, doc 04). Disclosed in the privacy policy.
 3. **JSON export/import** (F-BM-06, P2) via the Storage Access Framework only; the file goes where the user puts it; import validates schema and content version.
 4. **Error reports** (§8.7) are sent only by the user's email app; we receive their email address and what they typed. Retain the email up to **12 months after resolution**, then delete; the provenance log keeps only verse/page/version and resolution, no personal data.
-5. **Crash reports** (F-PL-09, ACRA opt-in, v1.1): per-report consent dialog; stack trace, device model, app/content version only — **no verse keys, bookmarks, notes or location**; retained **90 days**.
+5. **Crash reports** (F-PL-09, ACRA opt-in, v1.1): per-report consent dialog; sent to our small Cloudflare Worker, which stores them in R2 (D-32, doc 11); stack trace, device model, app/content version only — **no verse keys, bookmarks, notes or location**; retained **90 days**.
 6. **Cloud sync** (F-BM-07, P3): opt-in with explicit consent for religious-practice data; in-app account unlink + data deletion path; Data safety updated before release (doc 11).
-7. **Network exposure**: content/audio CDNs (R2, mp3quran, everyayah, islamic.network) see the user's IP and the file requested; listed in the privacy policy with links to their policies.
+7. **Network exposure**: content/audio CDNs (R2, mp3quran; in PERSONAL/BETA builds also everyayah, islamic.network) see the user's IP and the file requested, and so does the crash-report Worker when a user opts in (v1.1). All are listed in the privacy policy with links to their policies.
 8. **Delete my data**: Settings → "Delete all my data" wipes `user.db`, DataStore and (optional checkbox) downloads; confirmation dialog; irreversible.
 9. Correspondence with rights holders (PERM-xx) is kept indefinitely as legal evidence in the private evidence store.
 
@@ -904,22 +942,22 @@ Required events: first ingest of every dataset; every upstream version change (Q
 
 | Item | Phase / due | Effort (h) | Owner |
 |---|---|---|---|
-| Send PERM-01…07 (+GitHub issue), archive mp3quran/terms pages, set up `permissions.yml` + evidence store | P0, 2026-10-21 | 3 | Owner |
+| Send PERM-01…07 (+GitHub issue), archive mp3quran/terms pages, set up `data/legal/permissions.yml` + evidence store | P0, 2026-10-21 (deadline 10-23) | 3 | Owner |
 | QUL account, download res. 11 + 565/59, pin SHA-256 | P0, 2026-10-21 | 1 | Owner |
 | Owner downloads Complex ZIPs + saves licence page (from PK) | P0, 2026-10-23 | 2 (+download time) | Owner |
 | Send PERM-10, 11, 19 (2026-10-28) and PERM-12…18 (2026-11-02…16) | P0–P1 | 3 | Owner |
 | Curated CSVs: Para, Manzil, Sajda, margin ordinals | P0 | 3 | Dev |
 | Ruku derivation + print-sample fixtures | P0–P1 | 3 | Dev |
-| Quarter hand-check of 53 rows + entry | P1, by 2026-11-30 | 2 | Owner/Dev |
+| Quarter hand-check of 53 rows + entry (blocks the closed test) | P1, by 2026-11-30 | 2 | Owner/Dev |
 | Surah table (114 rows, names/meanings) + header strings + proof vs scan | P1, by 2026-12-07 | 8 | Dev + reviewer |
 | Alias table + Manzil-dua playlist | P1 | 2 | Dev |
-| Licence records, CI eligibility check, channel-split catalogues | P1 | 6 | Dev (with doc 08/10) |
+| Licence records (5-value `licenceStatus` + `basis` + `eligibleTiers`), `verifyContentEligibility`, channel-split catalogues | P1 | 6 | Dev (with doc 04/08/10) |
 | Credits screen strings (EN/UR) + licence text assets | P2 | 3 | Dev |
 | Content policy page (web + in-app) | P2, by 2027-01-04 | 3 | Owner + reviewer |
-| Appoint content reviewer; engage proofreader; proofreading loop | P1–P2 | 4 dev + 15–20 reviewer | Owner |
-| Lawyer engagement + L6 questions | P1 | 2 + lawyer | Owner |
+| Appoint content reviewer; contract proofreader by 2026-11-16; rounds 1–2; G5 certificate by 2027-01-18 | P1–P2 | 4 dev + 15–20 reviewer (+ round 2) | Owner |
+| Lawyer engagement + L6 questions; G6 advice by 2027-01-11 | P1 | 2 + lawyer | Owner |
 | Commission ornaments, muezzin, Urdu duas (contracts with assignment) | P1–P2 | 3 + vendors | Owner |
-| Fallback E clean-room layout (only if G1 fails) | from 2026-11-20 | ~6 + 40–60 + 15–20 hafiz | Owner + Dev |
+| Fallback E clean-room layout (only if G1 fails; ≈ 7 weeks elapsed) | from 2026-11-20 | ~6 + 40–60 + 15–20 hafiz | Second-person operator (never the owner) + Dev |
 
 ---
 
@@ -931,7 +969,7 @@ Required events: first ingest of every dataset; every upstream version change (Q
 4. **Monetized eligibility of the mushaf text/layout** depends on PERM-01's scope and the QuranWBW "DO NOT SELL…" notice; if Tarteel grants free-only, v1.5 IAP needs either a commercial grant or the clean-room layout + legal advice (L6b). Flag for the v1.5 audit.
 5. **King Fahd Complex licence text** is search-excerpt only; the ship rule in §5.1 (archived page + no refusal in 30 days) is a judgement call — confirm with the lawyer (L6d).
 6. **Alafasy exposure**: Alafasy Berhad asserts rights over audio; D-12 keeps Alafasy as default on the strength of mp3quran's host grant. A refusal triggers the Ghamdi switch; consider making Ghamdi the default for the public build until PERM-04 replies (owner decision).
-7. **Label 509 first lines** (end of 66 vs Mulk header) conflict between g01 and g02 — resolve in G5 proofing; affects `header_surah_ids` only.
-8. **53 unverified quarter marks and 39 unproofed header strings** block public release (CI); budget is small but must happen before the closed test (≤ 2027-01-11).
+7. **Label 509 first lines** (end of 66 vs Mulk header) conflict between g01 and g02 — resolve in G5 proofing; affects the pack's page header surahs (`surah_ids`) only.
+8. **53 unverified quarter marks and 39 unproofed header strings** block every BETA and PUBLIC build (CI). The budget is small, but the work must be done before the closed test opens (2027-01-11 latest; 2026-12-28 if G1 is granted and the build is ready, doc 09).
 9. **Unverified contacts**: QuranWBW, QuranEnc, Tanzil, HadeethEnc, translation publishers, King Fahd Complex (`info@` from search), Qari Sadaqat Ali — owner to confirm addresses in P0 before sending.
 10. **Noto Nastaliq Urdu licence/version** not yet read from the font's `name` table (r03 tagged it unverified) — P0 pipeline task.

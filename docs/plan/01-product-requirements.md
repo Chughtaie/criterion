@@ -1,8 +1,8 @@
 # 01 — Product Requirements (PRD)
 
-This document defines **what** the Quran app (codename *Criterion*, package `com.chughtai.criterion`) must do and **how well**: the vision, the problem, who it serves, the principles that settle trade-offs, the full feature catalogue with phases and priorities, testable acceptance criteria for every P1 (personal MVP) and P2 (v1.0 public "Ramadan launch") feature, the non-functional and privacy requirements, success metrics that need no tracking SDK, and what is explicitly out of scope. The *how* lives in the sibling docs: [UX/UI](02-ux-ui-spec.md), [Content & licensing](03-content-data-licensing.md), [Architecture](04-architecture.md), [Mushaf renderer](05-mushaf-rendering-engine.md), [Audio engine](06-audio-engine.md), [Companion features](07-companion-engagement-features.md), [Data pipelines](08-data-pipelines.md), [Roadmap](09-roadmap-backlog.md), [Quality & CI](10-quality-testing-ci.md), [Release & compliance](11-release-compliance-business.md), [Decisions & risks](12-decisions-risks.md), [AI build playbook](13-ai-assisted-build-playbook.md).
+This document defines **what** the Quran app (codename *Criterion*, package `com.chughtai.criterion`) must do and **how well**: the vision, the problem, who it serves, the principles that settle trade-offs, the full feature catalogue with phases and priorities, testable acceptance criteria for every P1 (personal MVP) and P2 (v1.0 public "Ramadan launch", v1.0-stretch and v1.1) feature, the non-functional and privacy requirements, success metrics that need no tracking SDK, and what is explicitly out of scope. The *how* lives in the sibling docs: [UX/UI](02-ux-ui-spec.md), [Content & licensing](03-content-data-licensing.md), [Architecture](04-architecture.md), [Mushaf renderer](05-mushaf-rendering-engine.md), [Audio engine](06-audio-engine.md), [Companion features](07-companion-engagement-features.md), [Data pipelines](08-data-pipelines.md), [Roadmap](09-roadmap-backlog.md), [Quality & CI](10-quality-testing-ci.md), [Release & compliance](11-release-compliance-business.md), [Decisions & risks](12-decisions-risks.md), [AI build playbook](13-ai-assisted-build-playbook.md).
 
-**Status:** Draft v1 — 2026-10-19 · **Owner:** product (the app owner) · **Readers:** owner, implementing engineer / AI agent, reviewers.
+**Status:** Draft v2 — 2026-10-19 (cross-doc review applied) · **Owner:** product (the app owner) · **Readers:** owner, implementing engineer / AI agent, reviewers.
 
 **Key decisions in this doc**
 - Product = an **ad-free, tracking-free, offline-first, typeset, ayah-aware 16-line Indo-Pak (Taj) mushaf + favourite-Qari player**, with Para/Surah/Manzil/Ruku indexes and Read + Play on every row (D-04, D-05, D-07, D-13, D-17, D-20).
@@ -10,8 +10,8 @@ This document defines **what** the Quran app (codename *Criterion*, package `com
 - Page labels shown everywhere are the **printed labels 2–549** (= page_index + 1) (D-04).
 - Para audio, indexing and progress use **our Indo-Pak Para table**, never Madani juz (D-07).
 - Bundled translations: Urdu Junagarhi (+ Ahsan-ul-Bayan footnotes) and English Saheeh International; no word-by-word and no translation-only mode in v1 (D-09).
-- Default audio = gapless per-surah files + validated timing packs; verse-by-verse (gapped) audio and some reciters are personal-build-only until permissions arrive (D-12, gate G2).
-- Companion features (prayer, adhan, qibla, Hijri, tasbeeh, azkar, Ramadan, widgets, reminders) ship in **P2 for the Ramadan 1448 launch**, not in the personal MVP (D-25).
+- Default audio = gapless per-surah files + validated timing packs; verse-by-verse (gapped) audio (`PENDING`) is limited to personal and closed-test builds, and some reciters (`PERSONAL_ONLY`) to the personal build, until permissions arrive (D-12, D-29, gate G2).
+- Companion features are P2 work (D-25), but the plan of record splits them: **v1.0** (Ramadan 1448 launch) = Quran core + compliance floor + prayer times with Sehri/Iftar, Hijri + PK feed, Ramadan core and the khatam planner; tasbeeh, tafsir sheet, Para-quarter list and the Manzil-dua playlist are **v1.0-stretch**; adhan, Qibla, azkar, widgets, reminders, share-image and translation packs are **v1.1** (2027-03-22) unless pulled in ([Roadmap](09-roadmap-backlog.md) §5). The §6 "Release" column is authoritative.
 - Free forever, no ads ever, nothing Quranic behind a paywall; Data safety "No data collected" (D-17, D-20).
 - Public release is gated by G1–G6; a typeset page that is wrong is worse than no page (D-22).
 
@@ -22,15 +22,18 @@ This document defines **what** the Quran app (codename *Criterion*, package `com
 | Term | Meaning |
 |---|---|
 | **Phase** | P0 Foundations (2026-10-20 → 11-02) · **P1** Personal MVP (11-03 → 12-21) · **P2** v1.0 public Ramadan launch (12-22 → ~2027-02-01) · P3 v1.x (Feb → Jun 2027) · P4 v2 (H2 2027) (D-25). |
-| **Priority (MoSCoW)** | Relative to the release of the feature's own phase. **Must** = that release is blocked without it. **Should** = expected; cut only via the scope-cut ladder ([Roadmap](09-roadmap-backlog.md)). **Could** = first to cut. **Won't** = not in this product line. |
+| **Release** | The release a feature is planned to ship in, per the plan of record in [Roadmap](09-roadmap-backlog.md) §5: **v1.0** = Ramadan launch (staged rollout from 2027-02-01; never-cut floor + Tier A); **v1.0-stretch** = pre-cut ladder rungs L1–L4, restored only if capacity allows; **v1.1** = 2027-03-22, cut from v1.0 by default but may be pulled in under doc 09 §5.2 (merged into the closed-test build by 2027-01-18); **v1.x** = later P3 releases (v1.2–v1.5); **v2** = P4. Phase records where the feature was specified (D-25); Release governs scheduling. |
+| **Priority (MoSCoW)** | Relative to the feature's **Release**. **Must** = that release is blocked without it. **Should** = expected; cut only via the scope-cut ladder ([Roadmap](09-roadmap-backlog.md)). **Could** = first to cut. **Won't** = not in this product line. |
 | **MH-n** | The owner's four must-haves (§1.4). |
-| **Personal build** | Owner's own devices (internal app sharing / sideload). May carry content whose `licenceStatus` is PENDING (e.g. gapped per-ayah audio, Qari Sadaqat Ali, Shamshad Ali Khan Urdu voice, Husary Muallim; the QUL layout before G1). |
-| **Public build** | Any build distributed to other people (closed/open testing, production). Carries only content whose build-eligibility flags allow it (D-10, D-17); CI enforces this ([Content](03-content-data-licensing.md), [Quality](10-quality-testing-ci.md)). |
+| **Content tier** | Every build has `BuildConfig.CONTENT_TIER` ∈ {PERSONAL, BETA, PUBLIC} plus `MONETIZED` (D-29; wiring in [Architecture](04-architecture.md)). Every content item has a `licenceStatus` ∈ {PERMITTED, HOST_GRANT, PENDING, PERSONAL_ONLY, REVOKED} with a free-text `basis`. |
+| **Personal build** (PERSONAL) | Owner's own devices (sideloaded `fossPersonalRelease`). May carry anything except REVOKED: `PENDING` items (gapped per-ayah audio), `PERSONAL_ONLY` items (Qari Sadaqat Ali, Shamshad Ali Khan Urdu voice, Husary Muallim) and the QUL layout before G1. |
+| **Closed-test build** (BETA) | Public-tier build on the Play closed-testing track. Closed testers are third parties, so mushaf layout data must be **G1-cleared or clean-room**; recitations may be PERMITTED, HOST_GRANT or PENDING (never PERSONAL_ONLY); a "pre-release — proofreading in progress" notice shows until G5 (D-29). |
+| **Public build** (PUBLIC) | Production. Only PERMITTED / HOST_GRANT content, G1 + G5 evidence for the shipped layout (D-10, D-17, D-29); CI enforces this ([Content](03-content-data-licensing.md), [Quality](10-quality-testing-ci.md)). In ACs below, "public build" covers BETA and PUBLIC alike, except that a BETA build may also list PENDING recitations. |
 | **page_index / page_label** | page_index 1–548 = QUL index (storage); page_label = page_index + 1 (2–549), the printed number, the **only** number shown in UI (D-04). |
 | **Verse key** | Kufan `surah:ayah` (6,236 ayahs; 1:1 = basmala) (D-06). |
 | **AC** | Acceptance criterion in Given / When / Then form. An AC that names a number (page, ayah, count) is a test oracle for [Quality & CI](10-quality-testing-ci.md). |
 
-New ID groups introduced by this doc (see §16): **MH-1..4** (owner must-haves), **PER-0..4** (personas), **PP-1..8** (principles), **NFR-01..18**, **PRV-01..14**, **SM-01..16**, **OQ-01..14**, plus one feature ID **F-PL-10**.
+New ID groups introduced by this doc (see §16): **MH-1..4** (owner must-haves), **PER-0..4** (personas), **PP-1..8** (principles), **NFR-01..18**, **PRV-01..14**, **SM-01..16**, **OQ-01..14**, plus feature IDs **F-PL-10** (gentle rating prompt), **F-PL-11** (signed remote notices) and **F-PL-12** (launcher shortcuts; designed in [UX/UI](02-ux-ui-spec.md)).
 
 ---
 
@@ -110,7 +113,7 @@ Pakistani entrepreneur-developer; reads daily from the 16-line Indo-Pak mushaf; 
 - **JTBD-1a:** *When I sit after Fajr, I want to open exactly where I stopped, on a page identical to my printed Quran, so I can continue my daily portion without hunting.* → F-IX-09, F-BM-01, F-RD-01
 - **JTBD-1b:** *When I read in the mosque, I want nothing on screen except the Quran, so I am never embarrassed or distracted.* → PP-1, PP-2
 - **JTBD-1c:** *When my eyes are tired, I want bigger, crisp text and a dark page, so I can read comfortably.* → F-RD-03, F-RD-06
-- **JTBD-1d (P2):** *When prayer time comes, I want a reliable adhan that respects my silent phone in the masjid.* → F-CP-01/02
+- **JTBD-1d (P2; adhan v1.1):** *When prayer time comes, I want a reliable adhan that respects my silent phone in the masjid.* → F-CP-01/02
 - Pains: ads, overwritten resume, bitmap zoom, wrong prayer times.
 
 ### PER-2 — "Hafsa", the hifz student, with her ustad / parent
@@ -147,7 +150,7 @@ People seeking a scholarly tafsir research tool (Greentech/Quran.com serve them)
 | **PP-3** | **Offline-first** | First run needs no network. Reading, indexes, search, bookmarks, translations, downloaded audio, prayer times, qibla, Hijri work in airplane mode. Network is used only to fetch static signed files and audio (NFR-08). |
 | **PP-4** | **Fidelity to the printed Taj mushaf** | Same words on the same 16 lines on the same printed page number; Taj furniture (header, «منزل», ruku ع triple, alternating margins); Indo-Pak Para boundaries and names; pages byte-stable across updates; every layout proofread by a qualified hafiz before public release (G5). When in doubt, the print wins. |
 | **PP-5** | **Accessible and inclusive** | Urdu as a first-class UI language; elderly-friendly text sizes; TalkBack-usable; 200% font scale; no maslak bias in defaults (sect-balanced, documented content policy, D-22). |
-| **PP-6** | **Fast and light** | Opens to Home in < 0.5 s on mid-range phones, smooth swipes on 2 GB phones, ≤ 25 MB download (NFR-01..07). Audio and extra content are opt-in downloads with visible sizes. |
+| **PP-6** | **Fast and light** | Opens to Home in ≤ 0.5 s on a Pixel 6a-class phone (≤ 1.2 s mid-range, ≤ 1.5 s on a 3 GB low-end phone), smooth swipes on 2 GB phones, ≤ 25 MB download (NFR-01..07). Audio and extra content are opt-in downloads with visible sizes. |
 | **PP-7** | **Honest and transparent** | Truthful Data safety; a Sources & Credits screen naming every source and licence; "About this mushaf" provenance; easy "Report text error" with a public fix SLA; never claim features we don't have (the reference's #1 trust failure). |
 | **PP-8** | **Calm engagement** | Private streaks with freeze days, no leaderboards (riya), no notification spam, no dark patterns, at most one rating ask after a positive milestone. |
 
@@ -158,130 +161,135 @@ People seeking a scholarly tafsir research tool (Greentech/Quran.com serve them)
 | Phase | Audience | Content eligibility | Theme |
 |---|---|---|---|
 | P1 Personal MVP (daily use from **2026-12-21**) | Owner (personal build) | Personal-build content allowed | "Read + listen + find" — the Quran core |
-| P2 v1.0 (staged rollout before Ramadan 1448 ≈ 8–9 Feb 2027) | Public — **only if G1, G2 (public catalogue), G3, G4, G5, G6 clear**; else closed testers during Ramadan, public after | Public-eligible content only (see OQ-13 for closed-test exceptions) | "Daily companion": prayer, adhan, Ramadan, khatam, widgets, compliance |
+| P2 v1.0 (closed test from 2027-01-11 at the latest — 2026-12-28 if G1 is granted and the build is ready; staged rollout from 2027-02-01, before Ramadan 1448 ≈ 8–9 Feb 2027) | Public — **only if G1, G2 (public catalogue), G3, G4, G5, G6 clear** and the 2026-11-30 checkpoint keeps the Ramadan public plan; else a closed-test/beta release during Ramadan and public v1.0 on 2027-03-22 merged with v1.1 (D-34; [Roadmap](09-roadmap-backlog.md) §4.2, §5.3) | Closed test: BETA tier (mushaf data G1-cleared or clean-room only, §0). Production: PUBLIC tier | Quran core + compliance + prayer times/Sehri-Iftar, Hijri, Ramadan core, khatam planner |
+| v1.1 (2027-03-22, after the Ramadan hotfix-only freeze) | Public | PUBLIC tier + permitted packs | The P2 features labelled v1.1 in §6: adhan + health check, Qibla, azkar, widgets, reminders, share image, translation packs + translator choice, notes, streaks, JSON export, auto-scroll, page curl, rating prompt, launcher shortcuts, opt-in crash reports |
 | P3 v1.x (Feb → Jun 2027) | Public | + permitted packs | Hifz, 15/13-line, Auto, spread, sync, word highlight, supporter IAP (v1.5) |
 | P4 v2 (H2 2027) | Public | + permitted packs | AI follow-along, tajweed, Madani, WBW, Qaida, Wear OS |
 
-If P2 slips, the PRD's cut order (input to the scope-cut ladder in [Roadmap](09-roadmap-backlog.md)): F-PL-10 → F-RD-12 → F-CP-11 → F-BM-05 → F-RD-09 → F-IX-07 → F-CP-10 → F-TR-03 → F-TR-02 → F-CP-06 (keep Manzil dua via F-IX-08) → F-CP-08 (keep continue-reading widget) → F-CP-03 → F-BM-03. **Never cut from v1.0:** F-CP-01, F-CP-02, F-CP-04, F-CP-07, F-BM-04, F-PL-04, F-PL-05 and all P1 Musts.
+**What the 2026-12-21 daily-use build contains.** Reader, indexes, audio scopes + highlight, downloads, translation view, last-read and bookmarks, and the Urdu switch (strings may be partial). Several P1 Musts/Shoulds are carried into S5–S7 and land before the closed test (doc 09 tier C): search (F-SR-01..03), repeat/pauses (F-AU-05), onboarding (F-PL-01), storage manager (F-PL-06), accessibility pass (F-PL-07), pinch zoom (F-RD-06), ruku/sajda lists (F-IX-04/06), bookmark collections + undo (F-BM-02), gapped mode (F-AU-04) and complete Urdu strings. The P1-exit metrics (§13.1) are judged against what has landed by each evaluation date.
+
+**Scope ladder.** The cut and pull-in order is owned by [Roadmap](09-roadmap-backlog.md) §5.1–§5.2: every v1.1 feature is cut by default; v1.0-stretch items (F-RD-13, F-IX-07 list, F-CP-05, Manzil-dua playlist) are pre-cut and restored only with spare capacity; F-CP-02 adhan enters v1.0 only if the freelancer lever is pulled at the 2026-11-30 checkpoint and it clears the 2027-01-18 merge rule. **Never cut from v1.0 (the floor):** F-PL-04, F-PL-05, F-PL-11 and all P1 Musts — including F-RD-06 pinch zoom and F-BM-02 bookmark undo. If a floor item is late, the public date moves rather than the item. **Tier A** — F-CP-01 (with Sehri/Iftar), F-CP-04 (+ PK feed), F-CP-07 (core ACs) and F-BM-04 — is committed for v1.0; it may be dropped only through doc 09's last-resort rungs L5–L8 (Ramadan core first, khatam planner last) at a velocity checkpoint (doc 09 §4.2). Whether Ramadan gets a public launch or a closed-test release follows the pre-agreed launch rule (D-34: overrun ratio ≥ 1.3 at the 2026-11-30 checkpoint → Ramadan beta, public v1.0 on 2027-03-22).
 
 ---
 
 ## 6. Feature catalogue
 
-Columns: **MoSCoW** for the feature's phase; **MH** = owner must-have; **Depends on** = features, decisions, gates, data.
+Columns: **Phase** = where the feature was specified (D-25); **Release** = where it is planned to ship (§0; plan of record in [Roadmap](09-roadmap-backlog.md) §5 — a split cell such as "v1.0 / v1.1" names the parts in order); **MoSCoW** for that release; **MH** = owner must-have; **Depends on** = features, decisions, gates, data.
 
 ### 6.1 Reader
-| ID | Feature | Description | Phase | MoSCoW | MH | Depends on |
-|---|---|---|---|---|---|---|
-| F-RD-01 | Typeset 16-line Indo-Pak pager | 548 typeset pages (labels 2–549), RTL swipe, Taj furniture, ayah-aware word boxes | P1 | Must | MH-1 | D-05 font, D-06 layout (G1 for public), D-07 tables, G5 |
-| F-RD-02 | Reader chrome | Toolbar "Para N · Page L · Surah", tap-to-toggle immersive, page scrubber, keep-screen-on, haptics toggle | P1 | Must | MH-1 | F-RD-01 |
-| F-RD-03 | Themes | Light, sepia, night, AMOLED; follow system; vector recolour (never inverted image) | P1 | Must | MH-1 | F-RD-01 |
-| F-RD-04 | Ayah action sheet | Long-press ayah / range → play from here, play/repeat, bookmark, copy, share, translation, tafsir summary, (P2) note, share image, report | P1 | Must | MH-1, MH-2 | F-RD-01, F-AU-02, F-BM-02, F-TR-01 |
-| F-RD-05 | Audio follow-along | Ayah highlight synced to audio + auto page-turn (suspended 8 s after touch) | P1 | Must | MH-2 | F-AU-03 timing packs, D-13 |
-| F-RD-06 | Zoom | Pinch zoom with crisp vector re-layout [P1]; "large text" reflow mode [P3] | P1 / P3 | Must / Could | MH-1 | F-RD-01 |
-| F-RD-07 | Locks | Rotation lock (phones only, hidden ≥ 600 dp) + page-turn lock (all devices) | P1 | Must | MH-1 | D-23 |
-| F-RD-08 | Translation view | Ayah list: Arabic (Indo-Pak) + translation(s), synced position with mushaf | P1 | Must | MH-4 | F-TR-01 |
-| F-RD-09 | Auto-scroll | Vertical continuous scroll with speed control, pause on touch | P2 | Should | MH-1 | F-RD-01 |
-| F-RD-10 | Two-page spread | RTL spread on ≥ 600 dp / foldables | P3 | Should | MH-1 | F-RD-01, D-23 |
-| F-RD-11 | Extra layouts | 15-line Hafizi (610 pp) & 13-line Taj (847 pp) [P3]; Madani 15-line (604) [P4] | P3 / P4 | Should | MH-1 | Per-layout data permission + G5 (D-04) |
-| F-RD-12 | Page-curl animation | Optional curl transition | P2 | Could | MH-1 | F-RD-01 |
-| F-RD-13 | Tafsir-summary sheet | Ahsan-ul-Bayan footnotes in a formatted sheet from mushaf or translation view | P2 | Should | MH-4 | F-TR-01 |
-| F-RD-14 | Word-by-word | Tap word → meaning (Urdu/English) | P4 | Could | MH-4 | WBW licence (D-09) |
-| F-RD-15 | Tajweed colours | Colour-coded tajweed rules | P4 | Could | MH-4 | Data/licence; Madani first |
+| ID | Feature | Description | Phase | Release | MoSCoW | MH | Depends on |
+|---|---|---|---|---|---|---|---|
+| F-RD-01 | Typeset 16-line Indo-Pak pager | 548 typeset pages (labels 2–549), RTL swipe, Taj furniture, ayah-aware word boxes | P1 | v1.0 | Must | MH-1 | D-05 font, D-06 layout (G1 for public), D-07 tables, G5 |
+| F-RD-02 | Reader chrome | Toolbar "Para N · Page L · Surah", tap-to-toggle immersive, page scrubber, keep-screen-on, haptics toggle | P1 | v1.0 | Must | MH-1 | F-RD-01 |
+| F-RD-03 | Themes | Light, sepia, night, AMOLED; follow system; vector recolour (never inverted image) | P1 | v1.0 | Must | MH-1 | F-RD-01 |
+| F-RD-04 | Ayah action sheet | Long-press ayah / range → play from here, play/repeat, bookmark, copy, share, translation, tafsir summary, (P2) note, share image, report | P1 | v1.0 | Must | MH-1, MH-2 | F-RD-01, F-AU-02, F-BM-02, F-TR-01 |
+| F-RD-05 | Audio follow-along | Ayah highlight synced to audio + auto page-turn (suspended 8 s after touch) | P1 | v1.0 | Must | MH-2 | F-AU-03 timing packs, D-13 |
+| F-RD-06 | Zoom | Pinch zoom with crisp vector re-layout [P1]; "large text" reflow mode [P3] | P1 / P3 | v1.0 / v1.x | Must / Could | MH-1 | F-RD-01 |
+| F-RD-07 | Locks | Rotation lock (phones only, hidden ≥ 600 dp) + page-turn lock (all devices) | P1 | v1.0 | Must | MH-1 | D-23 |
+| F-RD-08 | Translation view | Ayah list: Arabic (Indo-Pak) + translation(s), synced position with mushaf | P1 | v1.0 | Must | MH-4 | F-TR-01 |
+| F-RD-09 | Auto-scroll | Vertical continuous scroll with speed control, pause on touch | P2 | v1.1 | Should | MH-1 | F-RD-01 |
+| F-RD-10 | Two-page spread | RTL spread on ≥ 600 dp / foldables | P3 | v1.x | Should | MH-1 | F-RD-01, D-23 |
+| F-RD-11 | Extra layouts | 15-line Hafizi (610 pp) & 13-line Taj (847 pp) [P3]; Madani 15-line (604) [P4] | P3 / P4 | v1.x / v2 | Should | MH-1 | Per-layout data permission + G5 (D-04) |
+| F-RD-12 | Page-curl animation | Optional curl transition | P2 | v1.1 | Could | MH-1 | F-RD-01 |
+| F-RD-13 | Tafsir-summary sheet | Ahsan-ul-Bayan footnotes in a formatted sheet from mushaf or translation view | P2 | v1.0-stretch | Should | MH-4 | F-TR-01 |
+| F-RD-14 | Word-by-word | Tap word → meaning (Urdu/English) | P4 | v2 | Could | MH-4 | WBW licence (D-09) |
+| F-RD-15 | Tajweed colours | Colour-coded tajweed rules | P4 | v2 | Could | MH-4 | Data/licence; Madani first |
 
 ### 6.2 Index & navigation
-| ID | Feature | Description | Phase | MoSCoW | MH | Depends on |
-|---|---|---|---|---|---|---|
-| F-IX-01 | Surah index | 114 rows, Read + Play + download state, filter | P1 | Must | MH-3 | D-07 |
-| F-IX-02 | Para index | 30 rows, Indo-Pak names, start ayah & page, rukus, progress, Read + Play | P1 | Must | MH-3 | D-07 Para table |
-| F-IX-03 | Manzil index | 7 rows, ranges, Read + Play | P1 | Must | MH-3 | D-07 |
-| F-IX-04 | Ruku navigation | 558 rukus: per-surah list, margin-marker tap, next/prev, Play ruku | P1 | Should | MH-3 | D-07 ruku table |
-| F-IX-05 | Go to | Page label / surah:ayah / Para number | P1 | Must | MH-3 | — |
-| F-IX-06 | Sajda list | 14 Hanafi sajdas + 22:77 (Shafi'i) labelled | P1 | Should | MH-3 | D-07 |
-| F-IX-07 | Para quarters | 90 ربع / نصف / ثلٰثة markers on page + navigation | P2 | Should | MH-3 | D-07 quarter table |
-| F-IX-08 | Quick access | Yaseen, Rahman, Mulk, Waqiah, Kahf, Ayatul Kursi, Manzil dua, last two ayat of Baqarah | P1 | Should | MH-4 | F-AU-02 |
-| F-IX-09 | Home | Continue-reading card, resume-listening card, recents, quick access, index entry | P1 | Must | MH-1, MH-3 | F-BM-01 |
+| ID | Feature | Description | Phase | Release | MoSCoW | MH | Depends on |
+|---|---|---|---|---|---|---|---|
+| F-IX-01 | Surah index | 114 rows, Read + Play + download state, filter | P1 | v1.0 | Must | MH-3 | D-07 |
+| F-IX-02 | Para index | 30 rows, Indo-Pak names, start ayah & page, rukus, progress, Read + Play | P1 | v1.0 | Must | MH-3 | D-07 Para table |
+| F-IX-03 | Manzil index | 7 rows, ranges, Read + Play | P1 | v1.0 | Must | MH-3 | D-07 |
+| F-IX-04 | Ruku navigation | 558 rukus: per-surah list, margin-marker tap, next/prev, Play ruku | P1 | v1.0 | Should | MH-3 | D-07 ruku table |
+| F-IX-05 | Go to | Page label / surah:ayah / Para number | P1 | v1.0 | Must | MH-3 | — |
+| F-IX-06 | Sajda list | 14 Hanafi sajdas + 22:77 (Shafi'i) labelled | P1 | v1.0 | Should | MH-3 | D-07 |
+| F-IX-07 | Para quarters | 90 ربع / نصف / ثلٰثة markers on page + navigation | P2 | v1.0-stretch (list; page markers ship in v1.0) | Should | MH-3 | D-07 quarter table |
+| F-IX-08 | Quick access | Yaseen, Rahman, Mulk, Waqiah, Kahf, Ayatul Kursi, Manzil dua, last two ayat of Baqarah | P1 | v1.0 | Should | MH-4 | F-AU-02 |
+| F-IX-09 | Home | Continue-reading card, resume-listening card, recents, quick access, index entry | P1 | v1.0 | Must | MH-1, MH-3 | F-BM-01 |
 
 ### 6.3 Bookmarks & progress
-| ID | Feature | Description | Phase | MoSCoW | MH | Depends on |
-|---|---|---|---|---|---|---|
-| F-BM-01 | Last-read pointer | Auto pointer (dwell-based), separate from bookmarks; listening pointer | P1 | Must | MH-1 | user.db |
-| F-BM-02 | Bookmarks | Ayah & page bookmarks, collections with colours, undo | P1 | Must | MH-1 | user.db |
-| F-BM-03 | Notes | Plain-text note per ayah | P2 | Should | MH-4 | F-BM-02 |
-| F-BM-04 | Khatam planner | Multiple khatams, Para checklist, daily goal, per-khatam pointer | P2 | Must | MH-4 | D-07 Para/ruku tables |
-| F-BM-05 | Streaks & stats | Private, freeze days, weekly summary | P2 | Could | MH-4 | F-BM-04 |
-| F-BM-06 | Backup | Auto Backup [P1] + JSON export/import via SAF [P2] | P1 / P2 | Must / Should | MH-4 | D-20 |
-| F-BM-07 | Cloud sync | "Sign in with Quran.com" (QF User APIs, PKCE) | P3 | Could | MH-4 | QF client approval |
+| ID | Feature | Description | Phase | Release | MoSCoW | MH | Depends on |
+|---|---|---|---|---|---|---|---|
+| F-BM-01 | Last-read pointer | Auto pointer (dwell-based), separate from bookmarks; listening pointer | P1 | v1.0 | Must | MH-1 | user.db |
+| F-BM-02 | Bookmarks | Ayah & page bookmarks, collections with colours, undo | P1 | v1.0 | Must | MH-1 | user.db |
+| F-BM-03 | Notes | Plain-text note per ayah | P2 | v1.1 | Should | MH-4 | F-BM-02 |
+| F-BM-04 | Khatam planner | Multiple khatams, Para checklist, daily goal, per-khatam pointer | P2 | v1.0 | Must | MH-4 | D-07 Para/ruku tables |
+| F-BM-05 | Streaks & stats | Private, freeze days, weekly summary | P2 | v1.1 | Could | MH-4 | F-BM-04 |
+| F-BM-06 | Backup | Auto Backup [P1] + JSON export/import via SAF [P2] | P1 / P2 | v1.0 (Auto Backup) / v1.1 (JSON) | Must / Should | MH-4 | D-20 |
+| F-BM-07 | Cloud sync | "Sign in with Quran.com" (QF User APIs, PKCE) | P3 | v1.x | Could | MH-4 | QF client approval |
 
 ### 6.4 Audio
-| ID | Feature | Description | Phase | MoSCoW | MH | Depends on |
-|---|---|---|---|---|---|---|
-| F-AU-01 | Reciter catalogue | Signed remote catalogue + bundled fallback, favourite Qari, no photos | P1 | Must | MH-2 | D-12, G2 (public list) |
-| F-AU-02 | Play scopes | Surah, Para, Manzil, Ruku, Page, AyahRange, Ayah, play-from-here | P1 | Must | MH-2 | D-07, D-13 PlanExpander |
-| F-AU-03 | Gapless + highlight timings | Per-surah files + validated timing packs, per-surah highlight kill-switch | P1 | Must | MH-2 | Timing packs ([Pipelines](08-data-pipelines.md)) |
-| F-AU-04 | Verse-by-verse (gapped) | Per-ayah files for exact ayah/hifz use | P1 personal; public after G2 | Should | MH-2 | G2 |
-| F-AU-05 | Repeat & pauses | Ayah × N, range × M / ∞, pause after ayah (fixed / proportional) | P1 | Must | MH-2 | F-AU-02 |
-| F-AU-06 | Speed & sleep timer | 0.5–2.0×; minutes or end of ayah/surah/Para; fade-out | P1 | Should | MH-2 | — |
-| F-AU-07 | Background playback & player | Mini player + full player, media notification, lock screen, headset/Bluetooth, audio focus | P1 | Must | MH-2 | Media3 (D-13) |
-| F-AU-08 | Downloads | Surah / Para / Manzil / full Quran, resumable, verified, Wi-Fi-only default, storage manager | P1 | Must | MH-2 | D-14 |
-| F-AU-09 | Streaming cache | 256 MB LRU cache for streamed audio | P1 | Must | MH-2 | D-14 |
-| F-AU-10 | Translation-audio interleave | Arabic ayah then Urdu translation audio | P1 personal; P3 public if permitted | Could | MH-2 | Shamshad Ali Khan rights (D-12) |
-| F-AU-11 | Android Auto | Browse + play scopes in the car | P3 | Should | MH-2 | MediaLibraryService |
-| F-AU-12 | Word-level highlight | Word-by-word highlight for reciters with word segments | P3 | Could | MH-2 | Word timing data |
+| ID | Feature | Description | Phase | Release | MoSCoW | MH | Depends on |
+|---|---|---|---|---|---|---|---|
+| F-AU-01 | Reciter catalogue | Signed remote catalogue + bundled fallback, favourite Qari, no photos | P1 | v1.0 | Must | MH-2 | D-12, G2 (public list) |
+| F-AU-02 | Play scopes | Surah, Para, Manzil, Ruku, Page, AyahRange, Ayah, play-from-here | P1 | v1.0 | Must | MH-2 | D-07, D-13 PlanExpander |
+| F-AU-03 | Gapless + highlight timings | Per-surah files + validated timing packs, per-surah highlight kill-switch | P1 | v1.0 | Must | MH-2 | Timing packs ([Pipelines](08-data-pipelines.md)) |
+| F-AU-04 | Verse-by-verse (gapped) | Per-ayah files for exact ayah/hifz use | P1 personal; public after G2 | v1.0 personal + closed test; PUBLIC after G2 | Should | MH-2 | G2 |
+| F-AU-05 | Repeat & pauses | Ayah × N, range × M / ∞, pause after ayah (fixed / proportional) | P1 | v1.0 | Must | MH-2 | F-AU-02 |
+| F-AU-06 | Speed & sleep timer | 0.5–2.0×; minutes or end of ayah/surah/Para; fade-out | P1 | v1.0 | Should | MH-2 | — |
+| F-AU-07 | Background playback & player | Mini player + full player, media notification, lock screen, headset/Bluetooth, audio focus | P1 | v1.0 | Must | MH-2 | Media3 (D-13) |
+| F-AU-08 | Downloads | Surah / Para / Manzil / full Quran, resumable, verified, Wi-Fi-only default, storage manager | P1 | v1.0 | Must | MH-2 | D-14 |
+| F-AU-09 | Streaming cache | 256 MB LRU cache for streamed audio | P1 | v1.0 | Must | MH-2 | D-14 |
+| F-AU-10 | Translation-audio interleave | Arabic ayah then Urdu translation audio | P1 personal; P3 public if permitted | v1.1 personal; public v1.x if rights granted | Could | MH-2 | Shamshad Ali Khan rights (D-12) |
+| F-AU-11 | Android Auto | Browse + play scopes in the car | P3 | v1.x | Should | MH-2 | MediaLibraryService |
+| F-AU-12 | Word-level highlight | Word-by-word highlight for reciters with word segments | P3 | v1.x | Could | MH-2 | Word timing data |
 
 ### 6.5 Translation
-| ID | Feature | Description | Phase | MoSCoW | MH | Depends on |
-|---|---|---|---|---|---|---|
-| F-TR-01 | Bundled translations | Urdu Junagarhi (+ Ahsan-ul-Bayan footnotes), English Saheeh International | P1 | Must | MH-4 | D-09 |
-| F-TR-02 | Translation packs | Download Jalandhari, Kanz-ul-Iman, Pickthall, Hilali-Khan, Hindi/Bangla/Indonesian/Turkish | P2 | Should | MH-4 | Signed pack index (D-10) |
-| F-TR-03 | Translator choice | Pick 1–2 active translations per language | P2 | Should | MH-4 | F-TR-02 |
-| F-TR-04 | Transliteration | English / Roman-Urdu | P3 | Could | MH-4 | Licensed data |
-| F-TR-05 | Tafsir packs | Longer tafsir (permission-based) | P3 | Could | MH-4 | Permissions |
+| ID | Feature | Description | Phase | Release | MoSCoW | MH | Depends on |
+|---|---|---|---|---|---|---|---|
+| F-TR-01 | Bundled translations | Urdu Junagarhi (+ Ahsan-ul-Bayan footnotes), English Saheeh International | P1 | v1.0 | Must | MH-4 | D-09 |
+| F-TR-02 | Translation packs | Download Jalandhari, Kanz-ul-Iman, Pickthall, Hilali-Khan, Hindi/Bangla/Indonesian/Turkish | P2 | v1.1 | Should | MH-4 | Signed pack index (D-10) |
+| F-TR-03 | Translator choice | Pick 1–2 active translations per language | P2 | v1.1 | Should | MH-4 | F-TR-02 |
+| F-TR-04 | Transliteration | English / Roman-Urdu | P3 | v1.x | Could | MH-4 | Licensed data |
+| F-TR-05 | Tafsir packs | Longer tafsir (permission-based) | P3 | v1.x | Could | MH-4 | Permissions |
 
 ### 6.6 Search
-| ID | Feature | Description | Phase | MoSCoW | MH | Depends on |
-|---|---|---|---|---|---|---|
-| F-SR-01 | Arabic search | Diacritic- and spelling-insensitive, words + substrings | P1 | Must | MH-4 | D-11 |
-| F-SR-02 | Translation search | Urdu & English full text | P1 | Should | MH-4 | D-11, F-TR-01 |
-| F-SR-03 | Alias search | "Yaseen", "Ayatul Kursi", "Manzil dua", Roman spellings | P1 | Should | MH-3 | Alias table |
-| F-SR-04 | Topic search | Curated topics (retrieval only) | P3 | Could | MH-4 | QUL permission |
-| F-SR-05 | Recite-to-search | Voice by recitation | P4 | Could | MH-4 | F-CP-14 model |
+| ID | Feature | Description | Phase | Release | MoSCoW | MH | Depends on |
+|---|---|---|---|---|---|---|---|
+| F-SR-01 | Arabic search | Diacritic- and spelling-insensitive, words + substrings | P1 | v1.0 | Must | MH-4 | D-11 |
+| F-SR-02 | Translation search | Urdu & English full text | P1 | v1.0 | Should | MH-4 | D-11, F-TR-01 |
+| F-SR-03 | Alias search | "Yaseen", "Ayatul Kursi", "Manzil dua", Roman spellings | P1 | v1.0 | Should | MH-3 | Alias table |
+| F-SR-04 | Topic search | Curated topics (retrieval only) | P3 | v1.x | Could | MH-4 | QUL permission |
+| F-SR-05 | Recite-to-search | Voice by recitation | P4 | v2 | Could | MH-4 | F-CP-14 model |
 
 ### 6.7 Companion
-| ID | Feature | Description | Phase | MoSCoW | MH | Depends on |
-|---|---|---|---|---|---|---|
-| F-CP-01 | Prayer times | adhan2, region presets (PK Karachi + Hanafi), offsets, monthly table, offline city picker | P2 | Must | MH-4 | D-15, D-16 |
-| F-CP-02 | Adhan alarms + health check | Per-prayer mode, exact alarms, full/short adhan, silent/DND respect, OEM guidance | P2 | Must | MH-4 | F-CP-01, commissioned adhan audio |
-| F-CP-03 | Qibla | Bearing + rotation-vector compass + declination, calibration | P2 | Should | MH-4 | F-CP-01 location |
-| F-CP-04 | Hijri calendar | HijrahDate (Umm al-Qura) ± offset, Maghrib rollover, PK month-start feed, events | P2 | Must | MH-4 | D-15, R2 feed |
-| F-CP-05 | Tasbeeh | Counter, presets, targets, haptics, volume keys, history | P2 | Should | MH-4 | — |
-| F-CP-06 | Azkar & duas | Morning/evening azkar, Manzil dua, ~150 core duas, sourced | P2 | Should | MH-4 | Curated dataset + Urdu translation |
-| F-CP-07 | Ramadan | Sehri/Iftar timetable, countdown, Sehri alarm, sourced duas, Taraweeh khatam plan | P2 | Must | MH-4 | F-CP-01, F-CP-04, F-BM-04 |
-| F-CP-08 | Widgets | Continue reading, next prayer, ayah of the day (Glance) | P2 | Should | MH-4 | F-BM-01, F-CP-01 |
-| F-CP-09 | Smart reminders | Kahf Friday, Mulk night, daily ayah, opt-in Ayatul Kursi; ≤ 3/day; tap-to-play | P2 | Should | MH-4 | F-CP-01, curated list |
-| F-CP-10 | Share ayah | As image or text, with reference + translator attribution | P2 | Should | MH-4 | F-RD-01, F-TR-01 |
-| F-CP-11 | Group khatam | WhatsApp-shareable sheet [P2] → realtime Firestore [P3] | P2 / P3 | Could | MH-4 | F-BM-04; Firebase (play flavor) |
-| F-CP-12 | Hifz mode | Sabaq/sabqi/manzil, hide/reveal, FSRS, mistakes heatmap, record-yourself | P3 | Should | MH-4 | Word boxes, F-AU-04 |
-| F-CP-13 | Noorani Qaida | Own content + recorded audio, age-neutral | P4 | Could | MH-4 | Recording budget |
-| F-CP-14 | AI recitation follow-along | On-device ASR follow-along (spike in P3) | P4 | Could | MH-4 | sherpa-onnx spike |
+| ID | Feature | Description | Phase | Release | MoSCoW | MH | Depends on |
+|---|---|---|---|---|---|---|---|
+| F-CP-01 | Prayer times | adhan2, region presets (PK Karachi + Hanafi), offsets, monthly table, offline city picker | P2 | v1.0 | Must | MH-4 | D-15, D-16 |
+| F-CP-02 | Adhan alarms + health check | Per-prayer mode, exact alarms, full/short adhan, silent/DND respect, OEM guidance | P2 | v1.1 | Must (for v1.1) | MH-4 | F-CP-01, commissioned adhan audio |
+| F-CP-03 | Qibla | Bearing + rotation-vector compass + declination, calibration | P2 | v1.1 | Should | MH-4 | F-CP-01 location |
+| F-CP-04 | Hijri calendar | HijrahDate (Umm al-Qura) ± offset, Maghrib rollover, PK month-start feed, events | P2 | v1.0 | Must | MH-4 | D-15, R2 feed |
+| F-CP-05 | Tasbeeh | Counter, presets, targets, haptics, volume keys, history | P2 | v1.0-stretch | Should | MH-4 | — |
+| F-CP-06 | Azkar & duas | Morning/evening azkar, Manzil dua, ~150 core duas, sourced | P2 | v1.0-stretch (Manzil-dua playlist) / v1.1 (azkar & duas) | Should | MH-4 | Curated dataset + Urdu translation |
+| F-CP-07 | Ramadan | Sehri/Iftar timetable, countdown, Sehri alarm, sourced duas, Taraweeh khatam plan | P2 | v1.0 (core) / v1.1 (extras) | Must | MH-4 | F-CP-01, F-CP-04, F-BM-04 |
+| F-CP-08 | Widgets | Continue reading, next prayer, ayah of the day (Glance) | P2 | v1.1 | Should | MH-4 | F-BM-01, F-CP-01 |
+| F-CP-09 | Smart reminders | Kahf Friday, Mulk night, daily ayah, opt-in Ayatul Kursi; ≤ 3/day; tap-to-play | P2 | v1.1 | Should | MH-4 | F-CP-01, curated list |
+| F-CP-10 | Share ayah | As image or text, with reference + translator attribution | P2 | v1.1 | Should | MH-4 | F-RD-01, F-TR-01 |
+| F-CP-11 | Group khatam | WhatsApp-shareable sheet [P2] → realtime Firestore [P3] | P2 / P3 | v1.1 (sheet) / v1.x (realtime) | Could | MH-4 | F-BM-04; Firebase (play flavor) |
+| F-CP-12 | Hifz mode | Sabaq/sabqi/manzil, hide/reveal, FSRS, mistakes heatmap, record-yourself | P3 | v1.x | Should | MH-4 | Word boxes, F-AU-04 |
+| F-CP-13 | Noorani Qaida | Own content + recorded audio, age-neutral | P4 | v2 | Could | MH-4 | Recording budget |
+| F-CP-14 | AI recitation follow-along | On-device ASR follow-along (spike in P3) | P4 | v2 (spike v1.x) | Could | MH-4 | sherpa-onnx spike |
 
 ### 6.8 Platform
-| ID | Feature | Description | Phase | MoSCoW | MH | Depends on |
-|---|---|---|---|---|---|---|
-| F-PL-01 | Onboarding | UI language, mushaf preview, favourite Qari, (P2) location + Asr + notifications | P1 | Must | MH-1/2 | F-AU-01 |
-| F-PL-02 | Settings | All preferences (§7.7) | P1 | Must | — | DataStore |
-| F-PL-03 | Urdu + English UI | Full parity, RTL, per-app language | P1 | Must | MH-4 | D-21 |
-| F-PL-04 | Sources & Credits | Every content source + licence + attribution, OSS licences, About this mushaf | P2 | Must | MH-4 | D-10 metadata, AboutLibraries |
-| F-PL-05 | Report text error | Structured report via email intent; fix SLA; remote kill-switch | P2 | Must | — | D-10 kill-switch, D-22 |
-| F-PL-06 | Content-pack & storage manager | Bundled/downloaded content, audio per reciter, cache, location | P1 | Must | MH-2 | F-AU-08 |
-| F-PL-07 | Accessibility baseline | TalkBack, 200% text, contrast, targets, custom actions | P1 | Must | — | NFR-12 |
-| F-PL-08 | Supporter IAP | One-time "Support / Sadqa-e-Jaria" (play flavor) | P3 (v1.5) | Could | — | Commercial-content audit (D-17) |
-| F-PL-09 | Opt-in crash reports | ACRA, explicit consent, declared | P3 (v1.1) | Should | — | D-20 |
-| **F-PL-10** *(new)* | Gentle rating prompt | Play In-App Review, play flavor only, once after a positive milestone | P2 | Could | — | Play In-App Review library |
+| ID | Feature | Description | Phase | Release | MoSCoW | MH | Depends on |
+|---|---|---|---|---|---|---|---|
+| F-PL-01 | Onboarding | UI language, mushaf preview, favourite Qari, (P2) location + Asr + notifications | P1 | v1.0 | Must | MH-1/2 | F-AU-01 |
+| F-PL-02 | Settings | All preferences (§7.7) | P1 | v1.0 | Must | — | DataStore |
+| F-PL-03 | Urdu + English UI | Full parity, RTL, per-app language | P1 | v1.0 | Must | MH-4 | D-21 |
+| F-PL-04 | Sources & Credits | Every content source + licence + attribution, OSS licences, About this mushaf | P2 | v1.0 | Must | MH-4 | D-10 metadata, AboutLibraries |
+| F-PL-05 | Report text error | Structured report via email intent; fix SLA; remote kill-switch | P2 | v1.0 | Must | — | D-10 kill-switch, D-22 |
+| F-PL-06 | Content-pack & storage manager | Bundled/downloaded content, audio per reciter, cache, location | P1 | v1.0 (storage) / v1.1 (packs) | Must | MH-2 | F-AU-08 |
+| F-PL-07 | Accessibility baseline | TalkBack, 200% text, contrast, targets, custom actions | P1 | v1.0 | Must | — | NFR-12 |
+| F-PL-08 | Supporter IAP | One-time "Support / Sadqa-e-Jaria" (play flavor) | P3 (v1.5) | v1.5 | Could | — | Commercial-content audit (D-17) |
+| F-PL-09 | Opt-in crash reports | ACRA, explicit consent, declared; reports go to a small Cloudflare Worker that stores them in private R2 for 90 days (D-32) | P3 (v1.1) | v1.1 | Should | — | D-20 |
+| **F-PL-10** *(new)* | Gentle rating prompt | Play In-App Review, play flavor only, once after a positive milestone | P2 | v1.1 | Could | — | Play In-App Review library |
+| **F-PL-11** *(new)* | Signed remote notices | Signed `notices.json` ([Architecture](04-architecture.md) §14.3): text-error notices on affected pages, takedown/disable of a pack, recitation, surah highlight or feature, `minVersion` update nudge; expiry per notice; never changes Quran text or layout | P2 | v1.0 | Must | — | D-10, D-22, D-30, F-PL-05 |
+| **F-PL-12** *(new)* | Launcher shortcuts | Static launcher shortcuts: Continue reading, Continue listening (favourite qari), Qibla, Tasbeeh — same deep links as in-app navigation ([UX/UI](02-ux-ui-spec.md) §2.5) | P2 | v1.1 | Could | — | F-BM-01, F-AU-02, F-CP-03, F-CP-05 |
 
 ---
 
-## 7. Detailed requirements — P1 (Personal MVP, daily use from 2026-12-21)
+## 7. Detailed requirements — P1 (Personal MVP, daily use from 2026-12-21; tier-C items land in S5–S7, §5)
 
 ### 7.1 Reader
 
@@ -292,16 +300,16 @@ Columns: **MoSCoW** for the feature's phase; **MH** = owner must-have; **Depends
 1. **Given** a fresh install with no network, **when** the user opens the reader, **then** the mushaf renders from bundled data (content DB + DigitalKhatt IndoPak glyf-TTF), with no download step.
 2. **Given** page label L is shown, **when** the user drags the page to the right (the next page enters from the left, as in a printed mushaf), **then** page L+1 is shown; dragging left shows L−1; label 2 is the first page and 549 the last (no overscroll page).
 3. **Given** any of the 548 pages, **when** it renders, **then** it has exactly 16 line slots and each line's word sequence equals the layout data (QUL resource 11 ↔ DigitalKhatt 83,669-token stream), verified by an automated per-page check; lines are fully justified from precomputed word positions (no letter-spacing, no `TextAlign.Justify`) (D-05).
-4. **Given** any page, **then** the header shows Para opening words + Para number on the right, page label in the centre, surah name(s) + number(s) on the left; the footer shows «منزل N» = manzil of the page's last ayah; margin notes (ruku ع triple, quarter labels [P2 F-IX-07], sajda, «الجزء», «المنزل») sit in the **outer** margin — right on even printed pages, left on odd (g02 §1.11).
+4. **Given** any page, **then** the header shows Para opening words + Para number on the right, page label in the centre, surah name(s) + number(s) on the left; the footer shows «منزل N» = manzil of the page's last ayah; margin notes (ruku ع triple, quarter labels (F-IX-07 table; drawn from v1.0 even if the quarter list slips), sajda, «الجزء», «المنزل») sit in the **outer** margin — right on even printed pages, left on odd (g02 §1.11).
 5. **Given** label 2 (Fatiha) and label 3 (2:1 …), **then** both use the sar-lauh layout (ornamental panel with the title, a basmala box, then 5 text lines at the bottom; QUL index 1 is remapped accordingly); Fatiha shows **7 empty ayah circles including the basmala** and the «۵» sign (with «لا») at «اَنْعَمْتَ عَلَيْهِمْ» (D-06, g02 §1.4).
 6. **Given** a ruku ends on the page, **then** its margin ع shows the triple (top) ruku-in-surah / (inside) ayahs-in-ruku / (bottom) ruku-in-Para, numbered in the Para where the ruku ends, Fatiha excluded from Para-1 numbering (e.g. 2:1–7 → ۱/۷/۱; 2:249–253 → ۳۳/۵/۱) (D-07).
 7. **Given** one of the 118 disputed-end «۵» marks, **then** it is drawn as a glyph only and is never an ayah boundary for selection, highlight, audio or counts (D-06).
 8. **Given** a surah starts on the page, **then** its header follows the layout's line types (title line + basmala line, or three-part line); surah 9 has a title and no basmala; the p.529 (index 528) basmala/header order is the corrected one (D-06).
 9. **Given** the whole dataset, **then** CI proves: 6,236 ayahs each appearing exactly once and in order across 548 pages; Para starts on the expected pages (Para 1 at label 2; Para n = 2–28 at label 18n−15, e.g. Para 2 = 21, Para 4 = 57, Para 23 = 399; Para 29 = 509; Para 30 = 529) (D-07; [Quality](10-quality-testing-ci.md)).
 10. **Given** a phone in landscape, **then** the page fits the screen width and scrolls vertically; on ≥ 600 dp in P1–P2 a single page is centred at its max readable width.
-11. **Given** screenshot tests on the golden page set (labels 2, 3, 21, 57, 237, 399, 509, 529, 549 and any page with two surah headers), **then** rendered output matches the approved goldens pixel-for-pixel at the reference size.
+11. **Given** screenshot tests on the golden page set owned by [Quality](10-quality-testing-ci.md) (about 60 rule-selected pages on every PR, all 548 nightly), which must include labels 2, 3, 21, 57, 237, 399, 509, 529, 549 and every page with two surah headers, **then** rendered output matches the approved goldens pixel-for-pixel at the reference size.
 
-**Edge cases.** Pages with two or three surah names in the header; a page that starts mid-ayah; a sajda and a ruku mark on the same line; very narrow screens (320 dp) — the page scales down uniformly, never reflows; system font scale does **not** change mushaf size (zoom does); font file corrupted → integrity check at startup fails closed with a "reinstall" message (no garbled page shown). Before G1 clears, the QUL-derived layout is personal-build only; public builds use it only after written permission, else the clean-room layout (D-06).
+**Edge cases.** Pages with two or three surah names in the header; a page that starts mid-ayah; a sajda and a ruku mark on the same line; very narrow screens (320 dp) — the page scales down uniformly, never reflows; system font scale does **not** change mushaf size (zoom does); font file corrupted → integrity check at startup fails closed with a "reinstall" message (no garbled page shown). Before G1 clears, the QUL-derived layout is personal-build only; closed-test (BETA) and public builds use it only after written permission, else the clean-room layout (D-06, D-29).
 
 #### F-RD-02 — Reader chrome [P1 · Must · MH-1]
 **Story.** As PER-1, I want the page to fill the screen and the controls to appear only when I tap, without covering the text.
@@ -324,7 +332,7 @@ Columns: **MoSCoW** for the feature's phase; **MH** = owner must-have; **Depends
 2. **Given** the chrome is visible, **then** the top bar shows "Para N · Page L · Surah" (Urdu UI: «پارہ ۴ · صفحہ ۵۷ · آل عمران»), where Surah = the surah of the first ayah on the page, Para from the Indo-Pak table, L = page label; actions: back, page bookmark toggle, theme quick-toggle (night ↔ last light theme), lock menu (F-RD-07), overflow (go to, translation view, rukus, search, settings).
 3. **Given** the chrome toggles, **then** the page does not move or reflow (bars overlay the margins; the page's text area is never covered at default zoom on a 360 × 760 dp phone).
 4. **Given** the user drags the page scrubber, **then** a preview label "Page 57 · Para 4 · Āl-ʿImrān" follows the thumb and release jumps there; scrubbing never updates the last-read pointer by itself (F-BM-01).
-5. **Given** "Keep screen on while reading" (default **on**), **when** the reader is in the foreground, **then** the screen does not time out; leaving the reader restores the system timeout.
+5. **Given** "Keep screen on while reading" (default **on**, releasing after **15 min** without touch or page turn; options 5 / 15 / 30 min / never), **when** the reader is visible, **then** the screen does not time out until that inactivity period has passed; it stays on while audio plays with the reader visible; leaving the reader restores the system timeout.
 6. **Given** "Vibrate on page turn" (default **off**), **then** page turns produce no haptic unless enabled.
 
 **Edge cases.** Display cutouts / gesture navigation: chrome respects insets; tap on an ayah with chrome hidden toggles chrome (selection needs long-press, F-RD-04); TalkBack on: chrome is always reachable (never auto-hidden while focused).
@@ -339,7 +347,7 @@ Columns: **MoSCoW** for the feature's phase; **MH** = owner must-have; **Depends
 **Stories.** As PER-1, I want to long-press an ayah to play from it, bookmark it, copy or share it, or read its meaning. As PER-2, I want to select a range and repeat it.
 
 **Acceptance criteria**
-1. **Given** a page, **when** the user long-presses any word, **then** the whole ayah (all its word boxes across lines and pages) is selected with the selection colour and the action sheet opens with: **Play from here**, **Play this ayah**, **Repeat…** (opens F-AU-05 presets), **Bookmark** (collection picker), **Copy**, **Share text**, **Translation** (Urdu/English sheet), **Tafsir summary** (Junagarhi footnotes for this ayah; in P1 shown in the translation sheet, formatted sheet in P2 F-RD-13), and in P2 **Note**, **Share as image**, **Report text error**.
+1. **Given** a page, **when** the user long-presses any word, **then** the whole ayah (all its word boxes across lines and pages) is selected with the selection colour and the action sheet opens with: **Play from here**, **Play this ayah**, **Repeat…** (opens F-AU-05 presets), **Bookmark** (collection picker), **Copy**, **Share text**, **Translation** (Urdu/English sheet), **Tafsir summary** (Junagarhi footnotes for this ayah; shown in the translation sheet until the formatted sheet F-RD-13 lands, v1.0-stretch), **Report text error** (F-PL-05, v1.0), and from v1.1 **Note** (F-BM-03) and **Share as image** (F-CP-10).
 2. **Given** an ayah is selected, **when** the user taps "Select range" and then taps another ayah (same or later page, any direction), **then** the inclusive range is selected and the sheet shows range actions: Play range, Repeat range, Bookmark range start, Copy range, Share range.
 3. **Given** Copy on 2:255, **then** the clipboard holds Tanzil Uthmani text verbatim (D-08) with private-use and control characters stripped, followed by "— Al-Baqarah 2:255 · Para 3" (Urdu UI: «— البقرة ۲:۲۵۵ · پارہ ۳»), and, if "Include translation" is on, the active translation followed by the translator credit (e.g. "Saheeh International (Noor International Center)").
 4. **Given** a long-press on a surah header or a non-Fatiha basmala line, **then** a surah sheet opens (Play surah, Read translation of surah, Download surah) — the basmala is not an ayah outside Fatiha.
@@ -496,7 +504,7 @@ Recent: Page 412 · Ya-Sin   |   Page 3 · Al-Baqarah   | …
 #### F-AU-01 — Reciter catalogue + favourite Qari [P1 · Must · MH-2]
 **Acceptance criteria**
 1. **Given** the reciter picker, **then** each entry shows name (English/Urdu/Arabic), style (Murattal / Mujawwad / Muallim), audio type (gapless / verse-by-verse), a "Highlight" badge when timings exist, full-Quran download size, and source credit — **no photos** (D-12).
-2. **Given** a public build, **then** the list contains only public-eligible recitations: Alafasy (default), Saad Al-Ghamdi, Abdul Basit Mujawwad, Sudais, Abu Bakr Ash-Shatri, Hani Ar-Rifai, Muhammad Ayyub, Khalid Al-Muhanna with highlight, plus Husary, Minshawi, Shuraim, Yasser Ad-Dosari with highlight off in faulty surahs (D-12) — final list subject to G2; **given** a personal build, **then** personal-only items (gapped files, Qari Sadaqat Ali, Shamshad Ali Khan Urdu, Husary Muallim) are also listed with a "Personal build" tag.
+2. **Given** a public build, **then** the list contains only public-eligible recitations: Alafasy (default), Saad Al-Ghamdi, Abdul Basit Mujawwad, Sudais, Abu Bakr Ash-Shatri, Hani Ar-Rifai, Muhammad Ayyub, Khalid Al-Muhanna with highlight, plus Husary, Minshawi, Shuraim, Yasser Ad-Dosari with highlight off in faulty surahs (D-12) — final list subject to G2; **given** a closed-test (BETA) build, **then** PENDING recitations (gapped per-ayah sets) may also be listed; **given** a personal build, **then** PENDING and PERSONAL_ONLY items (gapped files, Qari Sadaqat Ali, Shamshad Ali Khan Urdu, Husary Muallim) are also listed with a "Personal build" tag (D-29).
 3. **Given** onboarding or the picker, **when** the user stars a reciter, **then** it becomes the favourite used by every Play button; other reciters remain one tap away ("Play with…"). Multiple reciters can be starred; one is "default".
 4. **Given** no network, **then** the bundled catalogue copy is used; **given** network, **then** the signed `catalogue.json` refreshes at most daily; an invalid signature is ignored and the previous copy kept (D-10).
 5. **Given** "Preview" on a reciter with network, **then** a ≤ 15 s sample of Al-Fatiha streams; offline, the button explains it needs internet.
@@ -533,7 +541,7 @@ Recent: Page 412 · Ya-Sin   |   Page 3 · Al-Baqarah   | …
 #### F-AU-04 — Verse-by-verse (gapped) mode [P1 personal · Should · MH-2]
 **Acceptance criteria**
 1. **Given** a personal build and a gapped reciter, **then** each ayah is its own item (`SSSAAA.mp3`), the basmala is a separate file, and all scopes in F-AU-02 work with per-ayah precision without timing data.
-2. **Given** a public build, **then** gapped recitations are hidden until their `licenceStatus` becomes PERMITTED (G2).
+2. **Given** a PUBLIC (production) build, **then** gapped recitations are hidden until their `licenceStatus` becomes PERMITTED (G2); a closed-test (BETA) build may list PENDING gapped sets (D-29).
 3. **Given** Para 30 gapped, **then** the queue has ≤ 601 items (564 ayahs + 37 basmalas) and starts within ≤ 1 s (r06 §1.8).
 
 #### F-AU-05 — Repeat & pauses (hifz basics) [P1 · Must · MH-2]
@@ -573,7 +581,7 @@ Recent: Page 412 · Ya-Sin   |   Page 3 · Al-Baqarah   | …
 **Acceptance criteria**
 1. **Given** streaming playback, **then** audio is cached in a 256 MB LRU cache (D-14); replaying a recently streamed surah works offline while cached.
 2. **Given** no network and a non-downloaded, non-cached item, **then** a clear message offers "Download when online" (queues it) — no generic error.
-3. **Given** "Stream on mobile data" (default on, with a one-time data-use notice), **then** turning it off blocks streaming on metered networks with an explanation.
+3. **Given** "Stream on mobile data" = **Ask** (default), **when** the first stream of a session starts on a metered network, **then** a dialog shows the approximate data use per hour and lets the user stream or not; **Allow** streams without asking; **Never** blocks streaming on metered networks with an explanation and a "Download on Wi-Fi" option.
 4. Storage manager (F-PL-06) shows cache size and "Clear cache".
 
 #### F-AU-10 — Arabic + Urdu translation-audio interleave [P1 personal · Could · MH-2]
@@ -611,7 +619,7 @@ Recent: Page 412 · Ya-Sin   |   Page 3 · Al-Baqarah   | …
 
 #### F-PL-01 — Onboarding [P1 · Must · MH-1, MH-2]
 **Acceptance criteria**
-1. **Given** first launch, **then** at most 3 screens in P1 (4 in P2), each skippable: (1) UI language — English / اردو (default from system locale); (2) Mushaf — preview of a 16-line Indo-Pak page with one-line description and "About this mushaf"; (3) Favourite Qari — public shortlist with Alafasy pre-selected and optional previews (network); (P2: 4) Prayer setup — city search or "Use my approximate location", Asr Hanafi (later) / Standard (earlier), adhan notifications.
+1. **Given** first launch, **then** at most 3 screens in P1 (4 in P2), each skippable: (1) UI language — English / اردو (default from system locale); (2) Mushaf — preview of a 16-line Indo-Pak page with one-line description and "About this mushaf"; (3) Favourite Qari — public shortlist with Alafasy pre-selected and optional previews (network); (P2: 4) Prayer setup — city search or "Use my approximate location", Asr Hanafi (later) / Standard (earlier); the adhan-notification choice joins this step when F-CP-02 ships (v1.1).
 2. **Given** onboarding completes or is skipped, **then** Home appears; total time from first launch to reading page 2 ≤ 60 s for a user who accepts defaults; no network needed.
 3. No permission is requested during onboarding except P2's optional location and notifications, each with a one-sentence reason.
 
@@ -621,12 +629,12 @@ Required groups and defaults:
 | Group | Settings (default) |
 |---|---|
 | Language | UI language (system / English / اردو) |
-| Reader | Theme (System); keep screen on (on); keep system bars visible (off); vibrate on page turn (off); open reader on launch (off); page-turn animation (slide; curl in P2); reset zoom |
+| Reader | Theme (System); keep screen on (on; releases after 15 min of no interaction — 5 / 15 / 30 min / never); keep system bars visible (off); vibrate on page turn (off); open reader on launch (off); page-turn animation (slide; curl from v1.1); reset zoom |
 | Translation | Active translations (by UI language); Arabic size; translation size; show footnotes (on); include translation when copying (off) |
 | Audio | Favourite / default Qari; highlight while playing (on); turn pages automatically (on); continue to next surah (off); repeat & pause defaults; speed (1.0×); lower volume instead of pausing (off); pause at sajda (off) |
-| Downloads & storage | Wi-Fi only (on); stream on mobile data (on); storage location; → F-PL-06 |
-| Backup | Auto Backup status (read-only explanation); (P2) export / import |
-| P2 groups | Prayer times, adhan, reminders, Hijri offset, Ramadan |
+| Downloads & storage | Wi-Fi only (on); stream on mobile data (Ask / Allow / Never; default Ask — once per session); storage location; → F-PL-06 |
+| Backup | Auto Backup status (read-only explanation); (v1.1) export / import |
+| P2 groups | v1.0: Prayer times, Hijri offset, Ramadan; v1.1: adhan, reminders |
 | About | About this mushaf; (P2) Sources & Credits; privacy policy; app & content versions; contact |
 
 **AC:** every setting persists across restarts (typed DataStore), is reachable with TalkBack, and has Urdu and English labels.
@@ -643,7 +651,7 @@ Required groups and defaults:
 1. **Given** Storage screen, **then** it lists: bundled content (mushaf layout + version, translations + versions, sizes), downloaded audio per reciter (total size, expandable to surahs/Paras), stream cache size, free device space, storage location (internal / SD).
 2. **Given** a reciter row, **then** the user can delete all, or by surah/Para, with confirmation and correct space reclaimed.
 3. **Given** "Clear cache", **then** only the stream cache is cleared.
-4. P2: downloadable packs (translations) listed with size, licence and attribution, install/remove/update; a pack disabled by the remote kill-switch is hidden with a short notice (D-10).
+4. v1.1 (pack half): downloadable packs (translations) listed with size, licence and attribution, install/remove/update; a pack disabled by the remote kill-switch is hidden with a short notice (D-10).
 
 #### F-PL-07 — Accessibility baseline [P1 · Must]
 **Acceptance criteria**
@@ -656,33 +664,35 @@ Required groups and defaults:
 
 ---
 
-## 8. Detailed requirements — P2 (v1.0 public, Ramadan launch)
+## 8. Detailed requirements — P2 (v1.0 Ramadan launch, v1.0-stretch and v1.1)
+
+Each heading carries the feature's **Release** (§0, §6). Only the v1.0 items (and v1.0-stretch items that are restored) gate the Ramadan launch; v1.1 items are specified here so they can be pulled in under [Roadmap](09-roadmap-backlog.md) §5.2 or ship on 2027-03-22. The store listing for v1.0 claims only v1.0 features ([Release](11-release-compliance-business.md)).
 
 ### 8.1 Reader & index extras
 
-#### F-RD-09 — Vertical auto-scroll [P2 · Should · MH-1]
+#### F-RD-09 — Vertical auto-scroll [P2 · v1.1 · Should · MH-1]
 1. **Given** reader overflow → Auto-scroll, **then** pages stack vertically in mushaf order and scroll continuously; speed 1–10 (default 3) adjustable with +/− during scrolling; the screen stays on.
 2. **Given** the user touches the screen, **then** scrolling pauses; it resumes on tapping ▶ (not automatically).
 3. **Given** auto-scroll reaches label 549, **then** it stops; exiting returns to paged mode at the top-visible page; the last-read pointer follows the dwell rule.
 
-#### F-RD-12 — Page-curl animation [P2 · Could · MH-1]
-1. **Given** Settings → Page-turn animation = Curl, **then** page turns use a curl effect at ≥ 55 fps on the reference mid-range device; on the low-end device or with "Remove animations", the app falls back to slide.
+#### F-RD-12 — Page-curl animation [P2 · v1.1 · Could · MH-1]
+1. **Given** Settings → Page-turn animation = Curl, **then** page turns use a curl effect at ≥ 55 fps on the High reference device (Pixel 6a class, §11); on the Low device or with "Remove animations", the app falls back to slide.
 
-#### F-RD-13 — Tafsir-summary sheet [P2 · Should · MH-4]
+#### F-RD-13 — Tafsir-summary sheet [P2 · v1.0-stretch · Should · MH-4]
 1. **Given** F-RD-04 → Tafsir summary on an ayah with Ahsan-ul-Bayan notes, **then** a sheet shows the Junagarhi translation with numbered footnotes formatted as readable paragraphs, credited per source terms; ayahs without notes show "No note for this ayah" and the translation.
 2. Next/previous ayah navigation inside the sheet; text size follows translation size.
 
-#### F-IX-07 — Para quarter markers & navigation [P2 · Should · MH-3]
+#### F-IX-07 — Para quarter markers & navigation [P2 · v1.0-stretch (list) · Should · MH-3]
 1. **Given** a page containing a quarter position, **then** the outer margin shows «الربع» / «النصف» / «الثلٰثة» per our curated 90-position table (never derived from Madani rub) — e.g. Para 1: 2:46 / 2:78 / 2:109; Para 4 ثلٰثة at 3:198; Para 7 ربع at 5:113; Para 7 ثلٰثة at 6:73 after word 10 (mid-ayah) (D-07).
 2. **Given** the Para index row → expand, **then** the 3 quarters are listed with page labels; Read opens each, Play plays from the quarter to the next quarter/Para end.
 
 ### 8.2 Bookmarks & progress
 
-#### F-BM-03 — Notes [P2 · Should · MH-4]
+#### F-BM-03 — Notes [P2 · v1.1 · Should · MH-4]
 1. **Given** F-RD-04 → Note, **then** the user writes plain text (≤ 5,000 chars) attached to the verse key; an ayah with a note shows a small note indicator in translation view and in the action sheet.
 2. Notes are listed in Bookmarks → Notes, searchable locally, included in Auto Backup and JSON export.
 
-#### F-BM-04 — Khatam planner & tracker [P2 · Must · MH-4]
+#### F-BM-04 — Khatam planner & tracker [P2 · v1.0 · Must · MH-4]
 **Stories.** As PER-1, I want a 30-day khatam that tells me today's portion and keeps its own place. As PER-4, I want a Ramadan Taraweeh plan. As anyone, I want several khatams at once without them disturbing each other or my last-read.
 
 **Acceptance criteria**
@@ -690,32 +700,32 @@ Required groups and defaults:
 2. **Given** an active khatam, **then** Home shows "Today: Page 57 → 74 (Para 4)" with Open; each khatam has its **own pointer**, independent of last-read and other khatams (fixes r01 pain #10).
 3. **Given** the user reads the portion (dwell-based suggestion) or taps "Mark today's portion read", **then** progress updates; the Para checklist (30 boxes) can also be ticked directly.
 4. **Given** missed days, **then** the remaining portion is redistributed over remaining active days (`goal = ceil(remaining / days)`, snapped to ayah or ruku end); copy is encouraging, never shaming.
-5. **Given** completion, **then** a completion screen offers the dua-e-khatam (sourced, D-22) and optional F-PL-10 rating prompt; the khatam is archived with its dates.
+5. **Given** completion, **then** a completion screen offers the dua-e-khatam (sourced, D-22) and, from v1.1, the optional F-PL-10 rating prompt; the khatam is archived with its dates.
 6. **Given** multiple khatams (≥ 5 concurrent supported), **then** each shows separately in the Para index progress selector.
 
-#### F-BM-05 — Private streaks & stats [P2 · Could · MH-4]
+#### F-BM-05 — Private streaks & stats [P2 · v1.1 · Could · MH-4]
 1. **Given** reading/listening days, **then** a private streak counts days with ≥ 1 page read or ≥ 1 ayah listened; 2 freeze days per month are applied automatically; no leaderboard, no sharing of stats by default (PP-8).
 2. A weekly summary (pages read, minutes listened, Paras completed) is shown in-app only — never as a push unless the user opts in.
 
-#### F-BM-06 (part 2) — JSON export / import [P2 · Should]
+#### F-BM-06 (part 2) — JSON export / import [P2 · v1.1 · Should]
 1. **Given** Settings → Backup → Export, **then** a versioned JSON (`<brand>-backup-YYYYMMDD.json`) containing bookmarks, collections, notes, pointers, khatams, stats and settings is written via the Storage Access Framework (works without Google services, foss flavor).
 2. **Given** Import, **then** the user chooses Merge (dedupe by stable key + newest timestamp) or Replace; the file's schema version is validated; a summary ("42 bookmarks, 3 khatams imported") is shown.
 
 ### 8.3 Translation packs
 
-#### F-TR-02 — Translation packs [P2 · Should · MH-4]
+#### F-TR-02 — Translation packs [P2 · v1.1 · Should · MH-4]
 1. **Given** Storage → Translations, **then** downloadable packs from the signed `index.json` are listed with language, translator, size, licence and attribution: Urdu Fateh Muhammad Jalandhari (non-commercial-only flag), Kanz-ul-Iman, English Pickthall, Hilali-Khan, Hindi/Bangla/Indonesian/Turkish (QuranEnc) (D-09).
 2. **Given** download, **then** sha256 and Ed25519-signed index are verified before activation; failed verification never activates the pack (D-10).
 3. **Given** a pack flagged non-commercial and a monetized build, **then** CI excludes it (D-17).
 4. Pack search indexes are built/attached so F-SR-02 covers installed packs.
 
-#### F-TR-03 — Translator choice per language [P2 · Should · MH-4]
+#### F-TR-03 — Translator choice per language [P2 · v1.1 · Should · MH-4]
 1. **Given** Settings → Translation, **then** the user selects up to 2 active translations total (e.g. Urdu Kanz-ul-Iman + English Saheeh), ordered; the default per language is the bundled one.
 2. Translator names show maslak-neutral descriptions; Shia options (when added) are labelled and opt-in; no Ahmadi translations (D-22).
 
 ### 8.4 Companion
 
-#### F-CP-01 — Prayer times [P2 · Must · MH-4]
+#### F-CP-01 — Prayer times [P2 · v1.0 · Must · MH-4]
 **Acceptance criteria**
 1. **Given** the city Karachi (24.8607, 67.0011), date 2026-10-19, KARACHI method + HANAFI Asr, **then** times are within ±2 min of: Fajr 05:16, Sunrise 06:32, Dhuhr 12:17, Asr 16:25, Maghrib 18:02, Isha 19:18 (golden vectors for Lahore, Islamabad, Peshawar, Quetta, Manchester in r08 §2.2.3 are CI tests).
 2. **Given** location from a one-shot `ACCESS_COARSE_LOCATION` fix or from the offline city picker (GeoNames cities15000, Urdu names, search works offline), **then** region defaults apply: PK/IN/BD/AF → Karachi + Hanafi; GB/IE/EU → Moonsighting Committee + recommended high-latitude rule; SA → Umm al-Qura; AE/QA/KW/TR/SG → respective presets; US/CA → Moonsighting Committee; else MWL (r08 §2.2.2). All overridable.
@@ -724,83 +734,97 @@ Required groups and defaults:
 5. **Given** the city's time zone, **then** times are computed in the city's zone (correct across DST for diaspora cities).
 6. Works offline; location is never sent anywhere (PRV-05).
 
-#### F-CP-02 — Adhan alarms + health check [P2 · Must · MH-4]
+#### F-CP-02 — Adhan alarms + health check [P2 · v1.1 · Must · MH-4]
 **Acceptance criteria**
 1. **Given** each prayer, **then** the user chooses Off / Notification (silent) / Short adhan (takbeer via channel sound) / Full adhan, plus an optional pre-prayer reminder (5/10/15/30 min).
 2. **Given** audible adhan modes, **then** alarms use `setAlarmClock()` with `SCHEDULE_EXACT_ALARM` granted after an explainer screen; **given** the permission is denied or revoked, **then** inexact alarms are used and the Prayer screen shows a persistent warning "Adhan may be late — allow exact alarms" (D-16).
 3. **Given** a full adhan, **then** it plays from a `mediaPlayback` foreground service with `USAGE_ALARM`, has Stop in the notification and lock screen, and **does not play audibly when the phone is on silent/vibrate or DND** (notification only) unless the user enabled the opt-in "Play adhan even when silent" (default off, with a warning). The app never changes ringer or DND state and never declares `ACCESS_NOTIFICATION_POLICY` (D-16).
 4. **Given** boot, time change, time-zone change, app update or exact-alarm permission change, **then** all alarms are rescheduled; a daily WorkManager job verifies the next 24 h of alarms (D-16).
 5. **Given** Settings → Adhan health check, **then** it shows: notification permission, exact-alarm permission, battery-optimisation status (read-only), device-maker-specific guidance (DontKillMyApp content, CC BY, attributed), "Test adhan in 1 minute", and a lateness log of the last 30 alarms (scheduled vs fired).
-6. **Given** the release gate, **then** adhan fires within 60 s of schedule in ≥ 95% of trials on each device in the test matrix, including an Infinix or Tecno device, with the health-check guidance applied (r08 §1.2; [Quality](10-quality-testing-ci.md)).
+6. **Given** the release gate of the release that ships F-CP-02 (v1.1 by default), **then** adhan fires within 60 s of schedule in ≥ 95% of trials on each device in the test matrix, including an Infinix or Tecno device, with the health-check guidance applied (r08 §1.2; [Quality](10-quality-testing-ci.md)).
 7. Adhan audio: commissioned Pakistani muezzin recordings (standard, Fajr, short takbeer, post-adhan dua) + 1–2 CC0 fallbacks, bundled for offline use (D-16).
 
-#### F-CP-03 — Qibla [P2 · Should · MH-4]
+#### F-CP-03 — Qibla [P2 · v1.1 · Should · MH-4]
 1. **Given** a location, **then** the Qibla bearing equals the great-circle bearing to the Kaaba (Karachi 267.7°, Lahore 260.3°, Islamabad 255.9° true) and the compass corrects magnetic to true north with `GeomagneticField` declination (D-15).
 2. **Given** sensors, **then** `TYPE_ROTATION_VECTOR` is used, with fallbacks to geomagnetic rotation vector or accelerometer + magnetometer when no gyroscope (common on low-end phones).
 3. **Given** low sensor accuracy or magnetic interference, **then** a calibration prompt (figure-8 animation, respects reduced motion) and an interference warning are shown; the screen shows the accuracy state.
 4. Works offline; no map, no Play Services.
 
-#### F-CP-04 — Hijri calendar [P2 · Must · MH-4]
+#### F-CP-04 — Hijri calendar [P2 · v1.0 · Must · MH-4]
 1. **Given** no feed and no offset, **then** the Hijri date = `HijrahDate` (Umm al-Qura); **given** the user offset (−2…+2 days), **then** it is applied everywhere (Home, Prayer, widgets, Ramadan).
 2. **Given** the signed "PK month-start" feed declares 1 Jumada I 1448 = 13 Oct 2026, **when** the region is Pakistan (or the user chose "Pakistan (Ruet-e-Hilal)"), **then** 13 Oct 2026 shows 1 Jumada I 1448 (UQ shows it on 12 Oct) (r08 §1.6); invalid signatures are ignored.
 3. **Given** the current time is after Maghrib, **then** the displayed Hijri date is the next day's, labelled "(from Maghrib)".
 4. **Given** the monthly calendar, **then** it shows Gregorian + Hijri days and optional Islamic events (each a toggle, neutral naming, defaults per OQ-09).
 
-#### F-CP-05 — Tasbeeh [P2 · Should · MH-4]
+#### F-CP-05 — Tasbeeh [P2 · v1.0-stretch · Should · MH-4]
 1. **Given** the counter, **then** a full-screen tap area increments with a haptic tick (stronger at 33/99/target), volume keys count while the screen is on, and a reset requires a long-press or confirmation.
 2. Presets: Tasbih-e-Fatimah (33/33/34 sequence), Istighfar 100, Durood, Kalima, custom with targets; daily totals and private history.
 
-#### F-CP-06 — Azkar & duas [P2 · Should · MH-4]
+#### F-CP-06 — Azkar & duas [P2 · v1.0-stretch (Manzil dua) / v1.1 · Should · MH-4]
 1. **Given** Morning / Evening azkar, **then** each item shows Arabic, Urdu and English (toggles), count with tap counter and auto-advance, and a source reference chip (e.g. "Bukhari 6306"); only items with a stated source ship (D-22).
 2. **Given** the Manzil dua, **then** it reuses F-IX-08 (Quran text and audio).
 3. **Given** core duas (~150), **then** they are grouped by occasion and searchable; Urdu translations are commissioned and scholar-reviewed (or HadeethEnc with permission); items without reviewed Urdu ship Arabic + English only (r08 §2.8).
-4. Content sources: osamayy/azkar-db Arabic (public-domain dedication, attributed), fitrahive/dua-dhikr English (MIT) or own; never bundle hisnmuslim.com ([Content](03-content-data-licensing.md)).
+4. Azkar content ships as an `azkar` pack (pack id `azkar.core`, bundled, updatable through the signed pack index; [Architecture](04-architecture.md) pack types), so no Quran-core asset changes when duas are revised. Content sources: osamayy/azkar-db Arabic (public-domain dedication, attributed), fitrahive/dua-dhikr English (MIT) or own; never bundle hisnmuslim.com ([Content](03-content-data-licensing.md)).
 
-#### F-CP-07 — Ramadan [P2 · Must · MH-4]
-1. **Given** Hijri month 9 (with offset/feed), **then** Home shows a Ramadan card: today's Sehri end and Iftar time with a countdown; outside Ramadan the card is hidden (the timetable is still reachable from Prayer).
-2. **Given** the timetable, **then** 30 days list Sehri end (= Fajr − safety margin 0–10 min, default 0) and Iftar (= Maghrib + ihtiyat 0–3 min, default 0) for the chosen location, shareable as a WhatsApp-friendly image (geometric background, attribution line).
-3. **Given** a Sehri alarm (time before Sehri end, default 45 min), **then** it uses alarm semantics (`setAlarmClock`, `USAGE_ALARM`), no full-screen intent (D-16).
-4. **Given** duas, **then** only sourced duas (Iftar dua with reference) are shown; the popular Sehri "niyyah" formula ships only with scholar sign-off (r08 §2.9).
-5. **Given** "Taraweeh plan", **then** a 27-night khatam (F-BM-04 preset) is created; optional odd-night reminders for the last ten nights.
-6. Must be live in the build that enters closed test by **2027-01-11** (D-25).
+#### F-CP-07 — Ramadan [P2 · v1.0 core / v1.1 extras · Must · MH-4]
+1. *[v1.0]* **Given** Hijri month 9 (with offset/feed), **then** Home shows a Ramadan card: today's Sehri end and Iftar time with a countdown; outside Ramadan the card is hidden (the timetable is still reachable from Prayer).
+2. *[v1.0; share image v1.1]* **Given** the timetable, **then** 30 days list Sehri end (= Fajr − safety margin 0–10 min, default 0) and Iftar (= Maghrib + ihtiyat 0–3 min, default 0) for the chosen location; from v1.1 it is shareable as a WhatsApp-friendly image (geometric background, attribution line).
+3. *[v1.1 — needs the F-CP-02 alarm scheduler; v1.0-stretch only if that scheduler is pulled in via the 2026-11-30 freelancer lever]* **Given** a Sehri alarm (time before Sehri end, default 45 min), **then** it uses alarm semantics (`setAlarmClock`, `USAGE_ALARM`), no full-screen intent (D-16).
+4. *[v1.1]* **Given** duas, **then** only sourced duas (Iftar dua with reference) are shown; the popular Sehri "niyyah" formula ships only with scholar sign-off (r08 §2.9).
+5. *[v1.0; reminders v1.1]* **Given** "Taraweeh plan", **then** a 27-night khatam (F-BM-04 preset) is created; optional odd-night reminders for the last ten nights arrive with F-CP-09 (v1.1).
+6. The v1.0 ACs (1, 2 without sharing, 5 without reminders) are merged into the closed-test build by **2027-01-18** at the latest, giving ≥ 7 days of tester exposure before code-complete (D-25; [Roadmap](09-roadmap-backlog.md) S6).
 
-#### F-CP-08 — Glance widgets [P2 · Should · MH-4]
+#### F-CP-08 — Glance widgets [P2 · v1.1 · Should · MH-4]
 1. **Continue reading (2×2):** surah, page label, Para, today's khatam goal; tap opens the reader at that page.
 2. **Next prayer (2×1):** name, time, Hijri date; updates at each prayer boundary via the alarm chain and the daily job (no seconds countdown).
 3. **Ayah of the day (4×2):** Arabic + translation + reference from a curated, scholar-reviewed 365-ayah list (never random); tap opens the ayah.
 4. Widgets render correctly in light/dark, in Urdu/English, respect Android 17's RemoteViews bitmap memory cap, and never trigger playback without a tap.
 
-#### F-CP-09 — Smart reminders [P2 · Should · MH-4]
+#### F-CP-09 — Smart reminders [P2 · v1.1 · Should · MH-4]
 1. **Given** defaults, **then**: Al-Kahf on Friday (Fajr + 1 h) **on**; Al-Mulk nightly (Isha + 30 min) **on**; daily ayah at a user time **on**; Ayatul Kursi after fard prayers **opt-in at onboarding**; morning/evening azkar opt-in (r08 §2.15).
 2. **Given** any day, **then** non-prayer notifications are capped at **3/day** and suppressed during quiet hours (default 22:30–05:00 except opted-in Sehri/Fajr).
 3. **Given** a reminder, **then** tapping it opens the exact page/ayah; its "Play" action starts the recitation (a user action, Android 17-compliant); no reminder ever auto-plays audio.
 4. No promotional or "come back" notifications, ever (PP-1, PP-8).
 
-#### F-CP-10 — Share ayah as image / text [P2 · Should · MH-4]
+#### F-CP-10 — Share ayah as image / text [P2 · v1.1 · Should · MH-4]
 1. **Given** F-RD-04 → Share as image, **then** a 1080×1350 (feed) or 1080×1920 (status) PNG is rendered off-screen with the Arabic in the Indo-Pak font, the chosen translation with translator attribution, the reference ("Al-Baqarah 2:255 · Para 3") and a small app mark, on a plain or geometric background (no animate imagery); shared via `FileProvider` + `ACTION_SEND` (WhatsApp first in the chooser if installed).
 2. "Share text" follows F-RD-04 AC 3 and appends the store link (public builds).
 
-#### F-CP-11 — Group khatam (WhatsApp sheet) [P2 · Could · MH-4]
+#### F-CP-11 — Group khatam (WhatsApp sheet) [P2 · v1.1 · Could · MH-4]
 1. **Given** "Group khatam", **then** the user sets a dedication, deadline and unit (30 Paras or 7 Manzils for Shabeena) and the app generates WhatsApp-ready text: "1. Alif Lam Meem — ____ / 2. Sayaqool — ____ …".
 2. **Given** a pasted updated list, **then** the app parses claims/completions back (tolerant of extra spaces, Urdu digits, names); when all parts are done, it opens the dua-e-khatam screen.
 3. No backend, no account; personal names stay on device (PRV-06). Realtime Firestore version is P3 (play flavor only, D-24).
 
 ### 8.5 Platform
 
-#### F-PL-04 — Sources & Credits [P2 · Must · MH-4]
+#### F-PL-04 — Sources & Credits [P2 · v1.0 · Must · MH-4]
 1. **Given** About → Sources & Credits, **then** every shipped content item is listed from pack/content metadata with name, source, licence and the exact attribution text required — Tanzil text (CC BY 3.0), QuranEnc translations, DigitalKhatt IndoPak font (SIL OFL 1.1), mushaf layout source and permission, timing/audio hosts (mp3quran statement), GeoNames (CC BY 4.0), DontKillMyApp (CC BY), Noto Nastaliq Urdu (OFL), azkar sources — plus open-source software licences (AboutLibraries) (D-02, D-10).
 2. **Given** About this mushaf, **then** it shows the edition description (16-line Indo-Pak, Taj page layout), data provenance, content version, the proofreading certificate holder and date once G5 clears, and how to report an error.
 3. CI fails if any shipped item lacks attribution metadata ([Quality](10-quality-testing-ci.md)).
 
-#### F-PL-05 — Report text error [P2 · Must]
+#### F-PL-05 — Report text error [P2 · v1.0 · Must]
 1. **Given** F-RD-04 → Report text error, or reader overflow → Report a problem on this page, **then** a form captures automatically: layout id, page label, line number(s) (from selection), verse key(s), content version, app version; the user adds a description and optionally attaches a locally rendered image of the page.
 2. **Given** Send, **then** an email intent (`ACTION_SENDTO`) opens pre-filled to the content-errors address — the user sees and can edit everything before sending; nothing is uploaded silently (PRV-07). If no email app exists, the report is copied to the clipboard with the address shown.
-3. **Given** a confirmed error, **then** the fix ships as a content update within **7 days**; a severe error (missing/wrong word in Quran text) is mitigated within **24 h** via the signed remote kill-switch (hide the affected page/layout/pack with a notice) (D-10, D-22). Triage SLA: acknowledge within 72 h.
+3. **Given** a report, **then** it is triaged within **24 h**; a confirmed error gets a signed notice or kill-switch flag on the affected page or ayah (F-PL-11) within **48 h**, and a corrected build is submitted to the store within **72 h** of confirmation; the reporter is acknowledged within **72 h** (D-22, D-30). Text fixes always ship as an app update — the content DB and layout are bundled, and the remote channel can only annotate or disable, never change Quran text or layout.
 4. The process and SLA are stated in About this mushaf.
 
-#### F-PL-10 — Gentle rating prompt (new) [P2 · Could]
+#### F-PL-10 — Gentle rating prompt (new) [P2 · v1.1 · Could]
 1. **Given** a play-flavor build, **when** the user completes a khatam or finishes a full surah/Para listening session, and has used the app on ≥ 7 distinct days, **then** the Play In-App Review flow may be requested — at most once per 120 days, never on launch, never during reading/playback, never with pre-filtering ("Do you like us?") (r02 §2.6).
 2. foss flavor: no prompt.
+
+#### F-PL-11 — Signed remote notices (new) [P2 · v1.0 · Must]
+**Story.** As PER-1, if a page I am reading has a reported text problem, I want to be told plainly and calmly, without the Quran text being hidden or changed by a remote file. As the owner, I want to warn users and switch off a faulty pack, recitation or highlight within hours, without a backend.
+1. **Given** a `notices.json` whose detached `.sig` verifies (Ed25519 over the exact file bytes, against one of the two public keys compiled into the app), whose `sequence` is higher than the last accepted one and which has not passed `expires`, **then** it is accepted and stored; **given** a bad or missing signature, an unknown `kid`, a lower or equal `sequence`, or an expired file, **then** it is ignored silently and the last accepted copy stays in force (D-10, D-30; schema in [Architecture](04-architecture.md) §14.3).
+2. **Given** an accepted notice with action `warn` targeting page P of the active layout, **then** the reader shows an info chip in its chrome on P ("A possible text issue on this page is under review", Urdu in Urdu UI) and Home shows a dismissible notice card, until the notice's `until`; the notice never covers, alters or replaces the Quran text ([UX/UI](02-ux-ui-spec.md)).
+3. **Given** an accepted notice with action `disable` targeting a pack, recitation, a recitation's surah highlight or a feature, **then** that item is hidden or disabled on the next refresh with a one-line explanation where the user would have used it (F-RD-05 AC 4, F-PL-06 AC 4); nothing the user created (bookmarks, notes, khatams) is touched.
+4. **Given** `minVersion` greater than the installed version code, **then** Home shows a non-blocking "Update available — this version has a known correction" card linking to the app's store page; the app keeps working.
+5. **Given** no network, **then** the last accepted notices still apply and expired ones drop; notices are refreshed with the daily signed-file refresh (≤ 1/day, NFR-09), so a notice published within the 48 h SLA reaches online users within a day.
+6. **Given** a closed-test (BETA) build before G5, **then** the "pre-release — proofreading in progress" notice uses the same Home card and chrome chip (D-29).
+
+#### F-PL-12 — Launcher shortcuts (new) [P2 · v1.1 · Could]
+1. **Given** a long-press on the launcher icon, **then** static shortcuts appear in the UI language: Continue reading, Continue listening (favourite qari), Qibla, Tasbeeh; each opens the same screen as the in-app path via the shared deep-link parser ([UX/UI](02-ux-ui-spec.md) §2.5).
+2. **Given** "Continue listening", **then** it resumes from the listening pointer (F-BM-01 AC 5) as a user action, or opens the Listen tab if there is no pointer; it never starts playback without the tap.
+3. Shortcuts for features not in the installed release (e.g. Qibla before it ships) are not shown.
 
 ---
 
@@ -823,7 +847,7 @@ Required groups and defaults:
 | F-CP-11 (realtime) | P3 | Firestore group khatam with transactional claims, FCM, App Links; play flavor only | Firebase; Data safety update |
 | F-CP-12 | P3 | Hifz mode: sabaq/sabqi/manzil planner on the page grid, hide/reveal with first-letter hints, range repeat, record-yourself (on-device), mistake marking + heatmap, FSRS manzil ordering, mutashabihat alerts, ustad/parent weekly report; validated with 2–3 ustads | Word boxes, gapped audio (G2), RECORD_AUDIO, QUL mutashabihat permission |
 | F-PL-08 | P3 (v1.5) | One-time "Support / Sadqa-e-Jaria" IAP; Settings only; correct acknowledge/restore | Commercial-content audit (D-17) |
-| F-PL-09 | P3 (v1.1) | Opt-in ACRA crash reports to our endpoint; consent screen; Data safety updated | D-20 |
+| F-PL-09 | P3 (v1.1) | Opt-in ACRA crash reports to our Cloudflare Worker → private R2, 90-day retention (the one exception to "no backend"); consent screen; Data safety updated | D-20, D-32 |
 | F-CP-14 spike | P3 | 2-week sherpa-onnx evaluation (false alarms ≤ 0.5/min target) | Consented test recordings |
 | F-CP-13 | P4 | Noorani Qaida: own lesson grid + ~1–2k recorded clips; age-neutral | Recording budget |
 | F-CP-14 | P4 | On-device AI follow-along (auto page-turn while reciting), advisory notice, no tajweed grading claims | Spike pass |
@@ -835,19 +859,19 @@ Required groups and defaults:
 
 Built from r01 §6 clone checklist. **Clone** = match behaviour; **Improve** = match and fix its defects; **New** = absent there, we add; **Skip** = deliberately not built; **Defer** = later phase.
 
-| # | Reference feature | Verdict | Our ID(s) · phase | Reason |
+| # | Reference feature | Verdict | Our ID(s) · phase (release) | Reason |
 |---|---|---|---|---|
 | 1 | Scanned 16-line Indo-Pak reader | **Improve** | F-RD-01 · P1 | Typeset, ayah-aware, crisp; scans are copyrighted (r09 §1.4) |
 | 2 | Usmani / Madani 15-line script | Defer | F-RD-11 · P4 | Indo-Pak first; Hafizi 15-line comes earlier (P3) |
 | 3 | 13-line Indo-Pak | Defer (New there) | F-RD-11 · P3 | Requested; needs data permission |
-| 4 | RTL swipe + page curl | Clone / Improve | F-RD-01 · P1, F-RD-12 · P2 | Curl optional, slide default |
-| 5 | Vertical auto-scroll | Improve | F-RD-09 · P2 | Adjustable speed, pause on touch |
+| 4 | RTL swipe + page curl | Clone / Improve | F-RD-01 · P1, F-RD-12 · P2 (v1.1) | Curl optional, slide default |
+| 5 | Vertical auto-scroll | Improve | F-RD-09 · P2 (v1.1) | Adjustable speed, pause on touch |
 | 6 | Overlay toolbar "Page #N, Juz #M" | Improve | F-RD-02 · P1 | Doesn't cover text; Para · Page · Surah |
 | 7 | Immersive + tap toggle | Improve | F-RD-02 · P1 | Restores "keep bars visible" option |
 | 8 | Orientation lock (buggy) | Improve | F-RD-07 · P1 | Persisted; + page-turn lock |
 | 9 | Landscape fit-width | Clone | F-RD-01 · P1 | Fit-width vertical scroll |
 | 10 | Bitmap zoom / iOS word loupe | Improve | F-RD-06 · P1/P3 | Vector zoom, persistent; large-text mode P3 |
-| 11 | Night mode (inverted scan) | Improve | F-RD-03 · P1 | True vector themes incl. sepia, AMOLED |
+| 11 | Night mode (inverted scan) | Improve | F-RD-03 · P1 | True vector themes incl. sepia, AMOLED. High-contrast (r01 §6 #11): covered by AMOLED (pure black, max-contrast ink) + mushaf text contrast ≥ 7:1; no separate theme |
 | 12 | Keep screen on | Clone | F-RD-02 · P1 | Toggle, default on |
 | 13 | Page-turn vibration always on | Improve | F-PL-02 · P1 | Off by default |
 | 14 | One global Resume | Improve | F-BM-01, F-IX-09 · P1; F-BM-04 · P2 | Separate last-read, listening and khatam pointers |
@@ -872,41 +896,43 @@ Built from r01 §6 clone checklist. **Clone** = match behaviour; **Improve** = m
 | 33 | Streaming default | Clone | F-AU-09 · P1 | + LRU cache |
 | 34 | Audio bookmark / playlist | Skip (v1) | — | Listening pointer + bookmarks cover the need |
 | 35 | Translation (claimed, absent) | **New** | F-TR-01, F-RD-08 · P1 | Top unmet ask |
-| 36 | WBW / tafsir (claimed, absent) | Defer | F-RD-13 · P2 (summary), F-TR-05 · P3, F-RD-14 · P4 | Licences |
-| 37 | Prayer times + adhan (buggy) | Improve | F-CP-01/02 · P2 | Reliability kit; never touch DND/ringer |
-| 38 | Hijri + adjustment | Improve | F-CP-04 · P2 | + PK feed, Maghrib rollover |
-| 39 | Ramadan Sehri/Iftar | Improve | F-CP-07 · P2 | + countdown, alarm, share, Taraweeh plan |
-| 40 | Home widget | Improve | F-CP-08 · P2 | Continue reading, next prayer, ayah of day |
-| 41 | FCM campaign pushes | Improve | F-CP-09 · P2 | Local, curated, capped, no FCM |
-| 42 | Tasbeeh | Clone | F-CP-05 · P2 | + presets, volume keys |
-| 43 | Qibla (claimed, separate app) | **New** | F-CP-03 · P2 | Cheap with adhan2 |
-| 44 | Duas / azkar (claimed, separate app) | **New** | F-CP-06 · P2 | Sourced, Urdu reviewed |
+| 36 | WBW / tafsir (claimed, absent) | Defer | F-RD-13 · P2 (summary, v1.0-stretch), F-TR-05 · P3, F-RD-14 · P4 | Licences |
+| 37 | Prayer times + adhan (buggy) | Improve | F-CP-01 · P2 (v1.0); F-CP-02 · P2 (v1.1) | Reliability kit; never touch DND/ringer |
+| 38 | Hijri + adjustment | Improve | F-CP-04 · P2 (v1.0) | + PK feed, Maghrib rollover |
+| 39 | Ramadan Sehri/Iftar | Improve | F-CP-07 · P2 (core v1.0; alarm, share, duas v1.1) | + countdown, alarm, share, Taraweeh plan |
+| 40 | Home widget | Improve | F-CP-08 · P2 (v1.1) | Continue reading, next prayer, ayah of day |
+| 41 | FCM campaign pushes | Improve | F-CP-09 · P2 (v1.1) | Local, curated, capped, no FCM |
+| 42 | Tasbeeh | Clone | F-CP-05 · P2 (v1.0-stretch) | + presets, volume keys |
+| 43 | Qibla (claimed, separate app) | **New** | F-CP-03 · P2 (v1.1) | Cheap with adhan2 |
+| 44 | Duas / azkar (claimed, separate app) | **New** | F-CP-06 · P2 (v1.1; Manzil-dua playlist v1.0-stretch) | Sourced, Urdu reviewed |
 | 45 | Multi-language UI (18 on iOS) | Improve (narrower) | F-PL-03 · P1 | English + Urdu done well; Roman Urdu P3 |
 | 46 | Splash hadith + onboarding + script download | Improve | F-PL-01 · P1 | No splash interstitial; no post-install download |
-| 47 | Ads, 6 paywalls, referral, rating nags | **Skip** | — (F-PL-10 one gentle ask) | Core differentiator (PP-2) |
+| 47 | Ads, 6 paywalls, referral, rating nags | **Skip** | — (F-PL-10 one gentle ask, v1.1) | Core differentiator (PP-2) |
 | 48 | Analytics / attribution SDKs | **Skip** | PRV-01 | Truthful Data safety |
-| 49 | Khatam tracker (absent, requested) | **New** | F-BM-04 · P2 | Habit driver |
-| 50 | Report text issue (absent) | **New** | F-PL-05 · P2 | Integrity + Pakistani law |
+| 49 | Khatam tracker (absent, requested) | **New** | F-BM-04 · P2 (v1.0) | Habit driver |
+| 50 | Report text issue (absent) | **New** | F-PL-05 · P2 (v1.0) | Integrity + Pakistani law |
 | 51 | Referral "invite friends" | Skip | — | Share ayah/app link covers it organically |
 | 52 | In-app update nags / "old version better" regressions | Improve | NFR-16 | Never change pages silently; stable UX |
+
+**v1.0 gaps against the reference.** At v1.0 (staged rollout from 2027-02-01) the reference app's adhan, home widget, Qibla, azkar, vertical auto-scroll and page curl are absent until v1.1 (2027-03-22) unless pulled in (doc 09 §5.2), and tasbeeh only if its stretch rung is restored. The v1.0 store listing must not claim them ([Release](11-release-compliance-business.md)).
 
 ---
 
 ## 11. Non-functional requirements
 
-Reference devices: **Mid** = Pixel 6a-class (Android 14+); **Low** = 2 GB RAM, 720p, API 24–30 phone (Transsion/itel-class, plus one API 24 and one API 26 device for font/kashida checks). Measured with Macrobenchmark + baseline profile on release builds ([Quality](10-quality-testing-ci.md)).
+Reference devices (aligned with the [Quality](10-quality-testing-ci.md) QB budgets): **High** = Pixel 6a-class (Android 14+; doc 10 "Ref-high"); **Mid** = a mid-range 4–6 GB phone (e.g. Samsung Galaxy A-series); **Low** = a 3 GB low-end phone, Infinix/Tecno/Redmi tier with a Helio G-class SoC (doc 10 "Ref-low"). Functional, unbudgeted checks also run on a 2 GB phone and on one API 24 and one API 26 device (font/kashida). Measured with Macrobenchmark + baseline profile on release builds ([Quality](10-quality-testing-ci.md)).
 
 | ID | Area | Requirement (target) |
 |---|---|---|
-| **NFR-01** | Cold start | Launch → Home first frame (TTID) ≤ 500 ms Mid, ≤ 1,200 ms Low; launch → reader page fully drawn (TTFD) ≤ 800 ms Mid, ≤ 1,800 ms Low. No interstitial splash (system splash only). First-ever launch incl. content-DB copy ≤ 3 s Low. |
-| **NFR-02** | Page turn | 10-page swipe: p90 frame time ≤ 16 ms Mid, p95 ≤ 25 ms Low; 0 frozen frames (> 700 ms); adjacent pages pre-composed (no blank page during swipe). |
+| **NFR-01** | Cold start | Launch → Home first frame (TTID, p50) ≤ 500 ms High, ≤ 1.2 s Mid, ≤ 1.5 s Low (doc 10 QB-03); launch → last-read reader page fully drawn (TTFD) ≤ 800 ms High, ≤ 2.0 s Low (QB-04). No interstitial splash (system splash only). First-ever launch incl. content-DB copy ≤ 3 s Low. |
+| **NFR-02** | Page turn | 10-page swipe: p90 frame time ≤ 16 ms High, p95 ≤ 25 ms Low; 0 frozen frames (> 700 ms); adjacent pages pre-composed (no blank page during swipe). |
 | **NFR-03** | Highlight cost | Ayah-change redraws only the highlight layer; ≤ 4 ms main-thread work per change on Low; no page re-layout. |
 | **NFR-04** | Search | p90 ≤ 150 ms per query on Low for single-word Arabic/Urdu/English; first results page ≤ 50 rows. |
 | **NFR-05** | Responsiveness | Index screens open ≤ 300 ms; Play → first audio ≤ 1 s (downloaded) / ≤ 3 s (streaming, 4G); theme switch ≤ 200 ms. No ANR-prone work on main thread (StrictMode clean in debug). |
 | **NFR-06** | Memory | No page bitmaps in the default render path; 3 resident pages ≤ 5 MB (r04); app PSS while reading + playing ≤ 150 MB on Low; Kotlin heap ≤ 64 MB; LeakCanary clean on core journeys (debug). |
-| **NFR-07** | Size | Play per-device download (arm64) ≤ **20 MB** at P1 and ≤ **25 MB** at v1.0 (hard cap 30 MB); foss/universal APK ≤ 35 MB; installed footprint before user downloads ≤ 60 MB. Indicative budget: code + Compose 5–7 MB, content DB ~3–3.5 MB compressed, bundled translations ~2.6 MB, DK font 1.63 MB, SQLite native ~1.3 MB, Urdu UI font, GeoNames city DB ~1.5 MB (P2), adhan audio ≤ 2 MB (P2) (r05 §2.7.4, g04). AAB only on Play. |
-| **NFR-08** | Offline | With no network from first launch: reading, all indexes, search, translations, bookmarks, khatam, settings, downloaded audio, prayer times, adhan, qibla, Hijri (UQ + offset), tasbeeh, azkar all work. Network is needed only for streaming, downloads, pack/catalogue/feed refresh and sending reports. No screen blocks on a network call; all fetches fail soft to cached data. |
-| **NFR-09** | Battery & background | Background work limited to: user-started playback (FGS), user-started downloads (UIDT / FGS worker), prayer/reminder alarms (P2), one daily maintenance job (alarm verification, catalogue/feed refresh ≤ 1/day, prefer unmetered), widget updates at prayer boundaries. No polling, no FCM, no wakelocks outside playback/download. Keep-screen-on only while the reader is foreground. No Android vitals "excessive wakeups" or "stuck partial wake lock" flags. |
+| **NFR-07** | Size | Play per-device download (arm64) ≤ **20 MB** at P1 and ≤ **25 MB** at v1.0 (hard cap 30 MB); foss/universal APK ≤ 35 MB; installed footprint before user downloads ≤ 60 MB. Indicative budget: code + Compose 5–7 MB, content DB ~3–3.5 MB compressed, bundled translations ~2.6 MB, DK font 1.63 MB, SQLite native ~1.3 MB, Urdu UI font, GeoNames city DB ~1.5 MB (v1.0), adhan audio ≤ 2 MB (from v1.1, so the v1.0 budget has headroom) (r05 §2.7.4, g04). AAB only on Play. |
+| **NFR-08** | Offline | With no network from first launch: reading, all indexes, search, translations, bookmarks, khatam, settings, downloaded audio, prayer times, Hijri (UQ + offset), and — from the release that ships each (§6) — adhan, qibla, tasbeeh, azkar all work. Network is needed only for streaming, downloads, pack/catalogue/feed refresh and sending reports. No screen blocks on a network call; all fetches fail soft to cached data. |
+| **NFR-09** | Battery & background | Background work limited to: user-started playback (FGS), user-started downloads (UIDT / FGS worker), prayer/reminder alarms (from the release that ships F-CP-02/F-CP-09, v1.1 by default), one daily maintenance job (alarm verification, catalogue/feed refresh ≤ 1/day, prefer unmetered), widget updates at prayer boundaries. No polling, no FCM, no wakelocks outside playback/download. Keep-screen-on only while the reader is visible, released after the inactivity timeout (F-RD-02 AC 5). No Android vitals "excessive wakeups" or "stuck partial wake lock" flags. |
 | **NFR-10** | Reliability | User-perceived crash rate ≤ 0.5% and ANR rate ≤ 0.2% of daily users (Play vitals); 2-hour playback session completes without interruption; downloads resume after network loss and process death; no user-data loss on any update (Room migrations tested for every schema version). |
 | **NFR-11** | Content integrity | CI invariants on every content build: 6,236 ayahs; 83,669 tokens; 548 pages × 16 lines; each ayah exactly once, in order; Para (30), Manzil (7), ruku (558, per-Para counts), sajda (14 + 1), quarter (90) tables equal curated values; content DB and packs sha256-verified at install/activation; a mismatch fails closed. |
 | **NFR-12** | Accessibility | TalkBack-complete (F-PL-07); 200% font on core screens; touch targets ≥ 48 dp; WCAG AA contrast (text 4.5:1, large text/UI 3:1) in all themes incl. highlight/selection; reduced motion honoured; haptics optional; never TTS the Arabic Quran. |
@@ -930,13 +956,13 @@ Reference devices: **Mid** = Pixel 6a-class (Android 14+); **Low** = 2 GB RAM, 7
 | **PRV-05** | Location: `ACCESS_COARSE_LOCATION` only, one-shot, foreground, computed on device; stored only as the chosen city/coordinates in local settings; never transmitted; the city picker works without any permission (D-15). No fine or background location, ever. |
 | **PRV-06** | Reading/listening history, bookmarks, notes, khatams, streaks, search history and group-khatam names stay on the device; they leave it only via Android Auto Backup (E2E-encrypted on Android 9+) or a user-initiated JSON export (D-20). |
 | **PRV-07** | Report-text-error and "Contact" use the user's own email app with a visible, editable message; no logs or identifiers are attached automatically. |
-| **PRV-08** | Permission allowlist (v1.0): INTERNET, ACCESS_NETWORK_STATE, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK, FOREGROUND_SERVICE_DATA_SYNC (API ≤ 33 path), RUN_USER_INITIATED_JOBS (API 34+), WAKE_LOCK, POST_NOTIFICATIONS, VIBRATE; P2 adds ACCESS_COARSE_LOCATION, SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED. **Denylist:** AD_ID, ACCESS_FINE_LOCATION, ACCESS_BACKGROUND_LOCATION, USE_EXACT_ALARM, ACCESS_NOTIFICATION_POLICY, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, USE_FULL_SCREEN_INTENT (v1), READ/WRITE_EXTERNAL_STORAGE, QUERY_ALL_PACKAGES, READ_PHONE_STATE; RECORD_AUDIO only from P3 hifz, requested on first use. CI checks the merged manifest. |
+| **PRV-08** | Permission allowlist (v1.0): INTERNET, ACCESS_NETWORK_STATE, FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK, FOREGROUND_SERVICE_DATA_SYNC (API ≤ 33 path), RUN_USER_INITIATED_JOBS (API 34+), WAKE_LOCK, POST_NOTIFICATIONS, VIBRATE, ACCESS_COARSE_LOCATION (prayer times, v1.0); SCHEDULE_EXACT_ALARM and RECEIVE_BOOT_COMPLETED are declared from the first release that ships an alarm feature (F-CP-02 adhan, Sehri alarm, F-CP-09 reminders — v1.1 unless pulled in). **Denylist:** AD_ID, ACCESS_FINE_LOCATION, ACCESS_BACKGROUND_LOCATION, USE_EXACT_ALARM, ACCESS_NOTIFICATION_POLICY, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, USE_FULL_SCREEN_INTENT (v1), READ/WRITE_EXTERNAL_STORAGE, QUERY_ALL_PACKAGES, READ_PHONE_STATE; RECORD_AUDIO only from P3 hifz, requested on first use. CI checks the merged manifest. |
 | **PRV-09** | Runtime permissions are requested only in context (first download → notifications; enabling adhan → notifications + exact alarms; "use my location" → coarse location), each with a one-sentence reason and a working path if denied. |
 | **PRV-10** | No account or sign-in in v1. Future "Sign in with Quran.com" is opt-in, explains what syncs, and can be disconnected with data deletion on the remote side per QF terms. |
 | **PRV-11** | A privacy policy (English + Urdu) is published on our domain and linked in the listing and app, stating PRV-01..10 in plain language. |
 | **PRV-12** | Target audience 13+; no child-directed imagery or terminology (keeps the app out of Families policy) (D-22). |
 | **PRV-13** | Microphone (P3/P4): recordings and AI processing stay on device; never uploaded; user can delete all recordings in one action. |
-| **PRV-14** | The foss flavor contains no Google Play Services or Google libraries; the play flavor adds only Play In-App Review (P2) and Play Billing (v1.5) — neither used for tracking (D-15). |
+| **PRV-14** | The foss flavor contains no Google Play Services or Google libraries; the play flavor adds only Play In-App Review (v1.1, F-PL-10) and Play Billing (v1.5) — neither used for tracking (D-15). |
 
 ---
 
@@ -962,7 +988,7 @@ Sources: **Play Console** (Android vitals, ratings & reviews, acquisition and st
 | **SM-09** | ≤ 3★ reviews mentioning ads / paywall | 0% (any occurrence triaged as a bug) |
 | **SM-10** | ≤ 3★ reviews mentioning text errors | ≤ 2% |
 | **SM-11** | Android vitals user-perceived crash rate / ANR rate | ≤ 0.5% / ≤ 0.2% |
-| **SM-12** | Confirmed text-error reports: time to fix | Mitigation ≤ 24 h (severe), fix ≤ 7 days, 100% within SLA |
+| **SM-12** | Text-error reports: SLA compliance (F-PL-05) | Triage ≤ 24 h; signed notice/kill-switch ≤ 48 h; corrected build submitted ≤ 72 h after confirmation; reporter acknowledged ≤ 72 h; 100% within SLA |
 | **SM-13** | "Adhan didn't play / wrong time" share of support emails + reviews | ≤ 2% of reviews; every report answered with health-check steps |
 | **SM-14** | Store-listing conversion (visitors → installers, Play Console) | ≥ Play's peer-group median for Books & Reference in PK |
 | **SM-15** | 30-day retained installers / uninstall rate (Play Console acquisition & statistics) | Retained installers ≥ peer median; trend improving month over month |
@@ -976,7 +1002,7 @@ Monthly review: export Play reviews, tag themes with the r01 §2.9 regex set (ma
 
 **Never (product line):** ads of any kind; tracking/analytics/attribution SDKs; selling or sharing data; paywalls on Quran text, recitation, downloads, translations or indexes; scanned page images from any publisher; a translation-only mode; generative AI tafsir, fatwas, chatbots or AI-written religious content; reciter photos or human/animal imagery; music; promotional push notifications; public leaderboards; Ahmadi translations/tafsir; changing the user's ringer/DND state; full-screen-intent alarms (v1).
 
-**Not in v1 (may come later, see phase):** word-by-word (P4); tajweed colours (P4); Madani layout (P4); 15/13-line (P3); two-page spread (P3); hifz mode (P3); Android Auto (P3); cloud sync / accounts (P3); realtime group khatam (P3); tafsir packs beyond Ahsan-ul-Bayan footnotes (P3); transliteration and Roman-Urdu UI (P3); supporter IAP (v1.5); opt-in crash reports (v1.1); Noorani Qaida (P4); Wear OS (P4); AI recitation (P4); topic/semantic search (P3/P4).
+**Not in v1.0 (may come later, see phase and the §6 Release column):** every feature whose Release is v1.1 (adhan, Qibla, azkar, widgets, reminders, share image, translation packs and translator choice, notes, streaks, JSON export, auto-scroll, page curl, rating prompt, launcher shortcuts); word-by-word (P4); tajweed colours (P4); Madani layout (P4); 15/13-line (P3); two-page spread (P3); hifz mode (P3); Android Auto (P3); cloud sync / accounts (P3); realtime group khatam (P3); tafsir packs beyond Ahsan-ul-Bayan footnotes (P3); transliteration and Roman-Urdu UI (P3); supporter IAP (v1.5); opt-in crash reports (v1.1); Noorani Qaida (P4); Wear OS (P4); AI recitation (P4); topic/semantic search (P3/P4).
 
 **Not planned:** iOS and web apps (D-01, until traction); Android TV; hadith collections; Zakat/Fitrana calculator; salah/qaza tracker; mosque finder or maps; live Makkah/Madinah streams; radio; video content; kids mode inside this app (separate app if ever); ringtones/wallpapers; own app backend in v1 (D-24); Google Maps/Play Services location.
 
@@ -987,10 +1013,10 @@ Monthly review: export Play reviews, tag themes with the r01 §2.9 regex set (ma
 | ID | Question | Default until answered | Owner of answer |
 |---|---|---|---|
 | **OQ-01** | Confirm the owner's personal print is the 16-line Taj edition (count lines on a mid-Para page; r01/r02 found "~13 lines" vs a 16-line screenshot). | 16-line Taj (D-04) | Owner, P0 |
-| **OQ-02** | Is Junagarhi (often associated with Ahl-e-Hadith readers) the right *default* Urdu for a mostly Barelvi/Deobandi audience, or should onboarding ask the user to pick from bundled-eligible options once packs exist? | Junagarhi bundled default (D-09); choice in P2 (F-TR-03) | Owner + content advisor |
+| **OQ-02** | Is Junagarhi (often associated with Ahl-e-Hadith readers) the right *default* Urdu for a mostly Barelvi/Deobandi audience, or should onboarding ask the user to pick from bundled-eligible options once packs exist? | Junagarhi bundled default (D-09); translator choice (F-TR-03) and Kanz-ul-Iman / Jalandhari packs (F-TR-02) in v1.1 (2027-03-22); the sectarian-default risk for 2027-02-01 → 03-22 is tracked as R-37 | Owner + content advisor |
 | **OQ-03** | Default Asr: Hanafi with an onboarding choice "Hanafi (later) / Standard (earlier)" — acceptable, or ask maslak explicitly? | Hanafi + choice | Owner |
 | **OQ-04** | Who maintains the monthly PK month-start (Ruet-e-Hilal) feed (≈ 5 min/month), and the escalation if it lapses? | Owner; lapse → UQ + offset | Owner |
-| **OQ-05** | Budget for commissioned content: adhan recordings, ~150 Urdu dua translations + scholar review, mushaf ornaments (vector art), hafiz proofreading certificate (G5), legal advice (G6). | Needed by P2 | Owner |
+| **OQ-05** | Budget for commissioned content: adhan recordings, ~150 Urdu dua translations + scholar review, mushaf ornaments (vector art), hafiz proofreading certificate (G5), legal advice (G6). | Ornaments, G5 certificate and G6 advice by P2 (v1.0); adhan recordings and dua translations by v1.1 | Owner |
 | **OQ-06** | Which observances are on by default in the Islamic events calendar (12 Rabi-ul-Awwal, Shab-e-Barat, Shab-e-Mi'raj naming)? | Off by default except Ramadan, Eids, Ashura, Laylat al-Qadr nights | Owner + advisor |
 | **OQ-07** | Is a small Firebase dependency acceptable for realtime group khatam in P3 (play flavor only, Data safety change)? | Text sheet only until decided | Owner, before P3 |
 | **OQ-08** | Diaspora priority: should UK/Gulf presets and an English-first listing ship at v1.0, or later? | Presets ship (F-CP-01); listing PK-first | Owner |
@@ -998,7 +1024,7 @@ Monthly review: export Play reviews, tag themes with the r01 §2.9 regex set (ma
 | **OQ-10** | Launch destination: Home with Continue card (default) vs straight to last page — owner preference for his own routine? | Home; setting available | Owner, P1 feedback |
 | **OQ-11** | Hifz edition priority for P3: 15-line Hafizi vs 16-line default (validate with 2–3 ustads)? | 15-line first (F-RD-11) | Owner + ustads |
 | **OQ-12** | Content-errors and support address/domain for F-PL-05, privacy policy and listing (needs the public brand, G3). | Placeholder on R2 domain | Owner |
-| **OQ-13** | May a **closed-test** build carry G1/G2-pending content (e.g. the QUL layout before written permission) if gates have not cleared by Ramadan? PRD assumes **no** (closed testers are third parties) unless [Content](03-content-data-licensing.md)/[Release](11-release-compliance-business.md) grant a per-item exception. | Public-eligible only | Docs 03/11 + owner |
+| **OQ-13** | ~~May a closed-test build carry G1/G2-pending content?~~ **Resolved (D-29):** closed testers are third parties, so a closed-test (BETA) build carries mushaf layout data only if G1-cleared or clean-room (no QUL-derived layout before written permission), with a "pre-release — proofreading in progress" notice until G5; recitations may be PERMITTED, HOST_GRANT or PENDING, never PERSONAL_ONLY. PUBLIC builds carry only PERMITTED / HOST_GRANT. | — | Closed |
 | **OQ-14** | Should "Play adhan even when silent" exist at all (opt-in), given silent-mode override was a top reference complaint? | Opt-in, default off | Owner |
 
 ---
@@ -1006,7 +1032,7 @@ Monthly review: export Play reviews, tag themes with the r01 §2.9 regex set (ma
 ## 16. Appendix
 
 ### 16.1 New IDs introduced by this doc
-- Feature: **F-PL-10** Gentle rating prompt (P2, Could).
+- Features: **F-PL-10** Gentle rating prompt (P2, Could, v1.1); **F-PL-11** Signed remote notices (P2, Must, v1.0 floor); **F-PL-12** Launcher shortcuts (P2, Could, v1.1; UI in [UX/UI](02-ux-ui-spec.md) §2.5).
 - Owner must-haves **MH-1..MH-4**; personas **PER-0..PER-4**; principles **PP-1..PP-8**; non-functional **NFR-01..NFR-18**; privacy **PRV-01..PRV-14**; success metrics **SM-01..SM-16**; open questions **OQ-01..OQ-14**.
 
 ### 16.2 Glossary
