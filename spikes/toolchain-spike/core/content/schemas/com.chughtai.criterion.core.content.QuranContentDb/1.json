@@ -1,0 +1,127 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "449638a4661380449957f25395c49e23",
+    "entities": [
+      {
+        "tableName": "ayah",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `surah` INTEGER NOT NULL, `ayah` INTEGER NOT NULL, `text_uthmani` TEXT NOT NULL, `text_norm` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "surah",
+            "columnName": "surah",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ayah",
+            "columnName": "ayah",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "textUthmani",
+            "columnName": "text_uthmani",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "textNorm",
+            "columnName": "text_norm",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "ayah_fts",
+        "createSql": "CREATE VIRTUAL TABLE IF NOT EXISTS `${TABLE_NAME}` USING FTS5(`text_norm`, tokenize=`unicode61`, content=`ayah`, content_rowid=`id`)",
+        "fields": [
+          {
+            "fieldPath": "textNorm",
+            "columnName": "text_norm",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": []
+        },
+        "ftsVersion": "FTS5",
+        "ftsOptions": {
+          "tokenizer": "unicode61",
+          "tokenizerArgs": [],
+          "contentTable": "ayah",
+          "languageIdColumnName": "",
+          "matchInfo": "FTS4",
+          "notIndexedColumns": [],
+          "prefixSizes": [],
+          "preferredOrder": "ASC",
+          "contentRowId": "id",
+          "columnSize": true,
+          "detail": "FULL"
+        },
+        "contentSyncTriggers": [
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_ayah_fts_BEFORE_UPDATE BEFORE UPDATE ON `ayah` BEGIN DELETE FROM `ayah_fts` WHERE `rowid`=OLD.`id`; END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_ayah_fts_BEFORE_DELETE BEFORE DELETE ON `ayah` BEGIN DELETE FROM `ayah_fts` WHERE `rowid`=OLD.`id`; END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_ayah_fts_AFTER_UPDATE AFTER UPDATE ON `ayah` BEGIN INSERT INTO `ayah_fts`(`rowid`, `text_norm`) VALUES (NEW.`id`, NEW.`text_norm`); END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_ayah_fts_AFTER_INSERT AFTER INSERT ON `ayah` BEGIN INSERT INTO `ayah_fts`(`rowid`, `text_norm`) VALUES (NEW.`id`, NEW.`text_norm`); END"
+        ]
+      },
+      {
+        "tableName": "ayah_fts_tri",
+        "createSql": "CREATE VIRTUAL TABLE IF NOT EXISTS `${TABLE_NAME}` USING FTS5(`text_norm`, tokenize=`trigram`, content=`ayah`, content_rowid=`id`)",
+        "fields": [
+          {
+            "fieldPath": "textNorm",
+            "columnName": "text_norm",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": []
+        },
+        "ftsVersion": "FTS5",
+        "ftsOptions": {
+          "tokenizer": "trigram",
+          "tokenizerArgs": [],
+          "contentTable": "ayah",
+          "languageIdColumnName": "",
+          "matchInfo": "FTS4",
+          "notIndexedColumns": [],
+          "prefixSizes": [],
+          "preferredOrder": "ASC",
+          "contentRowId": "id",
+          "columnSize": true,
+          "detail": "FULL"
+        },
+        "contentSyncTriggers": [
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_ayah_fts_tri_BEFORE_UPDATE BEFORE UPDATE ON `ayah` BEGIN DELETE FROM `ayah_fts_tri` WHERE `rowid`=OLD.`id`; END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_ayah_fts_tri_BEFORE_DELETE BEFORE DELETE ON `ayah` BEGIN DELETE FROM `ayah_fts_tri` WHERE `rowid`=OLD.`id`; END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_ayah_fts_tri_AFTER_UPDATE AFTER UPDATE ON `ayah` BEGIN INSERT INTO `ayah_fts_tri`(`rowid`, `text_norm`) VALUES (NEW.`id`, NEW.`text_norm`); END",
+          "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_ayah_fts_tri_AFTER_INSERT AFTER INSERT ON `ayah` BEGIN INSERT INTO `ayah_fts_tri`(`rowid`, `text_norm`) VALUES (NEW.`id`, NEW.`text_norm`); END"
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '449638a4661380449957f25395c49e23')"
+    ]
+  }
+}
