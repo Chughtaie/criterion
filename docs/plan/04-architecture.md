@@ -42,7 +42,7 @@ flowchart LR
   APP -. "v1.1, opt-in per report (ACRA, F-PL-09)" .-> CW
   OWN["Owner workstation<br/>tools/ pipelines (doc 08)<br/>offline Ed25519 key"] -- "sign + upload (rclone/wrangler)" --> R2
   CI["GitHub Actions (doc 10)"] -- "AAB (playPublicRelease: BETA → closed test; PUBLIC with -Pcriterion.release=production)" --> PLAY["Google Play"]
-  CI -- "signed APK (fossPersonalRelease)" --> OWNERPHONE["Owner's phone (sideload)"]
+  OWN -- "fossPersonalRelease, built locally only (personalCheck);<br/>personal packs never enter git or CI" --> OWNERPHONE["Owner's phone (sideload)"]
 ```
 
 | External endpoint | Used for | Phase | Failure behaviour |
@@ -2191,7 +2191,7 @@ The root `build.gradle.kts` applies every plugin alias with `apply false`, inclu
 | `criterion.spotless` | Spotless + ktlint 1.8.0 + compose-rules 0.6.8; licence-header check (Apache headers on ported files) |
 | `criterion.content.eligibility` | `verifyContentEligibility<Variant>` (§11.3), using the shared `ContentPolicy`; G1/G5 checks for PUBLIC |
 | `criterion.android.test` | `com.android.test` + baselineprofile for `:baselineprofile` |
-| `criterion.root` | Guard tasks `checkModuleBoundaries` (rules in §3.4) and `verifyKotlinGradlePlugin` (asserts `buildEnvironment` resolves `kotlin-gradle-plugin` to 2.4.21, g04 rec. 1); aggregate `kover`. **Root aggregate tasks** (library modules have no flavors, so CI calls these instead of per-module names): `quickCheck` = `spotlessCheck` + guard tasks + every library `testDebugUnitTest` + `:app:testFossPersonalDebugUnitTest`. `prCheck` = `quickCheck` + every library `verifyRoborazziDebug` + `:app:testPlayPublicDebugUnitTest` + `:app:lintPlayPublicRelease` + `:app:lintFossPersonalRelease` + `verifyContentEligibilityPlayPublicRelease` + `verifyContentEligibilityFossPersonalRelease` + `:app:assemblePlayPublicRelease :app:assembleFossPersonalRelease`. The required GitHub status is `ci/check` (doc 10) |
+| `criterion.root` | Guard tasks `checkModuleBoundaries` (rules in §3.4) and `verifyKotlinGradlePlugin` (asserts `buildEnvironment` resolves `kotlin-gradle-plugin` to 2.4.21, g04 rec. 1); aggregate `kover`. **Root aggregate tasks** (library modules have no flavors, so CI calls these instead of per-module names; exact membership owned by doc 10 §…"quickCheck / prCheck"): `quickCheck` = `spotlessCheck` + guard tasks + every library `testDebugUnitTest` + Roborazzi verify + `:app:testPlayPublicDebugUnitTest` + `:app:testFossPersonalDebugUnitTest` (code paths only; the personal packs folder is empty in CI). `prCheck` = `quickCheck` + library `lintDebug` + `:app:lintPlayPublicDebug` + `:app:lintFossPersonalDebug` + guards incl. `verifyContentEligibility` for `playPublicRelease` and `fossPublicRelease` + `:app:assemblePlayPublicDebug :app:assembleFossPublicDebug`. CI assembles and eligibility-checks the **public tier only**. `personalCheck` (owner's machine only) = `copyPersonalAssets` + `verifyContentEligibilityFossPersonalRelease` + `:app:assembleFossPersonalRelease`. The required GitHub status is `ci/check` |
 
 ---
 
@@ -2199,7 +2199,7 @@ The root `build.gradle.kts` applies every plugin alias with `apply false`, inclu
 
 | # | Task (owner doc for detail) | Phase | Estimate | Acceptance criteria |
 |---|---|---|---|---|
-| A1 | Promote spike toolchain into the root project; `build-logic` with the §16.2 plugins; wrapper 9.8.1 | P0 | 1.5 d | `./gradlew buildEnvironment` shows KGP 2.4.21; `assembleFossPersonalDebug` and `assemblePlayPublicRelease` succeed; `checkModuleBoundaries` passes |
+| A1 | Promote spike toolchain into the root project; `build-logic` with the §16.2 plugins (incl. `quickCheck`/`prCheck`/`personalCheck`); wrapper 9.8.1 | P0 | 1.5 d | `./gradlew buildEnvironment` shows KGP 2.4.21; `assembleFossPersonalDebug` (locally) and `assemblePlayPublicRelease` succeed; `checkModuleBoundaries` passes; `./gradlew quickCheck` is the `ci/check` step |
 | A2 | Module skeleton: the 9 P0 modules with packages `com.chughtai.criterion.core.*` / `.feature.*` | P0 | 0.5 d | Empty Hilt graph builds; `:core:model` and `:core:domain` have no Android plugin |
 | A3 | `:core:model` types (§5) + `QuranMeta` port with Apache headers + `TextNormalizer` with vectors | P0 | 1.5 d | 100 % unit coverage on key math; normalizer vectors pass |
 | A4 | `QuranContentDb` entities (§7.2) + exported schema; pipeline v0 creates the DB ([08](08-data-pipelines.md)) | P0 | 1.5 d | §7.2.1 invariants green; no-master open passes; FTS returns 45 hits for الرحمن (g04 baseline) |
