@@ -24,3 +24,5 @@ app/src/personal/assets/packs/
 __pycache__/
 .kotlin/
 .venv/
+/*/build/
+/*/*/build/
