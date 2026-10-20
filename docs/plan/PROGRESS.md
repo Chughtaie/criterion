@@ -28,7 +28,7 @@ same PR.
 | E-01-S05 | Device smoke test + platform spikes | S0 | P0 | shared | todo |  |  |
 | E-01-S06 | App shell & navigation | S2 | P1 | agent | todo |  |  |
 | E-01-S07 | Test-device procurement (owner) | S0 | ADM | owner | todo |  |  |
-| E-01-S08 | Module-boundary guard and data/DI/test conventions (split from E-01-S02) | S0 | P0 | agent | in-review | `e01-s08-boundaries-data-conventions` |  |
+| E-01-S08 | Module-boundary guard and data/DI/test conventions (split from E-01-S02) | S0 | P0 | agent | in-review | `e01-s08-boundaries-data-conventions` | [#5](https://github.com/Chughtaie/criterion/pull/5) |
 
 ### E-02 CI & quality gates
 
