@@ -952,7 +952,7 @@ flowchart LR
   end
   subgraph N["nightly.yml (02:00 PKT, skipped if no new commits)"]
     N1[full 548 goldens + kashida sdk26 + buildHealth + Kover]
-    N2[GMD instrumented api24/30/36 + api37 audio] 
+    N2[GMD instrumented api24/30/36 + api37 audio]
     N3[macrobench + baseline profile api34 (trend)]
   end
   subgraph D["upstream-drift.yml (doc 08, weekly) + verify-live.yml (doc 08, daily)"]
