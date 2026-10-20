@@ -25,3 +25,11 @@ dependencyResolutionManagement {
 
 rootProject.name = "Criterion"
 include(":app")
+include(":core:model")
+include(":core:domain")
+include(":core:content")
+include(":core:database")
+include(":core:data")
+include(":core:designsystem")
+include(":core:navigation")
+include(":core:testing")

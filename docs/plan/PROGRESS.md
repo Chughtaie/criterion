@@ -23,7 +23,7 @@ same PR.
 |---|---|---|---|---|---|---|---|
 | E-01-S01 | Toolchain upgrade PR | S0 | P0 | agent | done | `e01-s01-toolchain-upgrade` | [#3](https://github.com/Chughtaie/criterion/pull/3) |
 | E-01-S02 | Convention plugins in `build-logic/convention` | S0 | P0 | agent | done | `e01-s02-convention-plugins` | [#4](https://github.com/Chughtaie/criterion/pull/4) |
-| E-01-S03 | Lean module skeleton (doc 04 §3, A2) | S0 | P0 | agent | todo |  |  |
+| E-01-S03 | Lean module skeleton (doc 04 §3, A2) | S0 | P0 | agent | in-review | `e01-s03-module-skeleton` | [#6](https://github.com/Chughtaie/criterion/pull/6) |
 | E-01-S04 | Variants, manifest & signing | S0 | P0 | agent | todo |  |  |
 | E-01-S05 | Device smoke test + platform spikes | S0 | P0 | shared | todo |  |  |
 | E-01-S06 | App shell & navigation | S2 | P1 | agent | todo |  |  |
