@@ -654,11 +654,11 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-02-S01 | PR pipeline — `.github/workflows/android.yml` (doc 10 §12.2): checkout v7, setup-java v6 (Temurin 21), gradle/actions v6 cache; `./gradlew prCheck` (build, unit + Robolectric tests, Lint, Spotless/ktlint + compose-rules, both flavors assemble); required status `ci/check`; `buildEnvironment` grep guard (`2.2.10 -> 2.4.21`), Maven 429 retry | — | 0.75 | E-01-S02, E-01-S04, E-01-S08 | S0 | P0 |
+| E-02-S01 | PR pipeline — `.github/workflows/android.yml` (doc 10 §12.2): checkout v7, setup-java v6 (Temurin 21), gradle/actions v6 cache; `./gradlew prCheck` (build, unit + Robolectric tests, Lint, Spotless/ktlint + compose-rules, both flavors assemble); required status `ci/check`; `buildEnvironment` grep guard (`2.2.10 -> 2.4.21`), Maven 429 retry; the dependency-graph diff print (doc 04 §3.4 rule 4) and `ForbiddenTestResourceDirCheck` (doc 10 §5.1) | — | 0.75 | E-01-S02, E-01-S04, E-01-S08 | S0 | P0 |
 | E-02-S02 | Content-DB CI — run pipeline, JVM content-invariant tests, Robolectric open of the **no-`room_master_table`** copy (forces `onValidateSchema`), input SHA-256 check | — | 0.5 | E-03-S01 | S2 | P1 |
 | E-02-S03 | Mushaf golden infra + core set — Roborazzi + NATIVE graphics one SDK per JVM, never a `fonts/` test-resource folder; core set (pages 1–21 per doc 05 + doc 01 golden labels) × 2 themes; in place before the R1 fixes land | F-RD-01 | 0.5 | E-04-S04 | S4 | P1 |
 | E-02-S04 | Content-eligibility & licence gates — `verifyContentEligibility<Variant>` (`criterion.content.eligibility`, doc 04 §11): parses `bundled.json` + `catalogue.json`, checks sha256, CONTENT_TIER vs the 5-value `licenceStatus` + `eligibleTiers`. BETA/PUBLIC builds fail unless the public-tier layout pack is G1-cleared (`qul_res_11: granted`) **or** clean-room; PUBLIC also needs G5 `certified_pages.json` page hashes; NC content blocked when MONETIZED; lint forbids QF/quran.com hosts in pipeline inputs | — | 0.75 | E-10-S07, E-09-S01 | S5 (days 1–3) | F |
-| E-02-S05 | Baseline profile + Macrobenchmark 1.5.0 — startup, page-turn, index scroll; nightly job; profile generated on the RC (deviation from doc 10's "profile in the 12-21 build", §15); `criterion.android.test` convention plugin for `:baselineprofile` (from E-01-S02); apply dependency-analysis (`buildHealth`) and the Kover aggregate (doc 10 §11.1) | — | 0.75 | E-05-S01 | S7 | F |
+| E-02-S05 | Baseline profile + Macrobenchmark 1.5.0 — startup, page-turn, index scroll; nightly job; profile generated on the RC (deviation from doc 10's "profile in the 12-21 build", §15); `criterion.android.test` convention plugin for `:baselineprofile` (from E-01-S02); apply dependency-analysis (`buildHealth`) and the Kover aggregate (doc 10 §11.1); add `criterion.android.test` to `checkModuleBoundaries`' base conventions | — | 0.75 | E-05-S01 | S7 | F |
 | E-02-S06 | Release job — signed AAB, mapping archive, version bump; Console upload manual in v1 | — | 0.25 | E-22-S02 | S7 | F |
 | E-02-S07 | Full PR golden set (~60 rule-selected pages, zero tolerance) + nightly all 548 pages (doc 10) | F-RD-01 | 0.75 | E-02-S03 | S6 | C |
 
@@ -725,7 +725,7 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
-| E-07-S01 | `user.db` v1 + settings — Room 3 schema per doc 04 §7.4 (P1 **and** P2 tables, frozen 12-21; P3 = v2), keyed by Kufan `VerseKey` / `MushafId` + page index, exported schema JSON, migration-test harness; typed `DataStore<UserSettings>` | — | 0.75 | E-01-S03 | S2 | P1 |
+| E-07-S01 | `user.db` v1 + settings — Room 3 schema per doc 04 §7.4 (P1 **and** P2 tables, frozen 12-21; P3 = v2), keyed by Kufan `VerseKey` / `MushafId` + page index, exported schema JSON, migration-test harness and `criterion.room3`'s migration-completeness check (doc 04 §16.2); typed `DataStore<UserSettings>` | — | 0.75 | E-01-S03 | S2 | P1 |
 | E-07-S02 | Auto last-read pointer (per mushaf, separate from bookmarks) | F-BM-01 | 0.25 | E-07-S01 | S3 | P1 |
 | E-07-S03 | Ayah & page bookmarks + list screen + undo | F-BM-02 | 0.75 | E-07-S01 | S4 | P1 |
 | E-07-S04 | Auto Backup rules (user.db + settings only) | F-BM-06 | 0.25 | E-07-S01 | S4 | P1 |
@@ -764,7 +764,7 @@ Each row is one story. "Scope and key tasks" lists the tasks; they become issue 
 | Story | Scope and key tasks | Features | Est | Depends on | When | Tier |
 |---|---|---|---|---|---|---|
 | E-10-S01 | Downloader core — OkHttp Range resume, `.part` + atomic rename, MD5/SHA-256, per-surah ZIP, `getExternalFilesDirs` + `.nomedia`, Wi-Fi-only default | F-AU-08 | 1 | E-01-S03 | S3 | P1 |
-| E-10-S02 | WorkManager long-running `dataSync` worker (all APIs in P1; API ≤ 33 from v1.0) | F-AU-08 | 0.75 | E-10-S01 | S3 | P1 |
+| E-10-S02 | WorkManager long-running `dataSync` worker (all APIs in P1; API ≤ 33 from v1.0); `criterion.hilt` adds the androidx.hilt compiler for `@HiltWorker` | F-AU-08 | 0.75 | E-10-S01 | S3 | P1 |
 | E-10-S03 | Download UI (surah / Para / Manzil / full / popular pack; progress; cancel) + offline-first resolution in player | F-AU-08 | 0.75 | E-10-S01 | S4 | P1 |
 | E-10-S04 | Storage manager (usage per reciter, delete, SD card) | F-PL-06 | 0.5 | E-10-S03 | S7* | C |
 | E-10-S05 | UIDT job on API 34+ (`AudioDownloadJobService`, `RUN_USER_INITIATED_JOBS`, no Jetpack wrapper); required before any PUBLIC build | F-AU-08 | 1.5 | E-10-S01 | S7 | F |
