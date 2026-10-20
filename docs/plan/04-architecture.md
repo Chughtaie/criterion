@@ -216,7 +216,10 @@ flowchart TB
 1. A `:feature:*` module must not depend on another `:feature:*`, on `:core:data`, `:core:content`, `:core:database`, `:core:remote`, `:core:audio` or `:core:prayer`, or on Room, OkHttp or Media3 artifacts. Exception: `:feature:audio` may use `media3-ui-compose-material3`, which only needs a `Player` handed out by `PlaybackController.playerForUi()`.
 2. `:core:model` and `:core:domain` may not apply any Android plugin and may not depend on `javax.inject`, Dagger or Room.
 3. Implementation classes are `internal`. Each implementation module exposes only Hilt modules and the façades listed above. This fixes g04 error #2: Room types never leak through `api(...)`.
-4. Cycles are a build failure (Gradle enforces this). The `criterion.root` task also prints a dependency-graph diff in PRs.
+4. Cycles are a build failure (Gradle enforces this). The `criterion.root` task also prints a dependency-graph diff in PRs (with CI, E-02-S01).
+5. Every module with a build file applies a base convention plugin (`criterion.android.application`, `criterion.android.library` or `criterion.jvm.library`; `criterion.android.test` joins with `:baselineprofile`, E-02-S05), so its tests and lint reach `quickCheck`/`prCheck`.
+
+`checkModuleBoundaries` enforces rules 1, 2, 3 (Room declared in an `api` configuration) and 5 on each module's **declared** dependencies and applied plugins; a dependency that arrives only transitively is not seen. "Android plugin" means any plugin that adds the `android` extension (the JVM-only `com.android.lint` is allowed).
 
 ---
 
@@ -2188,7 +2191,7 @@ The root `build.gradle.kts` applies every plugin alias with `apply false`, inclu
 | `criterion.android.feature` | library.compose + hilt + serialization; adds `:core:domain`, `:core:model`, `:core:designsystem`, `:core:navigation`, lifecycle-runtime-compose, lifecycle-viewmodel-navigation3, hilt-lifecycle-viewmodel-compose, navigation3-runtime, collections-immutable; testImplementation `:core:testing`, Turbine, Roborazzi |
 | `criterion.jvm.library` | `org.jetbrains.kotlin.jvm`, JVM 17 toolchain/target; JUnit4 + Truth + coroutines-test |
 | `criterion.hilt` | KSP + Hilt plugin; `ksp(hilt-compiler)`; for Android modules also `androidx.hilt` compiler if workers are present |
-| `criterion.room3` | KSP + `androidx.room3`; `room3 { schemaDirectory("$projectDir/schemas") }`; room3-runtime + sqlite-bundled + `ksp(room3-compiler)`; room3-testing; a **migration-completeness check** for `user.db` |
+| `criterion.room3` | KSP + `androidx.room3`; `room3 { schemaDirectory("$projectDir/schemas") }`; room3-runtime + sqlite-bundled + `ksp(room3-compiler)`; room3-testing; a **migration-completeness check** for `user.db` (added with user.db, E-07-S01) |
 | `criterion.android.robolectric` | g04 rec. 8: `--add-exports java.base/jdk.internal.access` + `--add-opens java.base/java.io`; host `libsqliteJni` extraction from `sqlite-bundled-jvm` (linux_x64/linux_arm64/osx_arm64/windows_x64); `isIncludeAndroidResources`; `-ProboSdks=N` path for NATIVE-graphics kashida goldens, one SDK per JVM; never a test-resource folder named `fonts/` |
 | `criterion.android.screenshot` | Roborazzi plugin + `roborazzi-compose`; `verifyRoborazziDebug` / `recordRoborazziDebug`; the doc 10 screenshot matrix (4 themes × EN/UR × 100/130/200 % font scale) |
 | `criterion.android.lint` | `warningsAsErrors` on CI, `abortOnError`, baseline, Slack compose-lint checks, rules from `:lint-rules` |
