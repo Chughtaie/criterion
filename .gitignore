@@ -13,3 +13,13 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Criterion: private inputs, pipeline outputs, personal packs and signing material never enter git
+/out
+/data/private
+app/src/personal/assets/packs/
+*.jks
+*.keystore
+*.key
+__pycache__/
+.kotlin/

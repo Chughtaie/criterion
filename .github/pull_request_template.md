@@ -1,0 +1,16 @@
+## Story
+<story-id> — <title>   · Features: F-…   · Spec: docs/plan/0x-…md §…
+## What changed
+- …
+## Verification evidence (paste real output; required)
+Level reached: V? (see doc 13 §5)
+- `./gradlew prCheck` → …
+- Goldens: N verified / M re-recorded (each re-record explained below with diff image)
+- Emulator/device: AVD/API, screenshots in this PR, what I checked in each
+- NOT verified (owner to do): …
+## Content / licence / policy impact
+- [ ] none  - [ ] new dependency/asset/pack (licence + manifest updated)  - [ ] manifest/permission change  - [ ] curated data or text path touched (content-review)
+## Docs updated
+- [ ] PROGRESS.md row updated  - [ ] spec doc(s) updated  - [ ] ADR proposed (doc 12)  - [ ] CLAUDE.md (commands/modules)
+## Follow-ups / next steps
+- …

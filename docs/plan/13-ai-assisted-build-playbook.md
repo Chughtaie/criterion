@@ -343,7 +343,7 @@ flowchart LR
 | 3. Implement | Work goes on branch `<story-slug>-<slug>` (§4.2), in commits small enough to revert. Run `spotlessApply` before each commit. No drive-by refactors outside the story. Note any you find for the PR's "follow-ups" list. | Commits |
 | 4. Verify | Run the §5 ladder to the story's required level. On a failure, fix the root cause; never weaken a test to make it pass. | Evidence block |
 | 5. Self-review | Apply the §9 checklists that fit. For large PRs, run MA-2 (§8.3). | Checklist in the PR |
-| 6. Doc sync | Mark the story done in doc 09 and update any spec that changed. Propose an ADR if a decision moved (§10). | Doc diffs in the same PR |
+| 6. Doc sync | Update the story's row in `docs/plan/PROGRESS.md` and any spec that changed. Propose an ADR if a decision moved (§10). | Doc diffs in the same PR |
 | 7. PR | `gh pr create` with the template (§4.3). Never merge. | PR URL |
 | 8. Handoff | The PR's "Next steps" section is the handoff. The next session starts from `main` after the merge. | — |
 
@@ -386,7 +386,7 @@ Level reached: V? (see doc 13 §5)
 ## Content / licence / policy impact
 - [ ] none  - [ ] new dependency/asset/pack (licence + manifest updated)  - [ ] manifest/permission change  - [ ] curated data or text path touched (content-review)
 ## Docs updated
-- [ ] doc 09 story marked done  - [ ] spec doc(s) updated  - [ ] ADR proposed (doc 12)  - [ ] CLAUDE.md (commands/modules)
+- [ ] PROGRESS.md row updated  - [ ] spec doc(s) updated  - [ ] ADR proposed (doc 12)  - [ ] CLAUDE.md (commands/modules)
 ## Follow-ups / next steps
 - …
 ```
@@ -495,7 +495,7 @@ VERIFICATION
 OUT OF SCOPE
 - <explicitly excluded neighbours>
 DELIVERABLES
-- Plan first (plan mode) → wait for approval → implement → evidence block → doc 09 story marked done → PR.
+- Plan first (plan mode) → wait for approval → implement → evidence block → PROGRESS.md row updated → PR.
 ```
 
 ### 6.2 Variants
@@ -1409,7 +1409,7 @@ Tick the boxes that apply in the PR. Reviewers (the owner or MA-2) use the same 
 1. **The plan is the source of truth for intent; the code is the source of truth for behaviour.** When they diverge, the PR that causes the divergence also fixes the doc, or it does not merge.
 2. **The Decision Register (D-xx) changes only through an ADR in doc 12**, which owns the numbering (D-26+). The agent drafts the ADR (Context, Decision, Alternatives, Consequences, Revisit trigger) with status "Proposed". The owner accepts it, and only then do downstream docs change.
 3. **Feature IDs are never renumbered.** A new feature takes the next free number in its group and is added to doc 01 first.
-4. **Doc 09 is the progress ledger.** Each merged story is marked done in doc 09 in the same PR, with the PR number. Split or added stories are written there with IDs. Estimates and actuals are recorded as doc 09 specifies.
+4. **`docs/plan/PROGRESS.md` is the progress ledger** (one row per doc 09 story). Each story PR updates its own row (status, branch, PR link) in the same PR. Doc 09 keeps scope: split or added stories are written there with IDs, and get a PROGRESS.md row in the same PR. Estimates and actuals are recorded as doc 09 specifies.
 5. **Gates and risks** (doc 12) are updated by the owner when a status changes: an email reply, a G1 decision, the certificate. The agent may draft the update from AP-26 or AP-25 outputs.
 6. **CLAUDE.md** is updated in the same PR whenever commands, modules or rules change. Any change to the non-negotiable rules needs owner approval and is echoed in §2.1 of this doc.
 7. **Research reports are immutable.** New evidence goes in a new report (`docs/research/NN-*.md`), and the plan cites it.
@@ -1429,7 +1429,7 @@ Tick the boxes that apply in the PR. Reviewers (the owner or MA-2) use the same 
 Compare this branch's diff (git diff main...HEAD) with docs/plan/. Do not change code.
 1. List every place where the code now differs from docs 01–12 (file:section → what differs).
 2. For each: propose the exact doc edit (replacement text), or say "needs ADR" if it touches a D-xx decision.
-3. Mark story <story-id> done in docs/plan/09-roadmap-backlog.md with this PR's number; add any split/new
+3. Update story <story-id>'s row in docs/plan/PROGRESS.md (status, branch, this PR's link); add any split/new
    stories with the next IDs.
 4. Update CLAUDE.md if commands, modules or rules changed.
 5. Output a checklist of doc edits made, for the PR description.
