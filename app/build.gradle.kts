@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.criterion.android.application)
+    alias(libs.plugins.criterion.android.application.flavors)
     alias(libs.plugins.criterion.android.application.compose)
     alias(libs.plugins.criterion.hilt)
     alias(libs.plugins.criterion.android.robolectric)
@@ -10,11 +11,8 @@ android {
 
     defaultConfig {
         applicationId = "com.chughtai.criterion"
-        versionCode = 1
-        versionName = "1.0"
     }
 
-    buildFeatures { buildConfig = true }
     androidResources { generateLocaleConfig = true } // + res/resources.properties unqualifiedResLocale=en-US
     bundle { language { enableSplit = false } } // in-app language switch (D-21)
 }

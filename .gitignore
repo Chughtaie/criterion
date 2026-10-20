@@ -17,7 +17,8 @@ local.properties
 # Criterion: private inputs, pipeline outputs, personal packs and signing material never enter git
 /out
 /data/private
-app/src/personal/assets/packs/
+# Nothing under the personal tier's assets is committed (doc 08 §2); copyPersonalAssets and crit install-assets fill it.
+app/src/personal/assets/
 *.jks
 *.keystore
 *.key
