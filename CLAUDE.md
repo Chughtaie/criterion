@@ -68,7 +68,7 @@ adhan2 0.0.7. NO Ktor. AGP > 9.4 does not sync in stable Android Studio (Rabbit 
 - Add the new module to this file's module list (below) in the same PR.
 Modules today (doc 04 §3.2 P0 set): :app :core:model :core:domain :core:content :core:database :core:data
 :core:designsystem :core:navigation :core:testing
-(AP-01 state = :app only. Clock/dispatchers go in :core:domain, DataStore<UserSettings> in :core:database,
+(All 9 exist since E-01-S03. Clock/dispatchers go in :core:domain, DataStore<UserSettings> in :core:database,
 model-bound rows in :core:designsystem. P1 adds :core:remote :core:mushaf-render :core:audio, the six
 features and :baselineprofile; P2 adds :core:prayer :feature:prayer :feature:companion. Never invent a module
 name that is not in doc 04 §3; the PR that adds/removes a module updates this list.)
@@ -80,7 +80,7 @@ name that is not in doc 04 §3; the PR that adds/removes a module updates this l
   WhileSubscribed(5_000), …)`), intents via `onAction(Action)`, immutable collections, stateless
   `XxxScreen` composables with previews, `XxxRoute` wires the ViewModel.
 - Errors: sealed `AppError`; one-shot repository calls return `Outcome<T>`; observables return `Flow<T>`.
-- Inject dispatchers (`@IoDispatcher`); never hard-code `Dispatchers.IO` in classes. Media3 calls on main looper only.
+- Inject `AppDispatchers` (doc 04 §4.4; bound only in `:core:data`'s `DispatchersModule`); never hard-code `Dispatchers.IO` in classes. Media3 calls on main looper only.
 - Offline-first: reading, indexes and search never touch the network.
 - All user-visible strings in `strings.xml` (en + ur). No string concatenation for sentences; use
   placeholders. Wrap verse keys/numbers inside RTL text with bidi isolation.
