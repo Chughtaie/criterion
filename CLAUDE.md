@@ -20,14 +20,16 @@ If code and plan disagree: stop, tell the owner, and propose a plan edit in the 
 
 ## Commands
 ```bash
-./gradlew quickCheck        # spotlessCheck + library testDebugUnitTest + :app:testFossPersonalDebugUnitTest
-                            # + verifyRoborazziDebug (local loop)
-./gradlew prCheck           # quickCheck + lintFossPersonalDebug lintPlayPublicDebug + testPlayPublicDebugUnitTest
-                            # + checkModuleBoundaries + verifyContentEligibilityPlayPublicRelease
-                            # + assembleFossPersonalDebug assemblePlayPublicDebug (what CI's `ci/check` runs)
+./gradlew quickCheck        # spotlessCheck + build-logic tests + every module's unit tests (library testDebugUnitTest,
+                            # JVM test, :app testPlayPublicDebugUnitTest testFossPersonalDebugUnitTest) + testGoldens
+./gradlew prCheck           # quickCheck + library lintDebug + :app lintPlayPublicDebug lintFossPersonalDebug + guards
+                            # (verifyKotlinGradlePlugin checkModuleBoundaries verifyContentEligibility{PlayPublic,FossPublic}Release)
+                            # + assemblePlayPublicDebug assembleFossPublicDebug: what CI's `ci/check` runs (doc 10 §11.3).
+                            # Until E-01-S04 adds flavors, :app contributes testDebugUnitTest lintDebug assembleDebug;
+                            # checkModuleBoundaries arrives with E-01-S08, verifyContentEligibility with E-01-S04.
 # explicit equivalents. Library modules have no flavors; :app has distribution {play, foss} × tier
 # {personal, public}; playPersonal* is disabled (doc 04 §11):
-./gradlew spotlessCheck testDebugUnitTest :app:testFossPersonalDebugUnitTest :app:testPlayPublicDebugUnitTest verifyRoborazziDebug :app:lintFossPersonalDebug :app:lintPlayPublicDebug
+./gradlew spotlessCheck testDebugUnitTest :app:testFossPersonalDebugUnitTest :app:testPlayPublicDebugUnitTest testGoldens :app:lintFossPersonalDebug :app:lintPlayPublicDebug
 ./gradlew spotlessApply                                  # format before committing
 ./gradlew :core:content:testDebugUnitTest                # content-DB invariants + schema-validation tests
 ./gradlew :app:assembleFossPersonalRelease               # R8 release build; the owner's daily sideloaded build
@@ -37,7 +39,7 @@ If code and plan disagree: stop, tell the owner, and propose a plan edit in the 
 ./gradlew :app:installFossPersonalDebug && adb shell monkey -p com.chughtai.criterion.personal.debug -c android.intent.category.LAUNCHER 1
 adb exec-out screencap -p > build/shots/<name>.png       # then OPEN the PNG and describe what you see
 ```
-Goldens: `recordRoborazziDebug` (per module) ONLY when the story intends a visual change; see "Goldens" below.
+Goldens: `./gradlew testGoldens -Proborazzi.test.record=true` ONLY when the story intends a visual change; see "Goldens" below.
 Robolectric NATIVE-graphics tests run one SDK per JVM (`-ProboSdks=N`, spike pattern).
 Python pipelines (tools/, doc 08): `cd tools && uv run --frozen python -I -m crit <stage> <cmd>`, or the
 `just` aliases (`just content`, `just mushaf`, `just proof`, `just timing`, `just validate`, `just assets`,
@@ -61,6 +63,8 @@ adhan2 0.0.7. NO Ktor. AGP > 9.4 does not sync in stable Android Studio (Rabbit 
 - Each core module exposes interfaces; implementations are `internal`, bound in that module's Hilt module.
   `QuranContentDb` and all Room types stay `internal` to their module (no `api(room3-runtime)` leaks).
 - New module = a convention plugin from build-logic only; no copy-pasted android {} blocks.
+- Lint baselines only record pre-existing issues and only shrink (doc 10 §11.1). To baseline a module: create an
+  empty `<module>/lint-baseline.xml`, run `./gradlew :<module>:updateLintBaseline`, commit the file.
 - Add the new module to this file's module list (below) in the same PR.
 Modules today (doc 04 §3.2 P0 set): :app :core:model :core:domain :core:content :core:database :core:data
 :core:designsystem :core:navigation :core:testing
