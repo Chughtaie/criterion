@@ -14,6 +14,7 @@ same PR.
 | Branch | What | Status | PR |
 |---|---|---|---|
 | `chore/agent-setup` | CLAUDE.md, `.claude/` settings + guard hook + commands, PR template, this ledger, `.gitignore` | done | [#2](https://github.com/Chughtaie/criterion/pull/2) |
+| `chore/spotless-prune-build-dirs` | Spotless no longer walks module `build/` dirs (the intermittent `prCheck` failure) | in-review |  |
 
 ## Stories
 
