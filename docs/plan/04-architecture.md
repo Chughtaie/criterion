@@ -2050,6 +2050,7 @@ kotlin-gradlePlugin = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-pl
 compose-gradlePlugin = { group = "org.jetbrains.kotlin", name = "compose-compiler-gradle-plugin", version.ref = "kotlin" }
 ksp-gradlePlugin = { group = "com.google.devtools.ksp", name = "symbol-processing-gradle-plugin", version.ref = "ksp" }
 room3-gradlePlugin = { group = "androidx.room3", name = "room3-gradle-plugin", version.ref = "androidxRoom3" }
+spotless-gradlePlugin = { group = "com.diffplug.spotless", name = "spotless-plugin-gradle", version.ref = "spotless" }
 android-desugarJdkLibs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 # AndroidX core/UI
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "androidxCore" }
@@ -2136,6 +2137,7 @@ androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version
 androidx-test-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "androidxEspresso" }
 androidx-test-uiautomator = { group = "androidx.test.uiautomator", name = "uiautomator", version.ref = "androidxUiAutomator" }
 slack-compose-lint = { group = "com.slack.lint.compose", name = "compose-lint-checks", version.ref = "slackComposeLint" }
+compose-rules-ktlint = { group = "io.nlopez.compose.rules", name = "ktlint", version.ref = "composeRules" }  # Spotless ktlint rule set
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -2190,10 +2192,10 @@ The root `build.gradle.kts` applies every plugin alias with `apply false`, inclu
 | `criterion.android.robolectric` | g04 rec. 8: `--add-exports java.base/jdk.internal.access` + `--add-opens java.base/java.io`; host `libsqliteJni` extraction from `sqlite-bundled-jvm` (linux_x64/linux_arm64/osx_arm64/windows_x64); `isIncludeAndroidResources`; `-ProboSdks=N` path for NATIVE-graphics kashida goldens, one SDK per JVM; never a test-resource folder named `fonts/` |
 | `criterion.android.screenshot` | Roborazzi plugin + `roborazzi-compose`; `verifyRoborazziDebug` / `recordRoborazziDebug`; the doc 10 screenshot matrix (4 themes × EN/UR × 100/130/200 % font scale) |
 | `criterion.android.lint` | `warningsAsErrors` on CI, `abortOnError`, baseline, Slack compose-lint checks, rules from `:lint-rules` |
-| `criterion.spotless` | Spotless + ktlint 1.8.0 + compose-rules 0.6.8; licence-header check (Apache headers on ported files) |
+| `criterion.spotless` | Spotless + ktlint 1.8.0 + compose-rules 0.6.8; licence-header check (Apache headers on ported files; added with the first ported file, A3) |
 | `criterion.content.eligibility` | `verifyContentEligibility<Variant>` (§11.3), using the shared `ContentPolicy`; G1/G5 checks for PUBLIC |
 | `criterion.android.test` | `com.android.test` + baselineprofile for `:baselineprofile` |
-| `criterion.root` | Guard tasks `checkModuleBoundaries` (rules in §3.4) and `verifyKotlinGradlePlugin` (asserts `buildEnvironment` resolves `kotlin-gradle-plugin` to 2.4.21, g04 rec. 1); aggregate `kover`. **Root aggregate tasks** (library modules have no flavors, so CI calls these instead of per-module names; exact membership owned by [10](10-quality-testing-ci.md), which this row mirrors): `quickCheck` = `spotlessCheck` + guard tasks + every library `testDebugUnitTest` + Roborazzi verify + `:app:testPlayPublicDebugUnitTest` + `:app:testFossPersonalDebugUnitTest` (code paths only; the personal packs folder is empty in CI). `prCheck` = `quickCheck` + library `lintDebug` + `:app:lintPlayPublicDebug` + `:app:lintFossPersonalDebug` + guards incl. `verifyContentEligibility` for `playPublicRelease` and `fossPublicRelease` + `:app:assemblePlayPublicDebug :app:assembleFossPublicDebug`. CI assembles and eligibility-checks the **public tier only**. `personalCheck` (owner's machine only) = `copyPersonalAssets` + `verifyContentEligibilityFossPersonalRelease` + `:app:assembleFossPersonalRelease`. The required GitHub status is `ci/check` |
+| `criterion.root` | Guard tasks `checkModuleBoundaries` (rules in §3.4) and `verifyKotlinGradlePlugin` (asserts `buildEnvironment` resolves `kotlin-gradle-plugin` to 2.4.21, g04 rec. 1); aggregate `kover` (with the nightly job, E-02-S05). **Root aggregate tasks** (library modules have no flavors, so CI calls these instead of per-module names; exact membership owned by [10](10-quality-testing-ci.md), which this row mirrors): `quickCheck` = `spotlessCheck` + build-logic tests + every library `testDebugUnitTest` (JVM modules: `test`) + Roborazzi verify (`testGoldens`) + `:app:testPlayPublicDebugUnitTest` + `:app:testFossPersonalDebugUnitTest` (code paths only; the personal packs folder is empty in CI). `prCheck` = `quickCheck` + library `lintDebug` + `:app:lintPlayPublicDebug` + `:app:lintFossPersonalDebug` + guards (`verifyKotlinGradlePlugin`, `checkModuleBoundaries`, `verifyContentEligibility` for `playPublicRelease` and `fossPublicRelease`) + `:app:assemblePlayPublicDebug :app:assembleFossPublicDebug`. CI assembles and eligibility-checks the **public tier only**. `personalCheck` (owner's machine only) = `copyPersonalAssets` + `verifyContentEligibilityFossPersonalRelease` + `:app:assembleFossPersonalRelease`. The required GitHub status is `ci/check` |
 
 ---
 
