@@ -1614,6 +1614,11 @@ Each feature exposes `fun EntryProviderScope<NavKey>.readerEntries(navigator: Na
   <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" tools:node="remove"/>
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" tools:node="remove"/>
+  <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:node="remove"/>
   <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:node="remove"/>
 
   <application android:name=".CriterionApp" android:supportsRtl="true" android:allowBackup="true"
@@ -1735,7 +1740,7 @@ android {
                              buildConfigField("String", "CONTENT_TIER", if (release == "production") "\"PUBLIC\"" else "\"BETA\"")
                              buildConfigField("String", "REMOTE_CHANNEL", if (release == "production") "\"public\"" else "\"beta\"") }
         create("personal") { dimension = "tier"; applicationIdSuffix = ".personal"; versionNameSuffix = "-personal"
-                             resValue("string", "app_name_suffix", " (personal)")
+                             resValue("string", "app_name_suffix", " (personal)")             // launcher label: E-14-S04
                              buildConfigField("String", "CONTENT_TIER", "\"PERSONAL\"")
                              buildConfigField("String", "REMOTE_CHANNEL", "\"beta\"") }   // + bundled personal-overlay.json
     }
@@ -1746,7 +1751,7 @@ android {
     defaultConfig {
         buildConfigField("boolean", "MONETIZED", monetized.toString())   // honoured only for playPublic*; see below
         buildConfigField("String", "CDN_BASE_URL", "\"${providers.gradleProperty("criterion.cdn").getOrElse("https://cdn.example.invalid")}\"")
-        buildConfigField("String", "TRUSTED_KEYS", "\"${providers.gradleProperty("criterion.trustedKeys").get()}\"") // 2 hex keys, comma-sep
+        buildConfigField("String", "TRUSTED_KEYS", "\"${providers.gradleProperty("criterion.trustedKeys").getOrElse("")}\"") // 2 hex keys, comma-sep; empty until E-23-S01
     }
     androidResources { generateLocaleConfig = true }      // + res/resources.properties unqualifiedResLocale=en-US
     bundle { language { enableSplit = false } }           // in-app language switch (D-21)
@@ -1754,8 +1759,9 @@ android {
 androidComponents {
     beforeVariants(selector().withFlavor("distribution" to "play").withFlavor("tier" to "personal")) { it.enable = false }
     onVariants(selector().withBuildType("release")) { it.packaging.resources.excludes.add("DebugProbesKt.bin") } // release only (D-02)
-    // verifyContentEligibility<Variant> (criterion.content.eligibility) fails a personal-tier variant when release != null,
-    // and any non-playPublic variant when monetized == true, so misuse fails the build, not just configuration.
+    // verifyContentEligibility<Variant> (criterion.content.eligibility) fails a personal-tier release variant when release != null,
+    // and any non-playPublic release variant when monetized == true, so misuse fails the build, not just configuration.
+    // Debug variants (and the unit tests that merge their assets) are exempt, so CI can run prCheck under release flags.
 }
 ```
 

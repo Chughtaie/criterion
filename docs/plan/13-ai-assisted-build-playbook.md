@@ -108,8 +108,7 @@ If code and plan disagree: stop, tell the owner, and propose a plan edit in the 
 ./gradlew prCheck           # quickCheck + library lintDebug + :app lintPlayPublicDebug lintFossPersonalDebug + guards
                             # (verifyKotlinGradlePlugin checkModuleBoundaries verifyContentEligibility{PlayPublic,FossPublic}Release)
                             # + assemblePlayPublicDebug assembleFossPublicDebug: what CI's `ci/check` runs (doc 10 §11.3).
-                            # Until E-01-S04 adds flavors, :app contributes testDebugUnitTest lintDebug assembleDebug;
-                            # verifyContentEligibility arrives with E-01-S04.
+./gradlew personalCheck     # owner's machine only: verifyContentEligibilityFossPersonalRelease + assembleFossPersonalRelease
 # explicit equivalents. Library modules have no flavors; :app has distribution {play, foss} × tier
 # {personal, public}; playPersonal* is disabled (doc 04 §11):
 ./gradlew spotlessCheck testDebugUnitTest :app:testFossPersonalDebugUnitTest :app:testPlayPublicDebugUnitTest testGoldens :app:lintFossPersonalDebug :app:lintPlayPublicDebug

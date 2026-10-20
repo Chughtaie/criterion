@@ -1215,8 +1215,8 @@ The production AAB is always a fresh final-tag build (`versionCode` n = 99) made
 - **Play App Signing**: Google holds the app signing key; we hold only the **upload key**, so a lost upload key can be reset through Play support.
 - The upload keystore is stored as `UPLOAD_KEYSTORE_B64` plus passwords in the `release` environment, which needs owner approval. An offline backup sits in the owner's password manager.
 - The `foss` flavor gets its own key only if foss distribution is chosen (doc 11). Its SHA-256 is registered for Android developer verification (r09 §2.6).
-- Debug builds use a committed debug keystore so the signature stays stable for sideloads.
-- The owner's `fossPersonalRelease` is built and signed on the owner's machine with a personal sideload key kept in the owner's password manager. That key never enters CI, and the build never leaves the owner's devices.
+- Debug builds use a committed debug keystore so the signature stays stable for sideloads. *[Owner decision pending (E-01-S04): the project rule "never commit keystores or signing keys" and the `*.jks`/`*.keystore` ignores conflict with this; until the owner rules, debug builds use each machine's default debug key.]*
+- The owner's `fossPersonalRelease` is built and signed on the owner's machine with a personal sideload key kept in the owner's password manager. That key never enters CI, and the build never leaves the owner's devices. `criterion.android.application.flavors` signs the `personal` flavor when the owner's `~/.gradle/gradle.properties` sets all four `criterionPersonalSigning{StoreFile,StorePassword,KeyAlias,KeyPassword}` (the `play` flavor uses `criterionSigning*`, as below); a partial set fails the build.
 
 **R8 mapping.**
 - AGP embeds the mapping in the AAB's `BUNDLE-METADATA`, and Play uses it to deobfuscate vitals [unverified: confirm on the first internal upload in P1; if it is missing, upload `mapping.txt` in the Console's App bundle explorer].
@@ -1253,6 +1253,8 @@ jobs:
         run: python3 -I tools/ci/version.py "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
         # outputs: versionName, versionCode, tier (BETA for -rc.N tags, PUBLIC for final tags),
         #          releaseFlag ("-Pcriterion.release=production" for PUBLIC, else empty), monetizedFlag (v1.5+)
+        # A monetized run (v1.5+) must build and check the foss APK in a second Gradle invocation without monetizedFlag:
+        # verifyContentEligibility fails every non-playPublic release variant built with it (doc 04 §11.1).
       - name: Release gate (doc 08) + app gates (doc 10)
         run: |
           uv sync --frozen
