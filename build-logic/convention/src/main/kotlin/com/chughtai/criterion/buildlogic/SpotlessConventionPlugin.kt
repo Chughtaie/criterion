@@ -40,30 +40,31 @@ class SpotlessConventionPlugin : Plugin<Project> {
                     "data/**",
                     "tools/**",
                     "**/src/personal/**",
+                    ".git/**",
                 )
+
+            // Excludes go on the file tree itself, so Gradle never descends into them. Spotless's targetExclude would
+            // instead enumerate every build directory to subtract it, racing the tasks that write there.
+            fun sources(vararg includes: String) = fileTree(rootDir) { include(*includes).exclude(excluded) }
             extensions.configure<SpotlessExtension> {
                 // LF everywhere (.editorconfig). The default GIT_ATTRIBUTES mode reads git metadata while configuring,
                 // which defeats configuration-cache reuse.
                 lineEndings = LineEnding.UNIX
                 kotlin {
-                    target("**/*.kt")
-                    targetExclude(excluded)
+                    target(sources("**/*.kt"))
                     ktlint(ktlintVersion).customRuleSets(listOf(composeRules)).editorConfigOverride(ktlintRules)
                 }
                 kotlinGradle {
-                    target("**/*.gradle.kts")
-                    targetExclude(excluded)
+                    target(sources("**/*.gradle.kts"))
                     ktlint(ktlintVersion).editorConfigOverride(ktlintRules)
                 }
                 format("xml") {
-                    target("**/src/*/res/**/*.xml", "**/src/*/AndroidManifest.xml")
-                    targetExclude(excluded)
+                    target(sources("**/src/*/res/**/*.xml", "**/src/*/AndroidManifest.xml"))
                     trimTrailingWhitespace()
                     endWithNewline()
                 }
                 format("markdown") {
-                    target("*.md", "docs/plan/**/*.md", ".github/**/*.md", ".claude/**/*.md")
-                    targetExclude(excluded)
+                    target(sources("*.md", "docs/plan/**/*.md", ".github/**/*.md", ".claude/**/*.md"))
                     trimTrailingWhitespace()
                     endWithNewline()
                 }
