@@ -24,7 +24,10 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     variant.packaging.resources.excludes
                         .add("DebugProbesKt.bin")
                 }
+                // Without flavors the debug variant feeds the aggregates; criterion.android.application.flavors
+                // replaces this with doc 10 §11.3's explicit variant lists.
                 onVariants(selector().withBuildType("debug")) { variant ->
+                    if (variant.productFlavors.isNotEmpty()) return@onVariants
                     val name = variant.name.replaceFirstChar(Char::titlecase)
                     tasks.named(ModuleChecks.QUICK) { dependsOn("test${name}UnitTest") }
                     tasks.named(ModuleChecks.PR) { dependsOn("lint$name", "assemble$name") }

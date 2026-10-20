@@ -45,6 +45,8 @@ gradlePlugin {
             "AndroidApplicationConventionPlugin",
         )
         conventionPlugin(libs.plugins.criterion.android.application.compose, "AndroidApplicationComposeConventionPlugin")
+        conventionPlugin(libs.plugins.criterion.android.application.flavors, "AndroidApplicationFlavorsConventionPlugin")
+        conventionPlugin(libs.plugins.criterion.content.eligibility, "ContentEligibilityConventionPlugin")
         conventionPlugin(
             libs.plugins.criterion.android.library
                 .asProvider(),
