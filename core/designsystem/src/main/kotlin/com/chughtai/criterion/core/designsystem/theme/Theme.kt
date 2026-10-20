@@ -1,4 +1,4 @@
-package com.chughtai.criterion.ui.theme
+package com.chughtai.criterion.core.designsystem.theme
 
 import android.app.Activity
 import android.os.Build

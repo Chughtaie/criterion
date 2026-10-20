@@ -1,4 +1,4 @@
-package com.chughtai.criterion.ui.theme
+package com.chughtai.criterion.core.designsystem.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
