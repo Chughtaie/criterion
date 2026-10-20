@@ -5,11 +5,7 @@ plugins {
 
 android {
     namespace = "com.chughtai.criterion"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk { version = release(37) }
 
     defaultConfig {
         applicationId = "com.chughtai.criterion"
@@ -23,34 +19,43 @@ android {
 
     buildTypes {
         release {
-            optimization {
-                enable = false
-            }
+            optimization { enable = true } // AGP 9.3+ DSL; R8 full mode
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
     buildFeatures {
         compose = true
     }
+    androidResources { generateLocaleConfig = true } // + res/resources.properties unqualifiedResLocale=en-US
+    bundle { language { enableSplit = false } } // in-app language switch (D-21)
+}
+
+androidComponents {
+    // The coroutines debug-probes agent is only for local debugging; keep it out of release builds (D-02).
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.packaging.resources.excludes.add("DebugProbesKt.bin")
+    }
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.android.desugarJdkLibs)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    testImplementation(libs.junit)
+    testImplementation(libs.junit4)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.test.espresso.core)
+    androidTestImplementation(libs.androidx.test.ext.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

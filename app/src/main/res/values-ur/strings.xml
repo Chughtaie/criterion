@@ -1,0 +1,4 @@
+<resources>
+    <!-- Codename until gate G3 picks the public brand. The owner's Urdu strings land in E-13-S02. -->
+    <string name="app_name">Criterion</string>
+</resources>
